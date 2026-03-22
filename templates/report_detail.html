@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}研报详情 - 研报中心{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail-header {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .detail-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+    }
+
+    .detail-value {
+        font-size: 1rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .btn-pdf {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+        box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-pdf:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-external {
+        background: linear-gradient(135deg, var(--accent-cyan), #0ea5e9);
+        color: var(--bg-primary);
+    }
+
+    .pdf-viewer {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        overflow: hidden;
+        margin-top: 1.5rem;
+    }
+
+    .pdf-viewer-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .pdf-frame {
+        width: 100%;
+        height: 800px;
+        border: none;
+        background: #1a1a2e;
+    }
+
+    .pdf-error {
+        padding: 4rem 2rem;
+        text-align: center;
+    }
+
+    .pdf-error i {
+        font-size: 4rem;
+        color: var(--accent-red);
+        margin-bottom: 1rem;
+    }
+
+    .pdf-loading {
+        padding: 4rem 2rem;
+        text-align: center;
+        color: var(--text-muted);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+    <a href="/reports" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i>
+        <span>返回列表</span>
+    </a>
+</div>
+
+<div id="reportContent">
+    <div class="loading">
+        <div class="spinner"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const reportId = {{ report_id }};
+    let currentReport = null;  // 全局变量存储当前研报数据
+
+    async function loadReport() {
+        try {
+            const report = await api(`/api/reports/${reportId}`);
+            currentReport = report;  // 保存到全局变量
+
+            const html = `
+                <div class="detail-header fade-in">
+                    <h1 class="detail-title">${report.title}</h1>
+
+                    <div class="detail-grid">
+                        ${report.stock_name ? `
+                        <div class="detail-item">
+                            <div class="detail-label">股票</div>
+                            <div class="detail-value">${report.stock_name}</div>
+                        </div>
+                        ` : ''}
+                        ${report.institution ? `
+                        <div class="detail-item">
+                            <div class="detail-label">机构</div>
+                            <div class="detail-value">${report.institution}</div>
+                        </div>
+                        ` : ''}
+                        ${report.publish_date ? `
+                        <div class="detail-item">
+                            <div class="detail-label">发布日期</div>
+                            <div class="detail-value">${formatFullDate(report.publish_date)}</div>
+                        </div>
+                        ` : ''}
+                        ${report.rating ? `
+                        <div class="detail-item">
+                            <div class="detail-label">评级</div>
+                            <div class="detail-value">
+                                <span class="badge-rating ${getRatingClass(report.rating)}">${report.rating}</span>
+                            </div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="detail-label">来源</div>
+                            <div class="detail-value">${report.source || 'eastmoney'}</div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-pdf" onclick="openPdfInViewer()">
+                            <i class="bi bi-file-pdf"></i>
+                            <span>在线阅读PDF</span>
+                        </button>
+                        <a href="/api/reports/${report.id}/pdf-proxy" class="btn btn-external" target="_blank">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                            <span>新窗口打开PDF</span>
+                        </a>
+                        <a href="${report.pdf_url}" class="btn btn-secondary" target="_blank" onclick="event.stopPropagation();">
+                            <i class="bi bi-link-45deg"></i>
+                            <span>直接访问原链接</span>
+                        </a>
+                        <button class="btn btn-secondary" onclick="generateSummary()">
+                            <i class="bi bi-magic"></i>
+                            <span>生成AI摘要</span>
+                        </button>
+                    </div>
+                </div>
+
+                ${report.summary ? `
+                <div class="pdf-viewer fade-in" style="animation-delay: 0.1s;">
+                    <div class="pdf-viewer-header">
+                        <span style="font-weight: 600;"><i class="bi bi-robot me-2" style="color: var(--accent-purple);"></i>AI智能摘要</span>
+                    </div>
+                    <div style="padding: 1.5rem; line-height: 1.8; color: var(--text-secondary);">${report.summary}</div>
+                </div>
+                ` : ''}
+
+                <div class="pdf-viewer fade-in" style="animation-delay: 0.2s;" id="pdfViewerSection">
+                    <div class="pdf-viewer-header">
+                        <span style="font-weight: 600;"><i class="bi bi-file-earmark-pdf me-2" style="color: var(--accent-red);"></i>PDF在线阅读</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <a href="/api/reports/${report.id}/pdf-raw" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" target="_blank">
+                                <i class="bi bi-box-arrow-up-right me-1"></i>新窗口
+                            </a>
+                        </div>
+                    </div>
+                    <div id="pdfContainer" style="background: #1a1a2e; min-height: 600px;">
+                        <div class="pdf-loading" id="pdfLoading">
+                            <div class="spinner"></div>
+                            <p style="margin-top: 1rem;">点击"在线阅读PDF"按钮加载文档</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('reportContent').innerHTML = html;
+
+            // 自动加载PDF
+            setTimeout(() => loadPdf(), 500);
+
+        } catch (error) {
+            document.getElementById('reportContent').innerHTML = `
+                <div style="text-align: center; padding: 4rem; color: var(--accent-red);">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 3rem;"></i>
+                    <p style="margin-top: 1rem; font-size: 1.1rem;">加载失败: ${error.message}</p>
+                    <a href="/reports" class="btn btn-secondary" style="margin-top: 1rem;">返回列表</a>
+                </div>
+            `;
+        }
+    }
+
+    function openPdfInViewer() {
+        if (!currentReport || !currentReport.pdf_url) {
+            showToast('PDF链接不可用', 'error');
+            return;
+        }
+
+        const container = document.getElementById('pdfContainer');
+        const loading = document.getElementById('pdfLoading');
+
+        // 显示加载中
+        if (loading) {
+            loading.innerHTML = '<div class="spinner"></div><p style="margin-top: 1rem;">正在通过服务器代理加载PDF...</p>';
+        }
+
+        // 使用服务器代理获取PDF
+        container.innerHTML = `
+            <iframe
+                src="/api/reports/${reportId}/pdf-proxy"
+                style="width: 100%; height: 800px; border: none; background: #1a1a2e;"
+                onerror="pdfError()"
+            ></iframe>
+        `;
+    }
+
+    function pdfError() {
+        const container = document.getElementById('pdfContainer');
+        container.innerHTML = `
+            <div class="pdf-error">
+                <i class="bi bi-file-x"></i>
+                <p style="font-size: 1.1rem; margin-bottom: 1rem;">PDF加载失败</p>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">可能原因：网络问题或安全防护拦截</p>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <button class="btn btn-pdf" onclick="openPdfInViewer()">
+                        <i class="bi bi-arrow-clockwise"></i>重试
+                    </button>
+                    <a href="/api/reports/${reportId}/pdf-raw" class="btn btn-external" target="_blank">
+                        <i class="bi bi-box-arrow-up-right"></i>直接打开PDF
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+
+    async function generateSummary() {
+        const btn = event.target.closest('.btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span><span>生成中...</span>';
+
+        showToast('AI摘要功能开发中...', 'info');
+
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-magic"></i><span>生成AI摘要</span>';
+        }, 2000);
+    }
+
+    // Initialize - 不自动加载PDF，等用户点击按钮
+    loadReport();
+</script>
+{% endblock %}

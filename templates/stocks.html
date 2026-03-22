@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}关注股票 - 研报下载系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1">关注股票</h4>
+        <p class="text-muted mb-0">管理关注的股票列表</p>
+    </div>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
+            <i class="bi bi-plus-lg me-1"></i>添加股票
+        </button>
+    </div>
+</div>
+
+<!-- 分类标签 -->
+<ul class="nav nav-tabs mb-4" id="categoryTabs">
+    <li class="nav-item">
+        <a class="nav-link active" href="#" onclick="filterByCategory(''); return false;">全部</a>
+    </li>
+</ul>
+
+<!-- 股票列表 -->
+<div class="row g-4" id="stockList">
+    <div class="loading">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+</div>
+
+<!-- 添加股票模态框 -->
+<div class="modal fade" id="addStockModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加关注股票</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">股票代码 *</label>
+                    <input type="text" class="form-control" id="newStockCode" placeholder="如: 09988.HK">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">股票名称 *</label>
+                    <input type="text" class="form-control" id="newStockName" placeholder="如: 阿里巴巴-W">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">市场</label>
+                    <select class="form-select" id="newStockMarket">
+                        <option value="HK">港股</option>
+                        <option value="A">A股</option>
+                        <option value="US">美股</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">类别</label>
+                    <select class="form-select" id="newStockCategory">
+                        <option value="科技">科技</option>
+                        <option value="创新药">创新药</option>
+                        <option value="医药">医药</option>
+                        <option value="CXO">CXO</option>
+                        <option value="光伏">光伏</option>
+                        <option value="消费">消费</option>
+                        <option value="能源">能源</option>
+                        <option value="金融">金融</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addStock()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let stocks = [];
+    let currentCategory = '';
+
+    async function loadStocks() {
+        try {
+            const data = await api('/api/reports/stocks/list');
+            stocks = data.stocks;
+
+            // 提取类别
+            const categories = [...new Set(stocks.map(s => s.category).filter(Boolean))];
+            const tabsHtml = `
+                <li class="nav-item">
+                    <a class="nav-link ${currentCategory === '' ? 'active' : ''}" href="#" onclick="filterByCategory(''); return false;">全部</a>
+                </li>
+                ${categories.map(cat => `
+                    <li class="nav-item">
+                        <a class="nav-link ${currentCategory === cat ? 'active' : ''}" href="#" onclick="filterByCategory('${cat}'); return false;">${cat}</a>
+                    </li>
+                `).join('')}
+            `;
+            document.getElementById('categoryTabs').innerHTML = tabsHtml;
+
+            renderStocks();
+
+        } catch (error) {
+            console.error('加载股票列表失败:', error);
+        }
+    }
+
+    function filterByCategory(category) {
+        currentCategory = category;
+        renderStocks();
+
+        // 更新标签激活状态
+        document.querySelectorAll('#categoryTabs .nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        event.target.classList.add('active');
+    }
+
+    function renderStocks() {
+        const filtered = currentCategory
+            ? stocks.filter(s => s.category === currentCategory)
+            : stocks;
+
+        if (filtered.length === 0) {
+            document.getElementById('stockList').innerHTML = `
+                <div class="col-12">
+                    <div class="empty-state">
+                        <i class="bi bi-graph-up"></i>
+                        <p>暂无股票数据</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const html = filtered.map(stock => `
+            <div class="col-md-4 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="mb-0">${stock.name}</h6>
+                                <small class="text-muted">${stock.code}</small>
+                            </div>
+                            <span class="badge ${stock.enabled ? 'bg-success' : 'bg-secondary'}">
+                                ${stock.enabled ? '启用' : '禁用'}
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge bg-light text-dark">${stock.category || '-'}</span>
+                            <span class="text-muted small">
+                                <i class="bi bi-file-text me-1"></i>${stock.report_count} 篇研报
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                        <div class="btn-group w-100">
+                            <button class="btn btn-outline-primary btn-sm" onclick="collectStock('${stock.code}')">
+                                <i class="bi bi-arrow-repeat"></i> 采集
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleStock(${stock.id})">
+                                <i class="bi bi-${stock.enabled ? 'pause' : 'play'}"></i>
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteStock(${stock.id})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        document.getElementById('stockList').innerHTML = html;
+    }
+
+    async function addStock() {
+        const code = document.getElementById('newStockCode').value.trim();
+        const name = document.getElementById('newStockName').value.trim();
+        const market = document.getElementById('newStockMarket').value;
+        const category = document.getElementById('newStockCategory').value;
+
+        if (!code || !name) {
+            showToast('请填写股票代码和名称', 'warning');
+            return;
+        }
+
+        try {
+            const result = await api(`/api/reports/stocks/add?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}&market=${market}&category=${category}`, {
+                method: 'POST'
+            });
+
+            if (result.success) {
+                showToast('添加成功');
+                bootstrap.Modal.getInstance(document.getElementById('addStockModal')).hide();
+                document.getElementById('newStockCode').value = '';
+                document.getElementById('newStockName').value = '';
+                loadStocks();
+            }
+        } catch (error) {
+            showToast('添加失败: ' + error.message, 'danger');
+        }
+    }
+
+    async function toggleStock(stockId) {
+        try {
+            const result = await api(`/api/reports/stocks/${stockId}/toggle`, { method: 'PUT' });
+            if (result.success) {
+                showToast(result.enabled ? '已启用' : '已禁用');
+                loadStocks();
+            }
+        } catch (error) {
+            showToast('操作失败', 'danger');
+        }
+    }
+
+    async function deleteStock(stockId) {
+        if (!confirm('确定要删除这个股票吗？')) return;
+
+        try {
+            await api(`/api/reports/stocks/${stockId}`, { method: 'DELETE' });
+            showToast('删除成功');
+            loadStocks();
+        } catch (error) {
+            showToast('删除失败', 'danger');
+        }
+    }
+
+    async function collectStock(stockCode) {
+        try {
+            showToast('开始采集...', 'info');
+            const result = await api('/api/reports/collect', {
+                method: 'POST',
+                body: JSON.stringify({ stock_code: stockCode, days: 30 })
+            });
+
+            if (result.success) {
+                showToast(result.message);
+                loadStocks();
+            } else {
+                showToast(result.message, 'danger');
+            }
+        } catch (error) {
+            showToast('采集失败', 'danger');
+        }
+    }
+
+    loadStocks();
+</script>
+{% endblock %}

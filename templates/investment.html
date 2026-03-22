@@ -1,0 +1,1554 @@
+{% extends "base.html" %}
+
+{% block title %}投资决策 - 研报中心{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Tab导航样式 */
+    .tab-nav {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.5rem;
+        overflow-x: auto;
+    }
+
+    .tab-btn {
+        padding: 0.75rem 1.25rem;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 0.5rem 0.5rem 0 0;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: var(--transition-smooth);
+        white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-card);
+    }
+
+    .tab-btn.active {
+        color: var(--accent-cyan);
+        background: var(--bg-card);
+        border-bottom: 2px solid var(--accent-cyan);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* 市场卡片 */
+    .market-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.25rem;
+        text-align: center;
+        transition: var(--transition-smooth);
+        position: relative;
+    }
+
+    .market-card:hover {
+        border-color: var(--border-glow);
+        transform: translateY(-2px);
+    }
+
+    .market-card .date {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        position: absolute;
+        top: 0.5rem;
+        right: 0.75rem;
+    }
+
+    .market-card .name {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .market-card .value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .market-card .change {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 0.15rem;
+    }
+
+    .market-card .change.positive { color: var(--accent-green); }
+    .market-card .change.negative { color: var(--accent-red); }
+
+    .chart-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .chart-title {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .chart-wrapper {
+        height: 280px;
+        position: relative;
+    }
+
+    .rate-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+
+    .rate-item {
+        background: var(--bg-secondary);
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+        text-align: center;
+    }
+
+    .rate-item .label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-bottom: 0.15rem;
+    }
+
+    .rate-item .value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        color: var(--accent-cyan);
+    }
+
+    .fear-greed-meter {
+        height: 16px;
+        background: linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444);
+        border-radius: 8px;
+        position: relative;
+        margin: 1rem 0;
+    }
+
+    .fear-greed-indicator {
+        position: absolute;
+        top: -4px;
+        width: 24px;
+        height: 24px;
+        background: white;
+        border-radius: 50%;
+        border: 3px solid var(--bg-primary);
+        transform: translateX(-50%);
+        transition: left 0.5s ease;
+    }
+
+    .stock-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .stock-table th {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+
+    .stock-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+
+    .stock-table tr:hover {
+        background: var(--bg-card-hover);
+    }
+
+    .stock-table .positive { color: var(--accent-green); }
+    .stock-table .negative { color: var(--accent-red); }
+
+    .index-section-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin: 1.5rem 0 0.75rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .special-index {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .special-index .value {
+        color: var(--accent-red);
+    }
+
+    /* 估值水位条 */
+    .valuation-bar {
+        height: 8px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 0.5rem 0;
+    }
+
+    .valuation-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .valuation-bar-fill.low { background: var(--accent-green); }
+    .valuation-bar-fill.medium { background: #eab308; }
+    .valuation-bar-fill.high { background: var(--accent-red); }
+
+    /* 管线阶段标签 */
+    .phase-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .phase-preclinical { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .phase-1 { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .phase-2 { background: rgba(234, 179, 8, 0.2); color: #fbbf24; }
+    .phase-3 { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+    .phase-approved { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+    /* ETL日志 */
+    .log-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+
+    .log-item:last-child {
+        border-bottom: none;
+    }
+
+    .log-status {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 0.5rem;
+    }
+
+    .log-status.success { background: var(--accent-green); }
+    .log-status.error { background: var(--accent-red); }
+    .log-status.running { background: #fbbf24; animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">投资决策</h1>
+        <p class="page-subtitle">市场行情、情绪指标与趋势分析</p>
+    </div>
+    <div>
+        <button class="btn btn-secondary" onclick="refreshCurrentTab()">
+            <i class="bi bi-arrow-repeat"></i>
+            <span>刷新</span>
+        </button>
+    </div>
+</div>
+
+<!-- Tab导航 -->
+<div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('dashboard')">
+        <i class="bi bi-grid-1x2 me-1"></i>全景中枢
+    </button>
+    <button class="tab-btn" onclick="switchTab('macro')">
+        <i class="bi bi-bank me-1"></i>宏观流动性
+    </button>
+    <button class="tab-btn" onclick="switchTab('fundamentals')">
+        <i class="bi bi-file-earmark-bar-graph me-1"></i>微观基本面
+    </button>
+    <button class="tab-btn" onclick="switchTab('sector')">
+        <i class="bi bi-diagram-3 me-1"></i>行业模型
+    </button>
+    <button class="tab-btn" onclick="switchTab('quant')">
+        <i class="bi bi-graph-up-arrow me-1"></i>量化技术
+    </button>
+    <button class="tab-btn" onclick="switchTab('etl')">
+        <i class="bi bi-database me-1"></i>数据管理
+    </button>
+</div>
+
+<!-- Tab 1: 全景中枢 -->
+<div id="tab-dashboard" class="tab-content active">
+    <!-- A股主要指数 -->
+    <div class="index-section-title">A股主要指数</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-sh000001">
+            <span class="date" id="date-sh000001">-</span>
+            <div class="name">上证指数</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399001" style="animation-delay: 0.05s;">
+            <span class="date" id="date-sz399001">-</span>
+            <div class="name">深证成指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399006" style="animation-delay: 0.1s;">
+            <span class="date" id="date-sz399006">-</span>
+            <div class="name">创业板指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000300" style="animation-delay: 0.15s;">
+            <span class="date" id="date-sh000300">-</span>
+            <div class="name">沪深300</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-sh000016">
+            <span class="date" id="date-sh000016">-</span>
+            <div class="name">上证50</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000905" style="animation-delay: 0.05s;">
+            <span class="date" id="date-sh000905">-</span>
+            <div class="name">中证500</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000852" style="animation-delay: 0.1s;">
+            <span class="date" id="date-sh000852">-</span>
+            <div class="name">中证1000</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399005" style="animation-delay: 0.15s;">
+            <span class="date" id="date-sz399005">-</span>
+            <div class="name">中小板指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 港股指数 -->
+    <div class="index-section-title">港股指数</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-hsi">
+            <span class="date" id="date-hsi">-</span>
+            <div class="name">恒生指数</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in special-index" id="index-ftsea50" style="animation-delay: 0.05s;">
+            <span class="date" id="date-ftsea50">-</span>
+            <div class="name">富时中国A50</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in special-index" id="index-yang" style="animation-delay: 0.1s;">
+            <span class="date" id="date-yang">-</span>
+            <div class="name">富时中国三倍做空</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 美股指数 -->
+    <div class="index-section-title">美股指数</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="market-card fade-in" id="index-dji">
+            <span class="date" id="date-dji">-</span>
+            <div class="name">道琼斯</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-ixic" style="animation-delay: 0.05s;">
+            <span class="date" id="date-ixic">-</span>
+            <div class="name">纳斯达克</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-inx" style="animation-delay: 0.1s;">
+            <span class="date" id="date-inx">-</span>
+            <div class="name">标普500</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 恐慌指数与利率 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-activity me-2" style="color: var(--accent-red);"></i>VIX恐慌指数</span>
+            </div>
+            <div id="vixValue" style="font-size: 2rem; font-weight: 700; text-align: center; font-family: var(--font-mono);">-</div>
+            <div class="fear-greed-meter">
+                <div class="fear-greed-indicator" id="vixIndicator" style="left: 50%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); margin-top: 0.25rem;">
+                <span>极度贪婪</span>
+                <span>贪婪</span>
+                <span>中性</span>
+                <span>恐慌</span>
+                <span>极度恐慌</span>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-bank me-2" style="color: var(--accent-cyan);"></i>SHIBOR利率</span>
+                <span class="date" id="date-shibor">-</span>
+            </div>
+            <div class="rate-grid" id="shiborRates">
+                <div class="rate-item">
+                    <div class="label">隔夜</div>
+                    <div class="value">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">1周</div>
+                    <div class="value">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">1月</div>
+                    <div class="value">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-emoji-smile me-2" style="color: var(--accent-purple);"></i>市场情绪</span>
+                <span class="date" id="date-sentiment">-</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; text-align: center;" id="sentimentData">
+                <div class="rate-item">
+                    <div class="label">上涨</div>
+                    <div class="value" style="color: var(--accent-green);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">涨停</div>
+                    <div class="value" style="color: var(--accent-green);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">平盘</div>
+                    <div class="value">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">跌停</div>
+                    <div class="value" style="color: var(--accent-red);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">下跌</div>
+                    <div class="value" style="color: var(--accent-red);">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 指数趋势图 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-graph-up me-2"></i>上证指数趋势</span>
+                <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="loadIndexHistory('sh000001', this.value)">
+                    <option value="30">30天</option>
+                    <option value="90" selected>90天</option>
+                    <option value="180">180天</option>
+                    <option value="365">1年</option>
+                </select>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="chartShanghai"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-graph-up me-2"></i>恒生指数趋势</span>
+                <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="loadIndexHistory('hsi', this.value)">
+                    <option value="30">30天</option>
+                    <option value="90" selected>90天</option>
+                    <option value="180">180天</option>
+                    <option value="365">1年</option>
+                </select>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="chartHSI"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- SHIBOR利率趋势 -->
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-percent me-2" style="color: var(--accent-cyan);"></i>SHIBOR利率趋势</span>
+            <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="loadInterestRates(this.value)">
+                <option value="30">30天</option>
+                <option value="90" selected>90天</option>
+                <option value="180">180天</option>
+                <option value="365">1年</option>
+            </select>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="chartShibor"></canvas>
+        </div>
+    </div>
+
+    <!-- 关注股票行情 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-star me-2" style="color: var(--accent-gold);"></i>关注A股</span>
+            </div>
+            <div style="max-height: 350px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>现价</th>
+                            <th>涨跌幅</th>
+                            <th>最高</th>
+                            <th>最低</th>
+                        </tr>
+                    </thead>
+                    <tbody id="aStocksTable">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-star me-2" style="color: var(--accent-gold);"></i>关注港股</span>
+            </div>
+            <div style="max-height: 350px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>现价</th>
+                            <th>涨跌幅</th>
+                            <th>最高</th>
+                            <th>最低</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hkStocksTable">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 2: 宏观流动性 -->
+<div id="tab-macro" class="tab-content">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-water me-2" style="color: var(--accent-cyan);"></i>北向资金</span>
+                <span id="northMoneyTrend" class="badge bg-secondary">-</span>
+            </div>
+            <div style="text-align: center; margin-bottom: 1rem;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">近5日净流入</div>
+                <div id="northMoney5d" style="font-size: 2rem; font-weight: 700; font-family: var(--font-mono);">-</div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="chartNorthMoney"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-speedometer2 me-2" style="color: var(--accent-purple);"></i>流动性指标</span>
+            </div>
+            <div id="liquidityIndicators" style="padding: 1rem;">
+                <p style="color: var(--text-muted); text-align: center;">加载中...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-graph-up me-2"></i>利率历史趋势</span>
+            <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="loadRatesHistory(this.value)">
+                <option value="30">30天</option>
+                <option value="90" selected>90天</option>
+                <option value="180">180天</option>
+                <option value="365">1年</option>
+            </select>
+        </div>
+        <div class="chart-wrapper" style="height: 350px;">
+            <canvas id="chartRatesHistory"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 3: 微观基本面 -->
+<div id="tab-fundamentals" class="tab-content">
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-building me-2"></i>关注股票基本面</span>
+        </div>
+        <div style="max-height: 500px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>ROE</th>
+                        <th>毛利率</th>
+                        <th>净利率</th>
+                        <th>PE(TTM)</th>
+                        <th>PB</th>
+                        <th>营收增速</th>
+                        <th>利润增速</th>
+                    </tr>
+                </thead>
+                <tbody id="fundamentalsTable">
+                    <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 4: 行业模型 -->
+<div id="tab-sector" class="tab-content">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-cpu" style="font-size: 2rem; color: var(--accent-cyan);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="tmtCount">-</div>
+            <div style="color: var(--text-muted);">TMT公司</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-capsule" style="font-size: 2rem; color: var(--accent-green);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="biotechCount">-</div>
+            <div style="color: var(--text-muted);">创新药管线</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-cart3" style="font-size: 2rem; color: var(--accent-gold);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="consumerCount">-</div>
+            <div style="color: var(--text-muted);">消费公司</div>
+        </div>
+    </div>
+
+    <!-- 行业子标签 -->
+    <ul class="nav nav-tabs mb-3" id="sectorTabs">
+        <li class="nav-item">
+            <a class="nav-link active" onclick="loadSectorTab('tmt')">TMT</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" onclick="loadSectorTab('biotech')">创新药</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" onclick="loadSectorTab('consumer')">消费</a>
+        </li>
+    </ul>
+
+    <!-- TMT数据 -->
+    <div id="sector-tmt" class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title">TMT行业指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>MAU(百万)</th>
+                        <th>ARPU</th>
+                        <th>付费率</th>
+                        <th>留存D1</th>
+                        <th>营收增速</th>
+                        <th>毛利率</th>
+                        <th>研发占比</th>
+                    </tr>
+                </thead>
+                <tbody id="tmtTable">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 创新药管线 -->
+    <div id="sector-biotech" class="chart-container fade-in" style="display: none;">
+        <div class="chart-header">
+            <span class="chart-title">创新药管线</span>
+            <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="filterBiotechPhase(this.value)">
+                <option value="">全部阶段</option>
+                <option value="preclinical">临床前</option>
+                <option value="phase1">临床I期</option>
+                <option value="phase2">临床II期</option>
+                <option value="phase3">临床III期</option>
+                <option value="approved">已批准</option>
+            </select>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>药物名称</th>
+                        <th>适应症</th>
+                        <th>阶段</th>
+                        <th>预计上市</th>
+                        <th>区域</th>
+                    </tr>
+                </thead>
+                <tbody id="biotechTable">
+                    <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 消费行业 -->
+    <div id="sector-consumer" class="chart-container fade-in" style="display: none;">
+        <div class="chart-header">
+            <span class="chart-title">消费行业指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>营收增速</th>
+                        <th>同店增速</th>
+                        <th>门店数</th>
+                        <th>线上占比</th>
+                        <th>毛利率</th>
+                        <th>会员数(万)</th>
+                    </tr>
+                </thead>
+                <tbody id="consumerTable">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 5: 量化技术 -->
+<div id="tab-quant" class="tab-content">
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-bar-chart-line me-2"></i>估值水位</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>PE(TTM)</th>
+                        <th>PE 5年分位</th>
+                        <th>PB</th>
+                        <th>PB 5年分位</th>
+                        <th>估值水平</th>
+                    </tr>
+                </thead>
+                <tbody id="valuationTable">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无数据</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-activity me-2"></i>技术指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>MA20</th>
+                        <th>MA50</th>
+                        <th>MA200</th>
+                        <th>RSI</th>
+                        <th>MACD</th>
+                        <th>趋势</th>
+                    </tr>
+                </thead>
+                <tbody id="technicalTable">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无数据，请运行计算脚本</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 股票筛选器 -->
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-funnel me-2"></i>股票筛选器</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PE上限</label>
+                <input type="number" class="form-control" id="filterPEMax" placeholder="如: 30">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PE下限</label>
+                <input type="number" class="form-control" id="filterPEMin" placeholder="如: 0">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PB上限</label>
+                <input type="number" class="form-control" id="filterPBMax" placeholder="如: 3">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">RSI范围</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="number" class="form-control" id="filterRSIMin" placeholder="最小">
+                    <input type="number" class="form-control" id="filterRSIMax" placeholder="最大">
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="runScreener()">筛选</button>
+        <div id="screenerResults" style="margin-top: 1rem;"></div>
+    </div>
+</div>
+
+<!-- Tab 6: 数据管理 -->
+<div id="tab-etl" class="tab-content">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-table me-2"></i>数据表概览</span>
+            </div>
+            <div id="tablesOverview" style="max-height: 300px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>表名</th>
+                            <th>记录数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablesTable">
+                        <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-upload me-2"></i>CSV数据导入</span>
+            </div>
+            <div style="padding: 1rem;">
+                <div class="mb-3">
+                    <label style="font-size: 0.75rem; color: var(--text-muted);">目标表</label>
+                    <select class="form-select" id="importTable">
+                        <option value="sector_tmt">TMT行业数据</option>
+                        <option value="sector_biotech">创新药管线</option>
+                        <option value="sector_consumer">消费行业数据</option>
+                        <option value="valuation_bands">估值水位</option>
+                        <option value="technical_indicators">技术指标</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label style="font-size: 0.75rem; color: var(--text-muted);">CSV文件路径</label>
+                    <input type="text" class="form-control" id="importPath" placeholder="如: data/templates/sector_tmt.csv">
+                </div>
+                <button class="btn btn-primary" onclick="importCSV()">导入</button>
+                <div id="importResult" style="margin-top: 1rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-clock-history me-2"></i>ETL日志</span>
+        </div>
+        <div id="etlLogs" style="max-height: 400px; overflow-y: auto;">
+            <div style="text-align: center; color: var(--text-muted); padding: 2rem;">加载中...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/chart.min.js"></script>
+<script>
+    let charts = {};
+    let currentTab = 'dashboard';
+
+    // ==================== Tab切换 ====================
+    function switchTab(tabName) {
+        currentTab = tabName;
+
+        // 更新Tab按钮状态
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        event.target.classList.add('active');
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+
+        // 加载对应Tab的数据
+        loadTabData(tabName);
+    }
+
+    function loadTabData(tabName) {
+        switch(tabName) {
+            case 'dashboard':
+                loadDashboardData();
+                break;
+            case 'macro':
+                loadMacroData();
+                break;
+            case 'fundamentals':
+                loadFundamentalsData();
+                break;
+            case 'sector':
+                loadSectorData();
+                break;
+            case 'quant':
+                loadQuantData();
+                break;
+            case 'etl':
+                loadETLData();
+                break;
+        }
+    }
+
+    function refreshCurrentTab() {
+        loadTabData(currentTab);
+    }
+
+    // ==================== 全景中枢 ====================
+    async function loadDashboardData() {
+        loadMarketData();
+        loadWatchStocks();
+        loadIndexHistory('sh000001', 90);
+        loadIndexHistory('hsi', 90);
+        loadInterestRates(90);
+    }
+
+    async function loadMarketData() {
+        try {
+            const data = await api('/investment/api/overview');
+
+            // 更新指数卡片
+            for (const [code, info] of Object.entries(data.indices || {})) {
+                const card = document.getElementById(`index-${code}`);
+                const dateEl = document.getElementById(`date-${code}`);
+                if (card) {
+                    card.querySelector('.value').textContent = info.close?.toFixed(2) || '-';
+                    if (dateEl && info.date) {
+                        dateEl.textContent = info.date;
+                    }
+                    const changeEl = card.querySelector('.change');
+                    const changePct = info.change_pct || 0;
+                    changeEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+                    changeEl.className = 'change ' + (changePct >= 0 ? 'positive' : 'negative');
+                }
+            }
+
+            // VIX恐慌指数
+            if (data.vix) {
+                const vix = data.vix.close;
+                document.getElementById('vixValue').textContent = vix?.toFixed(2) || '-';
+                const position = Math.max(0, Math.min(100, (40 - vix) * 2.5));
+                document.getElementById('vixIndicator').style.left = position + '%';
+            }
+
+            // SHIBOR利率
+            if (data.rates && data.rates.shibor) {
+                const items = document.querySelectorAll('#shiborRates .rate-item');
+                items[0].querySelector('.value').textContent = data.rates.shibor.overnight?.toFixed(2) || '-';
+                items[1].querySelector('.value').textContent = data.rates.shibor['1w']?.toFixed(2) || '-';
+                items[2].querySelector('.value').textContent = data.rates.shibor['1m']?.toFixed(2) || '-';
+                if (data.rates.date) {
+                    document.getElementById('date-shibor').textContent = data.rates.date;
+                }
+            }
+
+            // 市场情绪
+            if (data.sentiment) {
+                const items = document.querySelectorAll('#sentimentData .rate-item');
+                items[0].querySelector('.value').textContent = data.sentiment.up_count || '-';
+                items[1].querySelector('.value').textContent = data.sentiment.limit_up_count || '-';
+                items[2].querySelector('.value').textContent = data.sentiment.flat_count || '-';
+                items[3].querySelector('.value').textContent = data.sentiment.limit_down_count || '-';
+                items[4].querySelector('.value').textContent = data.sentiment.down_count || '-';
+                if (data.sentiment.date) {
+                    document.getElementById('date-sentiment').textContent = data.sentiment.date;
+                }
+            }
+
+        } catch (error) {
+            console.error('加载市场数据失败:', error);
+        }
+    }
+
+    async function loadWatchStocks() {
+        try {
+            const data = await api('/investment/api/watch-stocks');
+
+            const aTable = document.getElementById('aStocksTable');
+            if (data.a_stocks && data.a_stocks.length > 0) {
+                aTable.innerHTML = data.a_stocks.map(s => `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td style="font-family: var(--font-mono);">${s.price?.toFixed(2) || '-'}</td>
+                        <td class="${(s.change_pct || 0) >= 0 ? 'positive' : 'negative'}">
+                            ${(s.change_pct || 0) >= 0 ? '+' : ''}${(s.change_pct || 0).toFixed(2)}%
+                        </td>
+                        <td style="font-family: var(--font-mono);">${s.high?.toFixed(2) || '-'}</td>
+                        <td style="font-family: var(--font-mono);">${s.low?.toFixed(2) || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+            const hkTable = document.getElementById('hkStocksTable');
+            if (data.hk_stocks && data.hk_stocks.length > 0) {
+                hkTable.innerHTML = data.hk_stocks.map(s => `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td style="font-family: var(--font-mono);">${s.price?.toFixed(2) || '-'}</td>
+                        <td class="${(s.change_pct || 0) >= 0 ? 'positive' : 'negative'}">
+                            ${(s.change_pct || 0) >= 0 ? '+' : ''}${(s.change_pct || 0).toFixed(2)}%
+                        </td>
+                        <td style="font-family: var(--font-mono);">${s.high?.toFixed(2) || '-'}</td>
+                        <td style="font-family: var(--font-mono);">${s.low?.toFixed(2) || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+        } catch (error) {
+            console.error('加载股票数据失败:', error);
+        }
+    }
+
+    async function loadIndexHistory(symbol, days) {
+        try {
+            const data = await api(`/investment/api/index-history/${symbol}?days=${days}`);
+            if (data.data && data.data.length > 0) {
+                const canvasId = symbol === 'hsi' ? 'chartHSI' : 'chartShanghai';
+                const label = symbol === 'hsi' ? '恒生指数' : '上证指数';
+                renderLineChart(canvasId, data.data, label);
+            }
+        } catch (error) {
+            console.error('加载指数历史失败:', error);
+        }
+    }
+
+    async function loadInterestRates(days) {
+        try {
+            const data = await api(`/investment/api/interest-rates?days=${days}`);
+            if (data.data && data.data.length > 0) {
+                renderShiborChart(data.data);
+            }
+        } catch (error) {
+            console.error('加载利率数据失败:', error);
+        }
+    }
+
+    // ==================== 宏观流动性 ====================
+    async function loadMacroData() {
+        try {
+            const data = await api('/investment/api/macro/overview');
+
+            // 北向资金趋势
+            const trendMap = {
+                'strong_inflow': { text: '强劲流入', class: 'bg-success' },
+                'inflow': { text: '流入', class: 'bg-success' },
+                'neutral': { text: '平衡', class: 'bg-secondary' },
+                'outflow': { text: '流出', class: 'bg-danger' },
+                'strong_outflow': { text: '大幅流出', class: 'bg-danger' }
+            };
+            const trend = trendMap[data.north_money_trend] || trendMap['neutral'];
+            document.getElementById('northMoneyTrend').textContent = trend.text;
+            document.getElementById('northMoneyTrend').className = 'badge ' + trend.class;
+
+            const nm5d = data.north_money_5d;
+            document.getElementById('northMoney5d').textContent = (nm5d >= 0 ? '+' : '') + nm5d.toFixed(0) + '亿';
+            document.getElementById('northMoney5d').style.color = nm5d >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+
+            // 加载北向资金图表
+            loadNorthMoneyChart();
+
+            // 流动性指标
+            const indicators = await api('/investment/api/macro/liquidity-indicators');
+            const indicatorsEl = document.getElementById('liquidityIndicators');
+            if (indicators.indicators && indicators.indicators.length > 0) {
+                indicatorsEl.innerHTML = indicators.indicators.map(ind => `
+                    <div style="display: flex; justify-content: space-between; padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; margin-bottom: 0.5rem;">
+                        <span>${ind.name}</span>
+                        <span style="font-family: var(--font-mono);" class="${ind.level === 'tight' ? 'negative' : ind.level === 'loose' ? 'positive' : ''}">
+                            ${ind.value?.toFixed(4) || '-'}%
+                        </span>
+                    </div>
+                `).join('');
+            }
+
+            // 利率历史
+            loadRatesHistory(90);
+
+        } catch (error) {
+            console.error('加载宏观数据失败:', error);
+        }
+    }
+
+    async function loadNorthMoneyChart() {
+        const data = await api('/investment/api/north-money?days=60');
+        if (data.data && data.data.length > 0) {
+            const ctx = document.getElementById('chartNorthMoney').getContext('2d');
+            if (charts['chartNorthMoney']) charts['chartNorthMoney'].destroy();
+
+            const labels = data.data.map(d => d.date);
+            const values = data.data.map(d => d.total_inflow);
+
+            charts['chartNorthMoney'] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '净流入(亿)',
+                        data: values,
+                        backgroundColor: values.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
+                        borderRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+                    }
+                }
+            });
+        }
+    }
+
+    async function loadRatesHistory(days) {
+        const data = await api(`/investment/api/macro/rates-history?days=${days}`);
+        if (data.data && data.data.length > 0) {
+            const ctx = document.getElementById('chartRatesHistory').getContext('2d');
+            if (charts['chartRatesHistory']) charts['chartRatesHistory'].destroy();
+
+            charts['chartRatesHistory'] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.data.map(d => d.date),
+                    datasets: [
+                        { label: 'SHIBOR隔夜', data: data.data.map(d => d.shibor_overnight), borderColor: '#38bdf8', tension: 0.3, pointRadius: 0 },
+                        { label: 'SHIBOR 1周', data: data.data.map(d => d.shibor_1w), borderColor: '#a78bfa', tension: 0.3, pointRadius: 0 },
+                        { label: 'HIBOR隔夜', data: data.data.map(d => d.hibor_overnight), borderColor: '#34d399', tension: 0.3, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top', labels: { color: '#94a3b8' } } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+                    }
+                }
+            });
+        }
+    }
+
+    // ==================== 微观基本面 ====================
+    async function loadFundamentalsData() {
+        // TODO: 实现基本面数据加载
+    }
+
+    // ==================== 行业模型 ====================
+    async function loadSectorData() {
+        const overview = await api('/investment/api/sector/overview');
+        document.getElementById('tmtCount').textContent = overview.tmt_count || 0;
+        document.getElementById('biotechCount').textContent = overview.biotech_count || 0;
+        document.getElementById('consumerCount').textContent = overview.consumer_count || 0;
+
+        loadSectorTab('tmt');
+    }
+
+    function loadSectorTab(tab) {
+        document.querySelectorAll('#sectorTabs .nav-link').forEach(el => el.classList.remove('active'));
+        event?.target?.classList.add('active');
+
+        document.getElementById('sector-tmt').style.display = tab === 'tmt' ? 'block' : 'none';
+        document.getElementById('sector-biotech').style.display = tab === 'biotech' ? 'block' : 'none';
+        document.getElementById('sector-consumer').style.display = tab === 'consumer' ? 'block' : 'none';
+
+        if (tab === 'tmt') loadTMTData();
+        else if (tab === 'biotech') loadBiotechData();
+        else if (tab === 'consumer') loadConsumerData();
+    }
+
+    async function loadTMTData() {
+        const data = await api('/investment/api/sector/tmt');
+        const table = document.getElementById('tmtTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td>${s.mau?.toFixed(1) || '-'}</td>
+                    <td>${s.arpu?.toFixed(2) || '-'}</td>
+                    <td>${s.paying_ratio?.toFixed(1) || '-'}%</td>
+                    <td>${s.retention_d1?.toFixed(1) || '-'}%</td>
+                    <td class="${(s.revenue_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.revenue_yoy?.toFixed(1) || '-'}%</td>
+                    <td>${s.gross_margin?.toFixed(1) || '-'}%</td>
+                    <td>${s.rd_ratio?.toFixed(1) || '-'}%</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    async function loadBiotechData(phase = null) {
+        let url = '/investment/api/sector/biotech';
+        if (phase) url += `?phase=${phase}`;
+        const data = await api(url);
+        const table = document.getElementById('biotechTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(d => `
+                <tr>
+                    <td>${d.company_name}</td>
+                    <td>${d.drug_name}</td>
+                    <td>${d.indication || '-'}</td>
+                    <td><span class="phase-badge phase-${d.phase}">${d.phase_cn || d.phase}</span></td>
+                    <td>${d.expected_approval || '-'}</td>
+                    <td>${d.region || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    function filterBiotechPhase(phase) {
+        loadBiotechData(phase);
+    }
+
+    async function loadConsumerData() {
+        const data = await api('/investment/api/sector/consumer');
+        const table = document.getElementById('consumerTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td class="${(s.revenue_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.revenue_yoy?.toFixed(1) || '-'}%</td>
+                    <td class="${(s.same_store_sales_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.same_store_sales_yoy?.toFixed(1) || '-'}%</td>
+                    <td>${s.store_count || '-'}</td>
+                    <td>${s.online_ratio?.toFixed(1) || '-'}%</td>
+                    <td>${s.gross_margin?.toFixed(1) || '-'}%</td>
+                    <td>${s.member_count?.toFixed(0) || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // ==================== 量化技术 ====================
+    async function loadQuantData() {
+        // 估值水位
+        const valuation = await api('/investment/api/quant/valuation');
+        const vTable = document.getElementById('valuationTable');
+        if (valuation.data && valuation.data.length > 0) {
+            vTable.innerHTML = valuation.data.map(v => {
+                const peClass = v.pe_percentile_5y < 30 ? 'low' : v.pe_percentile_5y > 70 ? 'high' : 'medium';
+                return `
+                    <tr>
+                        <td>${v.code}</td>
+                        <td>${v.name}</td>
+                        <td>${v.pe_ttm?.toFixed(2) || '-'}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div class="valuation-bar" style="width: 60px;">
+                                    <div class="valuation-bar-fill ${peClass}" style="width: ${v.pe_percentile_5y || 0}%;"></div>
+                                </div>
+                                <span>${v.pe_percentile_5y?.toFixed(0) || '-'}%</span>
+                            </div>
+                        </td>
+                        <td>${v.pb?.toFixed(2) || '-'}</td>
+                        <td>${v.pb_percentile_5y?.toFixed(0) || '-'}%</td>
+                        <td>${v.valuation_level || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 技术指标
+        const technical = await api('/investment/api/quant/technical');
+        const tTable = document.getElementById('technicalTable');
+        if (technical.data && technical.data.length > 0) {
+            tTable.innerHTML = technical.data.map(t => `
+                <tr>
+                    <td>${t.code}</td>
+                    <td>${t.name}</td>
+                    <td>${t.ma20?.toFixed(2) || '-'}</td>
+                    <td>${t.ma50?.toFixed(2) || '-'}</td>
+                    <td>${t.ma200?.toFixed(2) || '-'}</td>
+                    <td>${t.rsi_14?.toFixed(1) || '-'}</td>
+                    <td class="${(t.macd_hist || 0) >= 0 ? 'positive' : 'negative'}">${t.macd?.toFixed(2) || '-'}</td>
+                    <td>${t.trend_signal || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    async function runScreener() {
+        const params = new URLSearchParams();
+        const peMax = document.getElementById('filterPEMax').value;
+        const peMin = document.getElementById('filterPEMin').value;
+        const pbMax = document.getElementById('filterPBMax').value;
+        const rsiMin = document.getElementById('filterRSIMin').value;
+        const rsiMax = document.getElementById('filterRSIMax').value;
+
+        if (peMax) params.append('pe_max', peMax);
+        if (peMin) params.append('pe_min', peMin);
+        if (pbMax) params.append('pb_max', pbMax);
+        if (rsiMin) params.append('rsi_min', rsiMin);
+        if (rsiMax) params.append('rsi_max', rsiMax);
+
+        const data = await api(`/investment/api/quant/screener?${params.toString()}`);
+        const resultEl = document.getElementById('screenerResults');
+
+        if (data.results && data.results.length > 0) {
+            resultEl.innerHTML = `
+                <div style="margin-bottom: 0.5rem; color: var(--text-muted);">找到 ${data.count} 只股票</div>
+                <table class="stock-table">
+                    <thead><tr><th>代码</th><th>名称</th><th>PE</th><th>PB</th><th>RSI</th></tr></thead>
+                    <tbody>
+                        ${data.results.map(r => `
+                            <tr>
+                                <td>${r.code}</td>
+                                <td>${r.name}</td>
+                                <td>${r.pe_ttm?.toFixed(2) || '-'}</td>
+                                <td>${r.pb?.toFixed(2) || '-'}</td>
+                                <td>${r.rsi_14?.toFixed(1) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            resultEl.innerHTML = '<div style="color: var(--text-muted);">未找到符合条件的股票</div>';
+        }
+    }
+
+    // ==================== 数据管理 ====================
+    async function loadETLData() {
+        // 表概览
+        const tables = await api('/investment/api/etl/tables');
+        const tTable = document.getElementById('tablesTable');
+        if (tables.tables) {
+            tTable.innerHTML = tables.tables.map(t => `
+                <tr>
+                    <td>${t.name}</td>
+                    <td>${t.count}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ETL日志
+        const logs = await api('/investment/api/etl/logs?limit=20');
+        const logsEl = document.getElementById('etlLogs');
+        if (logs.data && logs.data.length > 0) {
+            logsEl.innerHTML = logs.data.map(log => `
+                <div class="log-item">
+                    <span class="log-status ${log.status}"></span>
+                    <strong>${log.job_name}</strong>
+                    <span style="color: var(--text-muted); margin-left: 1rem;">${log.start_time}</span>
+                    <span style="float: right; color: var(--text-muted);">
+                        ${log.records_processed || 0} 条记录
+                    </span>
+                    ${log.error_message ? `<div style="color: var(--accent-red); font-size: 0.8rem; margin-top: 0.25rem;">${log.error_message}</div>` : ''}
+                </div>
+            `).join('');
+        } else {
+            logsEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">暂无日志</div>';
+        }
+    }
+
+    async function importCSV() {
+        const table = document.getElementById('importTable').value;
+        const path = document.getElementById('importPath').value;
+        const resultEl = document.getElementById('importResult');
+
+        if (!path) {
+            resultEl.innerHTML = '<div style="color: var(--accent-red);">请输入CSV文件路径</div>';
+            return;
+        }
+
+        resultEl.innerHTML = '<div style="color: var(--text-muted);">导入中...</div>';
+
+        const result = await api('/investment/api/etl/import-csv', {
+            method: 'POST',
+            body: JSON.stringify({ table: table, path: path })
+        });
+
+        if (result.status === 'success') {
+            resultEl.innerHTML = `<div style="color: var(--accent-green);">成功导入 ${result.imported} 条记录</div>`;
+            loadETLData();
+        } else {
+            resultEl.innerHTML = `<div style="color: var(--accent-red);">${result.message}</div>`;
+        }
+    }
+
+    // ==================== 图表渲染 ====================
+    function renderLineChart(canvasId, data, label) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+
+        if (charts[canvasId]) {
+            charts[canvasId].destroy();
+        }
+
+        const labels = data.map(d => d.date);
+        const values = data.map(d => d.close);
+
+        charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: values,
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#64748b',
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b' }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+
+    function renderShiborChart(data) {
+        const ctx = document.getElementById('chartShibor').getContext('2d');
+
+        if (charts['chartShibor']) {
+            charts['chartShibor'].destroy();
+        }
+
+        const labels = data.map(d => d.date);
+
+        charts['chartShibor'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '隔夜',
+                        data: data.map(d => d.shibor_overnight),
+                        borderColor: '#38bdf8',
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '1周',
+                        data: data.map(d => d.shibor_1w),
+                        borderColor: '#a78bfa',
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '1月',
+                        data: data.map(d => d.shibor_1m),
+                        borderColor: '#34d399',
+                        tension: 0.3,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#94a3b8', boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b' }
+                    }
+                }
+            }
+        });
+    }
+
+    // ==================== 初始化 ====================
+    loadDashboardData();
+
+    // 每5分钟自动刷新
+    setInterval(refreshCurrentTab, 300000);
+</script>
+{% endblock %}

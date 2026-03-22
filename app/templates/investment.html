@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投资决策仪表板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .index-card { transition: transform 0.2s; }
+        .index-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .stock-row:hover { background-color: #f8f9fa; }
+        .rate-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .fear-card { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .section-title { border-left: 4px solid #0d6efd; padding-left: 10px; margin-bottom: 15px; }
+        .news-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .news-item:last-child { border-bottom: none; }
+        .news-item:hover { background-color: #f8f9fa; }
+        .news-title { font-weight: 500; color: #333; text-decoration: none; }
+        .news-title:hover { color: #0d6efd; }
+        .news-time { font-size: 12px; color: #999; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">研报系统</a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/">首页</a>
+                <a class="nav-link" href="/reports">研报列表</a>
+                <a class="nav-link active" href="/investment">投资决策</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-4">投资决策仪表板</h2>
+
+        <!-- 市场指数 -->
+        <h5 class="section-title">市场指数</h5>
+        <div class="row mb-4" id="indices-row">
+            <div class="col-12 text-center py-4"><div class="spinner-border text-primary"></div></div>
+        </div>
+
+        <!-- 恐慌指数与利率 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <h5 class="section-title">恐慌指数</h5>
+                <div class="card fear-card mb-3">
+                    <div class="card-body">
+                        <h6>VIX恐慌指数</h6>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h2 id="vix-value">-</h2>
+                            <span id="vix-change">-</span>
+                        </div>
+                        <small>数值越高表示市场恐慌情绪越重</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <h5 class="section-title">SHIBOR利率</h5>
+                <div class="card rate-card mb-3">
+                    <div class="card-body">
+                        <h6>上海银行间同业拆放利率</h6>
+                        <div class="row text-center mt-2">
+                            <div class="col-4">
+                                <small>隔夜</small>
+                                <div class="fs-5" id="shibor-overnight">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small>1周</small>
+                                <div class="fs-5" id="shibor-1week">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small>1月</small>
+                                <div class="fs-5" id="shibor-1month">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <h5 class="section-title">HIBOR利率</h5>
+                <div class="card rate-card mb-3">
+                    <div class="card-body">
+                        <h6>香港银行间同业拆放利率</h6>
+                        <div class="row text-center mt-2">
+                            <div class="col-4">
+                                <small>隔夜</small>
+                                <div class="fs-5" id="hibor-overnight">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small>1周</small>
+                                <div class="fs-5" id="hibor-1week">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small>1月</small>
+                                <div class="fs-5" id="hibor-1month">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <h5 class="section-title">市场情绪</h5>
+                <div class="card mb-3">
+                    <div class="card-body py-2">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <small class="text-muted">涨停</small>
+                                <div class="text-success fw-bold" id="zt-count">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">跌停</small>
+                                <div class="text-danger fw-bold" id="dt-count">-</div>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">上涨</small>
+                                <div class="text-success fw-bold" id="up-count">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 关注股票 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h5 class="section-title">A股关注</h5>
+                <div class="card">
+                    <div class="card-body p-0">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr><th>名称</th><th>代码</th><th>价格</th><th>涨跌%</th></tr>
+                            </thead>
+                            <tbody id="a-stocks-body">
+                                <tr><td colspan="4" class="text-center py-3">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h5 class="section-title">港股关注</h5>
+                <div class="card">
+                    <div class="card-body p-0">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr><th>名称</th><th>代码</th><th>价格</th><th>涨跌%</th></tr>
+                            </thead>
+                            <tbody id="hk-stocks-body">
+                                <tr><td colspan="4" class="text-center py-3">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 金融新闻 -->
+        <h5 class="section-title">金融新闻</h5>
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">Bloomberg市场</div>
+                    <div class="card-body p-0" id="news-markets">
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">Bloomberg经济</div>
+                    <div class="card-body p-0" id="news-economics">
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">Bloomberg科技</div>
+                    <div class="card-body p-0" id="news-tech">
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 指数走势图 -->
+        <h5 class="section-title mt-4">指数走势</h5>
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">上证指数 (60日)</div>
+                    <div class="card-body">
+                        <canvas id="sh-index-chart" height="150"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">恒生指数 (60日)</div>
+                    <div class="card-body">
+                        <canvas id="hsi-chart" height="150"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-muted mt-4">
+            <small>数据更新时间: <span id="update-time">-</span></small>
+        </div>
+    </div>
+
+    <script>
+        function formatChange(value) {
+            if (value === null || value === undefined) return '-';
+            const num = parseFloat(value);
+            const cls = num >= 0 ? 'positive' : 'negative';
+            const sign = num >= 0 ? '+' : '';
+            return `<span class="${cls}">${sign}${num.toFixed(2)}%</span>`;
+        }
+
+        async function loadOverview() {
+            try {
+                const resp = await fetch('/investment/api/overview');
+                const data = await resp.json();
+
+                // 渲染指数卡片
+                const indicesRow = document.getElementById('indices-row');
+                indicesRow.innerHTML = '';
+                for (const [key, idx] of Object.entries(data.indices)) {
+                    const changeClass = idx.change_pct >= 0 ? 'positive' : 'negative';
+                    const sign = idx.change_pct >= 0 ? '+' : '';
+                    indicesRow.innerHTML += `
+                        <div class="col-md-2 col-4 mb-3">
+                            <div class="card index-card h-100">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">${idx.name}</small>
+                                    <div class="fs-5 ${changeClass}">${idx.close.toLocaleString()}</div>
+                                    <small class="${changeClass}">${sign}${idx.change_pct.toFixed(2)}%</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // VIX恐慌指数
+                if (data.fear_greed && data.fear_greed.vix) {
+                    const vix = data.fear_greed.vix;
+                    document.getElementById('vix-value').textContent = vix.value.toFixed(2);
+                    document.getElementById('vix-change').innerHTML = formatChange(vix.change_pct);
+                }
+
+                // SHIBOR
+                if (data.rates && data.rates.shibor) {
+                    document.getElementById('shibor-overnight').textContent = data.rates.shibor.overnight.toFixed(2) + '%';
+                    document.getElementById('shibor-1week').textContent = data.rates.shibor['1week'].toFixed(2) + '%';
+                    document.getElementById('shibor-1month').textContent = data.rates.shibor['1month'].toFixed(2) + '%';
+                }
+
+                // HIBOR
+                if (data.rates && data.rates.hibor) {
+                    document.getElementById('hibor-overnight').textContent = data.rates.hibor.overnight.toFixed(2) + '%';
+                    document.getElementById('hibor-1week').textContent = data.rates.hibor['1week'].toFixed(2) + '%';
+                    document.getElementById('hibor-1month').textContent = data.rates.hibor['1month'].toFixed(2) + '%';
+                }
+
+                // 市场情绪
+                if (data.sentiment) {
+                    document.getElementById('zt-count').textContent = data.sentiment['涨停'] || '-';
+                    document.getElementById('dt-count').textContent = data.sentiment['跌停'] || '-';
+                    document.getElementById('up-count').textContent = data.sentiment['上涨'] || '-';
+                }
+
+                document.getElementById('update-time').textContent = new Date(data.update_time).toLocaleString('zh-CN');
+            } catch (e) {
+                console.error('加载失败:', e);
+            }
+        }
+
+        async function loadWatchStocks() {
+            try {
+                const resp = await fetch('/investment/api/watch-stocks');
+                const data = await resp.json();
+
+                const aBody = document.getElementById('a-stocks-body');
+                aBody.innerHTML = '';
+                for (const s of data.a_stocks) {
+                    aBody.innerHTML += `
+                        <tr class="stock-row">
+                            <td>${s.name}</td>
+                            <td><small class="text-muted">${s.code}</small></td>
+                            <td>${s.price}</td>
+                            <td>${formatChange(s.change_pct)}</td>
+                        </tr>
+                    `;
+                }
+
+                const hkBody = document.getElementById('hk-stocks-body');
+                hkBody.innerHTML = '';
+                for (const s of data.hk_stocks) {
+                    hkBody.innerHTML += `
+                        <tr class="stock-row">
+                            <td>${s.name}</td>
+                            <td><small class="text-muted">${s.code}</small></td>
+                            <td>${s.price}</td>
+                            <td>${formatChange(s.change_pct)}</td>
+                        </tr>
+                    `;
+                }
+            } catch (e) {
+                console.error('加载股票失败:', e);
+            }
+        }
+
+        async function loadNews() {
+            try {
+                const resp = await fetch('/investment/api/news');
+                const data = await resp.json();
+
+                // 市场新闻
+                const marketsDiv = document.getElementById('news-markets');
+                marketsDiv.innerHTML = '';
+                for (const n of (data.news.bloomberg_markets || []).slice(0, 8)) {
+                    marketsDiv.innerHTML += `
+                        <div class="news-item px-3">
+                            <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
+                            <div class="news-time">${n.published || ''}</div>
+                        </div>
+                    `;
+                }
+
+                // 经济新闻
+                const econDiv = document.getElementById('news-economics');
+                econDiv.innerHTML = '';
+                for (const n of (data.news.bloomberg_economics || []).slice(0, 8)) {
+                    econDiv.innerHTML += `
+                        <div class="news-item px-3">
+                            <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
+                            <div class="news-time">${n.published || ''}</div>
+                        </div>
+                    `;
+                }
+
+                // 科技新闻
+                const techDiv = document.getElementById('news-tech');
+                techDiv.innerHTML = '';
+                for (const n of (data.news.bloomberg_tech || []).slice(0, 8)) {
+                    techDiv.innerHTML += `
+                        <div class="news-item px-3">
+                            <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
+                            <div class="news-time">${n.published || ''}</div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('加载新闻失败:', e);
+            }
+        }
+
+        async function loadIndexCharts() {
+            try {
+                const shResp = await fetch('/investment/api/index-history/sh000001?days=60');
+                const shData = await shResp.json();
+                if (shData.data && shData.data.length > 0) {
+                    const labels = shData.data.map(d => d.date.slice(5));
+                    const values = shData.data.map(d => d.close);
+                    new Chart(document.getElementById('sh-index-chart'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{ label: '上证指数', data: values, borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', fill: true, tension: 0.3, pointRadius: 0 }]
+                        },
+                        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false } } }
+                    });
+                }
+
+                const hsiResp = await fetch('/investment/api/index-history/hsi?days=60');
+                const hsiData = await hsiResp.json();
+                if (hsiData.data && hsiData.data.length > 0) {
+                    const labels = hsiData.data.map(d => d.date.slice(5));
+                    const values = hsiData.data.map(d => d.close);
+                    new Chart(document.getElementById('hsi-chart'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{ label: '恒生指数', data: values, borderColor: '#198754', backgroundColor: 'rgba(25, 135, 84, 0.1)', fill: true, tension: 0.3, pointRadius: 0 }]
+                        },
+                        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false } } }
+                    });
+                }
+            } catch (e) {
+                console.error('加载图表失败:', e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadOverview();
+            loadWatchStocks();
+            loadNews();
+            loadIndexCharts();
+        });
+    </script>
+</body>
+</html>

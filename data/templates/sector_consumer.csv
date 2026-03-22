@@ -1,0 +1,6 @@
+code,name,report_date,revenue,revenue_yoy,same_store_sales_yoy,store_count,store_change,online_ratio,gross_margin,operating_margin,inventory_turnover,accounts_receivable_days,marketing_ratio,member_count,member_growth_yoy,notes
+sh601888,中国中免,2024-12-31,5800000,12.5,-2.5,280,-15,35,28.5,12.8,5.2,25,8.5,2500,15.2,示例数据
+sh600887,伊利股份,2024-12-31,12500000,5.8,2.5,N/A,0,22,32.5,8.5,8.5,35,12.5,15000,8.5,示例数据
+sh600519,贵州茅台,2024-12-31,1500000,15.2,12.5,N/A,0,5,92.5,68.5,2.5,15,2.5,500,25.6,示例数据
+sh000858,五粮液,2024-12-31,850000,10.5,8.5,N/A,0,8,78.5,42.5,3.5,18,5.5,300,18.5,示例数据
+sz000568,泸州老窖,2024-12-31,350000,12.8,10.2,N/A,0,6,82.5,48.5,2.8,12,4.2,150,22.5,示例数据
