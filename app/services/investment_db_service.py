@@ -391,11 +391,12 @@ class InvestmentDataService:
         return result
 
     def get_watch_stocks_fundamentals(self) -> List[Dict]:
-        """获取关注股票的基本面数据"""
+        """获取关注股票的基本面数据 - 只返回最新数据"""
         conn = self._get_db()
         c = conn.cursor()
 
-        # 从watch_list获取关注股票，关联stock_financial获取财务数据
+        # 从watch_list获取关注股票，关联stock_financial获取最新财务数据
+        # 使用子查询获取每只股票的最新report_date
         c.execute('''
             SELECT w.code, w.name, w.market, w.category,
                    f.report_date, f.pe_ttm, f.pb, f.ps_ttm,
@@ -404,6 +405,9 @@ class InvestmentDataService:
                    f.total_revenue, f.revenue_yoy, f.net_profit, f.net_profit_yoy, f.dividend_yield
             FROM watch_list w
             LEFT JOIN stock_financial f ON w.code = f.code
+                AND f.report_date = (
+                    SELECT MAX(report_date) FROM stock_financial WHERE code = w.code
+                )
             WHERE w.enabled = 1
             ORDER BY w.category, w.code
         ''')
