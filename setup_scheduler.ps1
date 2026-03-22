@@ -12,7 +12,7 @@ Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Silent
 $Trigger = New-ScheduledTaskTrigger -Daily -At "15:30"
 
 # 创建动作
-$Action = New-ScheduledTaskAction -Execute $ScriptPath -WorkingDirectory "C:\Users\Administrator\research_report_system"
+$Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $ScriptPath" -WorkingDirectory "C:\Users\Administrator\research_report_system"
 
 # 创建任务设置
 $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -AllowStartIfOnBatteries
@@ -23,7 +23,3 @@ Register-ScheduledTask -TaskName $TaskName -Description $TaskDescription -Trigge
 Write-Host "定时任务已创建: $TaskName"
 Write-Host "执行时间: 每天 15:30"
 Write-Host "执行脚本: $ScriptPath"
-
-# 立即执行一次测试
-Write-Host "`n立即执行一次测试..."
-Start-ScheduledTask -TaskName $TaskName
