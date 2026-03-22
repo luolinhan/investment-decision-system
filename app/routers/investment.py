@@ -257,9 +257,16 @@ async def get_stocks_fundamentals(codes: str = None):
     """获取股票基本面数据"""
     db = get_db_service()
     code_list = codes.split(",") if codes else None
+    data = db.get_stock_fundamentals(code_list)
+    return {"stocks": data}
 
-    # TODO: 从stock_financial表获取数据
-    return {"stocks": [], "message": "待实现"}
+
+@router.get("/api/fundamentals/watch-list")
+async def get_watch_list_fundamentals():
+    """获取关注股票的基本面数据"""
+    db = get_db_service()
+    data = db.get_watch_stocks_fundamentals()
+    return {"stocks": data}
 
 
 @router.get("/api/fundamentals/financial/{code}")

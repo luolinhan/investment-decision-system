@@ -338,6 +338,161 @@ class InvestmentDataService:
             "watch_stocks": watch_stocks
         }
 
+    # ==================== 微观基本面模块 ====================
+
+    def get_stock_fundamentals(self, codes: List[str] = None) -> List[Dict]:
+        """获取股票基本面数据"""
+        conn = self._get_db()
+        c = conn.cursor()
+
+        if codes:
+            placeholders = ','.join(['?' for _ in codes])
+            c.execute(f'''
+                SELECT code, name, market, report_date, pe_ttm, pb, ps_ttm,
+                       roe, roa, gross_margin, net_margin, debt_ratio, current_ratio,
+                       eps, bvps, revenue, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
+                FROM stock_financial
+                WHERE code IN ({placeholders})
+                ORDER BY code
+            ''', codes)
+        else:
+            c.execute('''
+                SELECT code, name, market, report_date, pe_ttm, pb, ps_ttm,
+                       roe, roa, gross_margin, net_margin, debt_ratio, current_ratio,
+                       eps, bvps, revenue, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
+                FROM stock_financial
+                ORDER BY code
+            ''')
+
+        result = [{
+            "code": row[0],
+            "name": row[1],
+            "market": row[2],
+            "report_date": row[3],
+            "pe_ttm": row[4],
+            "pb": row[5],
+            "ps_ttm": row[6],
+            "roe": row[7],
+            "roa": row[8],
+            "gross_margin": row[9],
+            "net_margin": row[10],
+            "debt_ratio": row[11],
+            "current_ratio": row[12],
+            "eps": row[13],
+            "bvps": row[14],
+            "revenue": row[15],
+            "revenue_yoy": row[16],
+            "net_profit": row[17],
+            "net_profit_yoy": row[18],
+            "dividend_yield": row[19]
+        } for row in c.fetchall()]
+
+        conn.close()
+        return result
+
+    def get_watch_stocks_fundamentals(self) -> List[Dict]:
+        """获取关注股票的基本面数据"""
+        conn = self._get_db()
+        c = conn.cursor()
+
+        # 从watch_list获取关注股票，关联stock_financial获取财务数据
+        c.execute('''
+            SELECT w.code, w.name, w.market, w.category,
+                   f.report_date, f.pe_ttm, f.pb, f.ps_ttm,
+                   f.roe, f.roa, f.gross_margin, f.net_margin,
+                   f.debt_ratio, f.current_ratio, f.eps, f.bvps,
+                   f.total_revenue, f.revenue_yoy, f.net_profit, f.net_profit_yoy, f.dividend_yield
+            FROM watch_list w
+            LEFT JOIN stock_financial f ON w.code = f.code
+            WHERE w.enabled = 1
+            ORDER BY w.category, w.code
+        ''')
+
+        result = [{
+            "code": row[0],
+            "name": row[1],
+            "market": row[2],
+            "category": row[3],
+            "report_date": row[4],
+            "pe_ttm": row[5],
+            "pb": row[6],
+            "ps_ttm": row[7],
+            "roe": row[8],
+            "roa": row[9],
+            "gross_margin": row[10],
+            "net_margin": row[11],
+            "debt_ratio": row[12],
+            "current_ratio": row[13],
+            "eps": row[14],
+            "bvps": row[15],
+            "revenue": row[16],
+            "revenue_yoy": row[17],
+            "net_profit": row[18],
+            "net_profit_yoy": row[19],
+            "dividend_yield": row[20]
+        } for row in c.fetchall()]
+
+        conn.close()
+        return result
+
+    def import_fundamentals_csv(self, csv_path: str) -> Dict:
+        """从CSV导入财务数据"""
+        import csv
+
+        if not os.path.exists(csv_path):
+            return {"status": "error", "message": f"文件不存在: {csv_path}"}
+
+        conn = self._get_db()
+        c = conn.cursor()
+
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+
+                imported = 0
+                for row in reader:
+                    try:
+                        c.execute('''
+                            INSERT OR REPLACE INTO stock_financial
+                            (code, name, market, report_date, pe_ttm, pb, ps_ttm,
+                             roe, roa, gross_margin, net_margin, debt_ratio, current_ratio,
+                             eps, bvps, revenue, revenue_yoy, net_profit, net_profit_yoy, dividend_yield)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            row.get("code"),
+                            row.get("name"),
+                            row.get("market"),
+                            row.get("report_date"),
+                            float(row.get("pe_ttm")) if row.get("pe_ttm") and row.get("pe_ttm") != '-' else None,
+                            float(row.get("pb")) if row.get("pb") and row.get("pb") != '-' else None,
+                            float(row.get("ps_ttm")) if row.get("ps_ttm") and row.get("ps_ttm") != '-' else None,
+                            float(row.get("roe")) if row.get("roe") and row.get("roe") != '-' else None,
+                            float(row.get("roa")) if row.get("roa") and row.get("roa") != '-' else None,
+                            float(row.get("gross_margin")) if row.get("gross_margin") and row.get("gross_margin") != '-' else None,
+                            float(row.get("net_margin")) if row.get("net_margin") and row.get("net_margin") != '-' else None,
+                            float(row.get("debt_ratio")) if row.get("debt_ratio") and row.get("debt_ratio") != '-' else None,
+                            float(row.get("current_ratio")) if row.get("current_ratio") and row.get("current_ratio") != '-' else None,
+                            float(row.get("eps")) if row.get("eps") and row.get("eps") != '-' else None,
+                            float(row.get("bvps")) if row.get("bvps") and row.get("bvps") != '-' else None,
+                            float(row.get("revenue")) if row.get("revenue") and row.get("revenue") != '-' else None,
+                            float(row.get("revenue_yoy")) if row.get("revenue_yoy") and row.get("revenue_yoy") != '-' else None,
+                            float(row.get("net_profit")) if row.get("net_profit") and row.get("net_profit") != '-' else None,
+                            float(row.get("net_profit_yoy")) if row.get("net_profit_yoy") and row.get("net_profit_yoy") != '-' else None,
+                            float(row.get("dividend_yield")) if row.get("dividend_yield") and row.get("dividend_yield") != '-' else None
+                        ))
+                        imported += 1
+                    except Exception as e:
+                        print(f"导入行失败: {e}")
+                        continue
+
+                conn.commit()
+                conn.close()
+                return {"status": "success", "imported": imported}
+
+        except Exception as e:
+            conn.close()
+            return {"status": "error", "message": str(e)}
+
     # ==================== 估值水位模块 ====================
 
     def get_valuation_latest(self, code: str = None) -> List[Dict]:

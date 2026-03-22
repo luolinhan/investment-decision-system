@@ -624,23 +624,69 @@
 
 <!-- Tab 3: 微观基本面 -->
 <div id="tab-fundamentals" class="tab-content">
+    <!-- 分类筛选 -->
+    <div style="margin-bottom: 1rem;">
+        <select class="form-select" style="width: auto; display: inline-block;" id="fundamentalsCategory" onchange="loadFundamentalsData()">
+            <option value="">全部行业</option>
+            <option value="CXO">CXO</option>
+            <option value="光伏">光伏</option>
+            <option value="医药">医药</option>
+            <option value="消费">消费</option>
+            <option value="科技">科技</option>
+            <option value="能源">能源</option>
+        </select>
+        <span style="margin-left: 1rem; color: var(--text-muted);">共 <span id="fundamentalsCount">0</span> 只股票</span>
+    </div>
+
+    <!-- 核心指标卡片 -->
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">平均ROE</div>
+            <div id="avgROE" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-green);">-</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">平均毛利率</div>
+            <div id="avgGrossMargin" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-cyan);">-</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">平均PE</div>
+            <div id="avgPE" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-purple);">-</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">平均PB</div>
+            <div id="avgPB" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-gold);">-</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">盈利股票</div>
+            <div id="profitCount" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-green);">-</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 1rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">增长股票</div>
+            <div id="growthCount" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-cyan);">-</div>
+        </div>
+    </div>
+
+    <!-- 详细数据表格 -->
     <div class="chart-container fade-in">
         <div class="chart-header">
             <span class="chart-title"><i class="bi bi-building me-2"></i>关注股票基本面</span>
+            <span class="date" id="fundamentalsDate">-</span>
         </div>
-        <div style="max-height: 500px; overflow-y: auto;">
+        <div style="max-height: 600px; overflow-y: auto;">
             <table class="stock-table">
                 <thead>
                     <tr>
                         <th>代码</th>
                         <th>名称</th>
+                        <th>行业</th>
+                        <th>PE</th>
+                        <th>PB</th>
                         <th>ROE</th>
                         <th>毛利率</th>
                         <th>净利率</th>
-                        <th>PE(TTM)</th>
-                        <th>PB</th>
                         <th>营收增速</th>
                         <th>利润增速</th>
+                        <th>股息率</th>
                     </tr>
                 </thead>
                 <tbody id="fundamentalsTable">
@@ -1195,7 +1241,72 @@
 
     // ==================== 微观基本面 ====================
     async function loadFundamentalsData() {
-        // TODO: 实现基本面数据加载
+        const category = document.getElementById('fundamentalsCategory').value;
+        const data = await api('/investment/api/fundamentals/watch-list');
+
+        let stocks = data.stocks || [];
+
+        // 按行业筛选
+        if (category) {
+            stocks = stocks.filter(s => s.category === category);
+        }
+
+        document.getElementById('fundamentalsCount').textContent = stocks.length;
+
+        // 计算平均值
+        const validStocks = stocks.filter(s => s.pe_ttm !== null && s.pe_ttm !== undefined);
+        const avgROE = validStocks.length > 0 ? (validStocks.reduce((sum, s) => sum + (s.roe || 0), 0) / validStocks.length).toFixed(1) : '-';
+        const avgGrossMargin = validStocks.length > 0 ? (validStocks.reduce((sum, s) => sum + (s.gross_margin || 0), 0) / validStocks.length).toFixed(1) : '-';
+        const avgPE = validStocks.filter(s => s.pe_ttm > 0).length > 0 ? (validStocks.filter(s => s.pe_ttm > 0).reduce((sum, s) => sum + s.pe_ttm, 0) / validStocks.filter(s => s.pe_ttm > 0).length).toFixed(1) : '-';
+        const avgPB = validStocks.length > 0 ? (validStocks.reduce((sum, s) => sum + (s.pb || 0), 0) / validStocks.length).toFixed(2) : '-';
+
+        document.getElementById('avgROE').textContent = avgROE + '%';
+        document.getElementById('avgGrossMargin').textContent = avgGrossMargin + '%';
+        document.getElementById('avgPE').textContent = avgPE;
+        document.getElementById('avgPB').textContent = avgPB;
+
+        // 统计盈利和增长
+        const profitStocks = stocks.filter(s => s.net_profit > 0);
+        const growthStocks = stocks.filter(s => s.revenue_yoy > 0);
+        document.getElementById('profitCount').textContent = profitStocks.length;
+        document.getElementById('growthCount').textContent = growthStocks.length;
+
+        // 更新日期
+        const latestDate = stocks.find(s => s.report_date)?.report_date || '-';
+        document.getElementById('fundamentalsDate').textContent = latestDate;
+
+        // 渲染表格
+        const table = document.getElementById('fundamentalsTable');
+        if (stocks.length > 0) {
+            table.innerHTML = stocks.map(s => {
+                const peDisplay = s.pe_ttm && s.pe_ttm > 0 ? s.pe_ttm.toFixed(1) : (s.pe_ttm < 0 ? '亏损' : '-');
+                const pbDisplay = s.pb ? s.pb.toFixed(2) : '-';
+                const roeDisplay = s.roe ? s.roe.toFixed(1) + '%' : '-';
+                const gmDisplay = s.gross_margin ? s.gross_margin.toFixed(1) + '%' : '-';
+                const nmDisplay = s.net_margin ? s.net_margin.toFixed(1) + '%' : '-';
+                const revDisplay = s.revenue_yoy ? `<span class="${s.revenue_yoy >= 0 ? 'positive' : 'negative'}">${s.revenue_yoy.toFixed(1)}%</span>` : '-';
+                const profitDisplay = s.net_profit_yoy ? `<span class="${s.net_profit_yoy >= 0 ? 'positive' : 'negative'}">${s.net_profit_yoy.toFixed(1)}%</span>` : '-';
+                const dyDisplay = s.dividend_yield ? s.dividend_yield.toFixed(2) + '%' : '-';
+
+                return `
+                    <tr>
+                        <td style="font-size: 0.75rem;">${s.code}</td>
+                        <td>${s.name}</td>
+                        <td><span class="badge bg-secondary">${s.category || '-'}</span></td>
+                        <td style="font-family: var(--font-mono);">${peDisplay}</td>
+                        <td style="font-family: var(--font-mono);">${pbDisplay}</td>
+                        <td style="font-family: var(--font-mono);">${roeDisplay}</td>
+                        <td style="font-family: var(--font-mono);">${gmDisplay}</td>
+                        <td style="font-family: var(--font-mono);">${nmDisplay}</td>
+                        <td>${revDisplay}</td>
+                        <td>${profitDisplay}</td>
+                        <td style="font-family: var(--font-mono);">${dyDisplay}</td>
+                    </tr>
+                `;
+            }).join('');
+        } else {
+            table.innerHTML = '<tr><td colspan="11" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>';
+        }
     }
 
     // ==================== 行业模型 ====================
