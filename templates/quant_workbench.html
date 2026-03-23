@@ -1,0 +1,777 @@
+{% extends "base.html" %}
+
+{% block title %}Quant Workbench{% endblock %}
+
+{% block extra_css %}
+<style>
+    .workbench-hero {
+        background:
+            linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(167, 139, 250, 0.08)),
+            var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1.25rem;
+        padding: 1.5rem;
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.18);
+    }
+
+    .eyebrow {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--accent-cyan);
+        margin-bottom: 0.5rem;
+    }
+
+    .hero-title {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+    }
+
+    .hero-subtitle {
+        color: var(--text-secondary);
+        line-height: 1.6;
+        max-width: 72ch;
+    }
+
+    .signal-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .signal-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.45rem 0.75rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .signal-pill strong {
+        color: var(--text-primary);
+    }
+
+    .signal-pill.good {
+        color: var(--accent-green);
+        border-color: rgba(34, 197, 94, 0.25);
+        background: rgba(34, 197, 94, 0.08);
+    }
+
+    .signal-pill.warn {
+        color: var(--accent-gold);
+        border-color: rgba(251, 191, 36, 0.25);
+        background: rgba(251, 191, 36, 0.08);
+    }
+
+    .signal-pill.danger {
+        color: var(--accent-red);
+        border-color: rgba(239, 68, 68, 0.25);
+        background: rgba(239, 68, 68, 0.08);
+    }
+
+    .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .section-head h5 {
+        margin: 0;
+        font-size: 1.05rem;
+    }
+
+    .section-head .muted {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
+
+    .filter-panel {
+        padding: 1rem;
+    }
+
+    .filter-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr auto;
+        gap: 0.75rem;
+        align-items: end;
+    }
+
+    .candidate-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .candidate-card {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1rem;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+        min-height: 100%;
+    }
+
+    .candidate-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--border-glow);
+        background: var(--bg-card-hover);
+    }
+
+    .candidate-card.selected {
+        box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45);
+    }
+
+    .candidate-topline {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .candidate-name {
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+
+    .candidate-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.75rem;
+    }
+
+    .candidate-meta span {
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-color);
+    }
+
+    .candidate-score {
+        font-size: 1.6rem;
+        font-family: var(--font-mono);
+        line-height: 1;
+    }
+
+    .candidate-section {
+        margin-top: 0.85rem;
+    }
+
+    .mini-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+
+    .mini-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.3rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-secondary);
+        font-size: 0.76rem;
+        line-height: 1.3;
+    }
+
+    .mini-chip.reason {
+        color: var(--accent-cyan);
+        border-color: rgba(56, 189, 248, 0.22);
+        background: rgba(56, 189, 248, 0.08);
+    }
+
+    .mini-chip.risk {
+        color: var(--accent-red);
+        border-color: rgba(239, 68, 68, 0.22);
+        background: rgba(239, 68, 68, 0.08);
+    }
+
+    .detail-card {
+        position: sticky;
+        top: 1.25rem;
+    }
+
+    .detail-kv {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .kv-item {
+        padding: 0.75rem;
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-color);
+    }
+
+    .kv-label {
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.35rem;
+    }
+
+    .kv-value {
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .detail-list {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .detail-list .item {
+        padding: 0.7rem 0.8rem;
+        border-radius: 0.8rem;
+        border: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-secondary);
+        line-height: 1.5;
+    }
+
+    .table thead th {
+        border-bottom: 1px solid var(--border-color) !important;
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+    }
+
+    .table tbody tr {
+        cursor: pointer;
+    }
+
+    .table tbody tr:hover {
+        background: rgba(56, 189, 248, 0.05);
+    }
+
+    .table td {
+        border-color: rgba(148, 163, 184, 0.12);
+        vertical-align: middle;
+    }
+
+    .quick-note {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        margin-top: 0.35rem;
+    }
+
+    @media (max-width: 1200px) {
+        .candidate-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .filter-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .candidate-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .detail-kv {
+            grid-template-columns: 1fr;
+        }
+
+        .filter-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="workbench-hero mb-4">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+            <div class="eyebrow">Quant Workbench</div>
+            <div class="hero-title">机会工作台</div>
+            <div class="hero-subtitle">
+                以少而精为目标，输出市场环境、同步状态、候选机会、核心理由与风险提示，供内部研究和交易决策快速扫读。
+            </div>
+            <div class="signal-pills">
+                <div class="signal-pill" id="regimeBadge">市场状态 -</div>
+                <div class="signal-pill" id="syncBadge">同步状态 -</div>
+                <div class="signal-pill" id="topBadge">Top 信号 -</div>
+            </div>
+            <div class="signal-pills" id="regimeReasons"></div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-primary" data-refresh-btn onclick="refreshWorkbench()">
+                <i class="bi bi-arrow-clockwise"></i> 立即同步
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon cyan"><i class="bi bi-activity"></i></div>
+        <div class="stat-label">市场状态</div>
+        <div class="stat-value" id="regimeLabel">-</div>
+        <div class="stat-trend up" id="regimeScore">风险偏好分数: -</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green"><i class="bi bi-database-check"></i></div>
+        <div class="stat-label">同步时间</div>
+        <div class="stat-value" id="syncTime">-</div>
+        <div class="quick-note" id="syncSummary">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon gold"><i class="bi bi-stars"></i></div>
+        <div class="stat-label">A 级候选</div>
+        <div class="stat-value" id="gradeACount">0</div>
+        <div class="quick-note">只保留高质量共振机会</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon purple"><i class="bi bi-bar-chart-line"></i></div>
+        <div class="stat-label">Top 评分</div>
+        <div class="stat-value" id="topScore">-</div>
+        <div class="quick-note" id="topName">-</div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <span><i class="bi bi-sliders"></i>筛选器</span>
+        <span class="text-muted small">搜索标的、等级和市场，快速缩小研究范围</span>
+    </div>
+    <div class="card-body filter-panel">
+        <div class="filter-grid">
+            <div>
+                <label class="form-label">搜索</label>
+                <input id="searchInput" class="form-control" placeholder="输入名称、代码或行业" oninput="applyFilters()">
+            </div>
+            <div>
+                <label class="form-label">等级</label>
+                <select id="gradeFilter" class="form-select" onchange="applyFilters()">
+                    <option value="">全部</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">市场</label>
+                <select id="marketFilter" class="form-select" onchange="applyFilters()">
+                    <option value="">全部</option>
+                    <option value="HK">港股</option>
+                    <option value="A">A 股</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">结构</label>
+                <select id="structureFilter" class="form-select" onchange="applyFilters()">
+                    <option value="">全部</option>
+                    <option value="second_buy">二买确认</option>
+                    <option value="center_break_attempt">中枢上沿试探</option>
+                    <option value="trend_without_center">趋势延续</option>
+                    <option value="structure_weak">结构走弱</option>
+                    <option value="no_clear_structure">结构不清</option>
+                    <option value="insufficient">样本不足</option>
+                </select>
+            </div>
+            <div>
+                <button class="btn btn-secondary" onclick="resetFilters()">清空</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mb-4">
+    <div class="section-head">
+        <div>
+            <h5>Top 候选</h5>
+            <div class="muted">优先展示评分最高的标的，便于快速进入研究。</div>
+        </div>
+        <div class="muted" id="candidateCount">0 个候选</div>
+    </div>
+    <div class="candidate-grid" id="topCandidateGrid">
+        <div class="text-muted">加载中...</div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header">
+                <span><i class="bi bi-table"></i>全量候选</span>
+                <span class="text-muted small">点击任一行查看详情</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>等级</th>
+                                <th>标的</th>
+                                <th>得分</th>
+                                <th>5日</th>
+                                <th>20日</th>
+                                <th>EFI13</th>
+                                <th>结构</th>
+                                <th>ROE</th>
+                                <th>情绪</th>
+                                <th>覆盖</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opportunityTable">
+                            <tr><td colspan="10" class="text-center text-muted py-4">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card detail-card">
+            <div class="card-header">
+                <span><i class="bi bi-card-list"></i>标的详情</span>
+                <span class="text-muted small" id="detailCode">-</span>
+            </div>
+            <div class="card-body" id="detailPanel">
+                <div class="text-muted">点击 Top 候选或表格中的标的查看理由与风险。</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const AUTO_REFRESH_MS = 300000;
+let allItems = [];
+let filteredItems = [];
+let selectedCode = null;
+let overviewSummary = {};
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function formatGrade(grade) {
+    const cls = grade === 'A' ? 'bg-success' : grade === 'B' ? 'bg-warning text-dark' : 'bg-secondary';
+    return `<span class="badge ${cls}">${escapeHtml(grade || '-')}</span>`;
+}
+
+function structureLabel(label) {
+    const mapping = {
+        second_buy: '二买确认',
+        center_break_attempt: '中枢上沿试探',
+        trend_without_center: '趋势延续',
+        structure_weak: '结构走弱',
+        no_clear_structure: '结构不清',
+        insufficient: '样本不足',
+    };
+    return mapping[label] || label || '-';
+}
+
+function normalizeText(value) {
+    return String(value ?? '').toLowerCase();
+}
+
+function renderPillList(items, kind) {
+    if (!items || !items.length) {
+        return `<div class="text-muted small">暂无${kind === 'risk' ? '风险' : '理由'}提示</div>`;
+    }
+    return items.slice(0, 3).map(item => {
+        const cls = kind === 'risk' ? 'risk' : 'reason';
+        return `<span class="mini-chip ${cls}">${escapeHtml(item)}</span>`;
+    }).join('');
+}
+
+function setSelectedRow(code) {
+    selectedCode = code;
+    document.querySelectorAll('[data-code-row]').forEach(row => {
+        row.classList.toggle('selected', row.dataset.codeRow === code);
+    });
+    document.querySelectorAll('[data-code-card]').forEach(card => {
+        card.classList.toggle('selected', card.dataset.codeCard === code);
+    });
+}
+
+function getActiveFilters() {
+    return {
+        query: normalizeText(document.getElementById('searchInput').value),
+        grade: document.getElementById('gradeFilter').value,
+        market: document.getElementById('marketFilter').value,
+        structure: document.getElementById('structureFilter').value,
+    };
+}
+
+function applyFilters() {
+    const filters = getActiveFilters();
+    filteredItems = allItems.filter(item => {
+        const matchesQuery = !filters.query || [
+            item.name,
+            item.code,
+            item.category,
+            item.market,
+        ].some(value => normalizeText(value).includes(filters.query));
+        const matchesGrade = !filters.grade || item.grade === filters.grade;
+        const matchesMarket = !filters.market || item.market === filters.market;
+        const matchesStructure = !filters.structure || item.structure === filters.structure;
+        return matchesQuery && matchesGrade && matchesMarket && matchesStructure;
+    });
+
+    renderTopCandidates();
+    renderTable();
+
+    if (!selectedCode && filteredItems.length) {
+        loadDetail(filteredItems[0].code);
+    } else if (selectedCode && !filteredItems.some(item => item.code === selectedCode) && filteredItems.length) {
+        loadDetail(filteredItems[0].code);
+    }
+}
+
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('gradeFilter').value = '';
+    document.getElementById('marketFilter').value = '';
+    document.getElementById('structureFilter').value = '';
+    applyFilters();
+}
+
+function renderOverview(data) {
+    const regime = data.market_regime || {};
+    const status = data.status || {};
+    const summary = data.summary || {};
+    allItems = data.opportunities || [];
+    overviewSummary = summary;
+
+    document.getElementById('regimeLabel').textContent = regime.label || '-';
+    const regimeScore = Number(regime.score ?? 0);
+    const regimeScoreElement = document.getElementById('regimeScore');
+    regimeScoreElement.textContent = `风险偏好分数: ${regime.score ?? '-'}`;
+    regimeScoreElement.className = `stat-trend ${regimeScore >= 20 ? 'up' : regimeScore <= 0 ? 'down' : 'up'}`;
+    document.getElementById('regimeBadge').innerHTML = `<strong>市场状态</strong> ${escapeHtml(regime.label || '-')}`;
+    document.getElementById('syncBadge').innerHTML = `<strong>同步状态</strong> ${status.last_sync_at ? '已更新' : '未同步'}`;
+    document.getElementById('topBadge').innerHTML = `<strong>Top 信号</strong> ${summary.top_name ? escapeHtml(summary.top_name) : '-'}`;
+    document.getElementById('regimeBadge').className = `signal-pill ${regime.label === 'risk_on' ? 'good' : regime.label === 'risk_off' ? 'danger' : 'warn'}`;
+    document.getElementById('syncBadge').className = `signal-pill ${status.last_sync_at ? 'good' : 'warn'}`;
+    document.getElementById('topBadge').className = `signal-pill ${summary.top_name ? 'good' : 'warn'}`;
+    document.getElementById('syncTime').textContent = status.last_sync_at ? status.last_sync_at.replace('T', ' ').slice(0, 19) : '尚未同步';
+    const errorSuffix = status.error_count ? ` / 异常 ${status.error_count}` : '';
+    document.getElementById('syncSummary').textContent = `日线 ${status.daily_files || 0} / 5分钟 ${status.intraday_files || 0} / 基准 ${status.benchmark_files || 0}${errorSuffix}`;
+    document.getElementById('gradeACount').textContent = summary.grade_counts?.A ?? allItems.filter(x => x.grade === 'A').length;
+    document.getElementById('topScore').textContent = summary.top_score ?? '-';
+    document.getElementById('topName').textContent = summary.top_name || '暂无可见顶分标的';
+
+    const reasons = (regime.reasons || []).slice(0, 4).map(x => `<div class="signal-pill">${escapeHtml(x)}</div>`).join('');
+    document.getElementById('regimeReasons').innerHTML = reasons || '<div class="signal-pill">暂无市场状态理由</div>';
+
+    document.getElementById('candidateCount').textContent = `${allItems.length} 个候选`;
+    filteredItems = [...allItems];
+    applyFilters();
+}
+
+function renderTopCandidates() {
+    const grid = document.getElementById('topCandidateGrid');
+    const items = filteredItems.slice(0, 3);
+    if (!items.length) {
+        grid.innerHTML = '<div class="text-muted">当前筛选条件下没有候选。</div>';
+        return;
+    }
+
+    grid.innerHTML = items.map(item => `
+        <div class="candidate-card ${selectedCode === item.code ? 'selected' : ''}" data-code-card="${escapeHtml(item.code)}" onclick="loadDetail('${escapeHtml(item.code)}')">
+            <div class="candidate-topline">
+                <div>
+                    <div class="candidate-name">${escapeHtml(item.name)}</div>
+                    <div class="candidate-meta">
+                        <span>${escapeHtml(item.code)}</span>
+                        <span>${escapeHtml(item.market)}</span>
+                        <span>${escapeHtml(item.category)}</span>
+                    </div>
+                </div>
+                <div>${formatGrade(item.grade)}</div>
+            </div>
+            <div class="d-flex justify-content-between align-items-end gap-2">
+                <div>
+                    <div class="mini-label">综合得分</div>
+                    <div class="candidate-score">${escapeHtml(item.score)}</div>
+                </div>
+                <div class="text-end small text-muted">
+                    <div>收盘 ${escapeHtml(item.close)}</div>
+                    <div>结构 ${escapeHtml(structureLabel(item.structure))}</div>
+                </div>
+            </div>
+            <div class="candidate-section">
+                <div class="mini-label">核心理由</div>
+                <div class="chip-row">
+                    ${(item.reasons || []).slice(0, 3).map(reason => `<span class="mini-chip reason">${escapeHtml(reason)}</span>`).join('') || '<span class="text-muted small">暂无</span>'}
+                </div>
+            </div>
+            <div class="candidate-section">
+                <div class="mini-label">风险提示</div>
+                <div class="chip-row">
+                    ${(item.risk_flags || []).slice(0, 2).map(flag => `<span class="mini-chip risk">${escapeHtml(flag)}</span>`).join('') || '<span class="text-muted small">暂无</span>'}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderTable() {
+    const table = document.getElementById('opportunityTable');
+    if (!filteredItems.length) {
+        table.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">暂无符合条件的候选。</td></tr>';
+        return;
+    }
+
+    table.innerHTML = filteredItems.map(item => `
+        <tr data-code-row="${escapeHtml(item.code)}" onclick="loadDetail('${escapeHtml(item.code)}')">
+            <td>${formatGrade(item.grade)}</td>
+            <td>
+                <div class="fw-semibold">${escapeHtml(item.name)}</div>
+                <div class="small text-muted">${escapeHtml(item.code)} / ${escapeHtml(item.category)}</div>
+            </td>
+            <td>${escapeHtml(item.score)}</td>
+            <td class="${item.ret_5 > 0 ? 'text-success' : 'text-danger'}">${escapeHtml(item.ret_5)}%</td>
+            <td class="${item.ret_20 > 0 ? 'text-success' : 'text-danger'}">${escapeHtml(item.ret_20)}%</td>
+            <td>${escapeHtml(item.efi_13)}</td>
+            <td>${escapeHtml(structureLabel(item.structure))}</td>
+            <td>${escapeHtml(item.roe ?? '-')}</td>
+            <td>${escapeHtml(item.sentiment)}</td>
+            <td>${escapeHtml(item.coverage)}</td>
+        </tr>
+    `).join('');
+    setSelectedRow(selectedCode || filteredItems[0].code);
+}
+
+async function loadDetail(code) {
+    setSelectedRow(code);
+    const panel = document.getElementById('detailPanel');
+    const codeLabel = document.getElementById('detailCode');
+    codeLabel.textContent = code;
+    panel.innerHTML = '<div class="text-muted">加载中...</div>';
+
+    try {
+        const res = await fetch(`/api/stocks/${encodeURIComponent(code)}`);
+        const data = await res.json();
+        const latest = data.latest || {};
+        const fundamentals = data.fundamentals || {};
+        const sentiment = data.sentiment || {};
+        const structure = data.structure || {};
+        const trend = data.trend || {};
+        const daily = Array.isArray(data.daily) ? data.daily : [];
+
+        panel.innerHTML = `
+            <div class="detail-kv">
+                <div class="kv-item">
+                    <div class="kv-label">综合等级</div>
+                    <div class="kv-value">${formatGrade(latest.grade || 'C')} ${escapeHtml(latest.score ?? '-')}</div>
+                </div>
+                <div class="kv-item">
+                    <div class="kv-label">结构</div>
+                    <div class="kv-value">${escapeHtml(structureLabel(structure.label))}</div>
+                </div>
+                <div class="kv-item">
+                    <div class="kv-label">PE / PB / ROE</div>
+                    <div class="kv-value">${escapeHtml(fundamentals.pe_ttm ?? '-') } / ${escapeHtml(fundamentals.pb ?? '-')} / ${escapeHtml(fundamentals.roe ?? '-')}</div>
+                </div>
+                <div class="kv-item">
+                    <div class="kv-label">情绪覆盖</div>
+                    <div class="kv-value">${escapeHtml(sentiment.score ?? 0)} / ${escapeHtml(sentiment.coverage ?? 0)}</div>
+                </div>
+                <div class="kv-item">
+                    <div class="kv-label">评分拆解</div>
+                    <div class="kv-value">技 ${escapeHtml(latest.tech_score ?? '-')} / 基 ${escapeHtml(latest.fundamental_score ?? '-')} / 情 ${escapeHtml(latest.sentiment_score ?? '-')} / 宏 ${escapeHtml(latest.macro_score ?? '-')}</div>
+                </div>
+                <div class="kv-item">
+                    <div class="kv-label">财务口径日期</div>
+                    <div class="kv-value">${escapeHtml(fundamentals.report_date ?? fundamentals.snapshot_date ?? '-')}</div>
+                </div>
+            </div>
+
+            <div class="mini-label">最近理由</div>
+            <div class="detail-list mb-3">
+                ${(latest.reasons || []).length
+                    ? (latest.reasons || []).map(item => `<div class="item">${escapeHtml(item)}</div>`).join('')
+                    : '<div class="item">暂无理由</div>'}
+            </div>
+
+            <div class="mini-label">风险提示</div>
+            <div class="detail-list mb-3">
+                ${(latest.risk_flags || []).length
+                    ? (latest.risk_flags || []).map(item => `<div class="item">${escapeHtml(item)}</div>`).join('')
+                    : '<div class="item">暂无额外风险</div>'}
+            </div>
+
+            <div class="mini-label">近期覆盖标题</div>
+            <div class="detail-list mb-3">
+                ${(sentiment.titles || []).length
+                    ? (sentiment.titles || []).map(item => `<div class="item">${escapeHtml(item)}</div>`).join('')
+                    : '<div class="item">暂无近期标题样本</div>'}
+            </div>
+
+            <div class="mini-label">技术确认</div>
+            <div class="detail-list">
+                ${(trend.reasons || []).concat(structure.reasons || []).length
+                    ? (trend.reasons || []).concat(structure.reasons || []).map(item => `<div class="item">${escapeHtml(item)}</div>`).join('')
+                    : '<div class="item">暂无技术确认信息</div>'}
+            </div>
+        `;
+    } catch (error) {
+        panel.innerHTML = `<div class="text-danger">加载失败: ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+async function refreshWorkbench() {
+    const button = document.querySelector('[data-refresh-btn]');
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-arrow-repeat"></i> 同步中...';
+    try {
+        await fetch('/api/admin/refresh', { method: 'POST' });
+        await loadOverview();
+    } finally {
+        button.disabled = false;
+        button.innerHTML = original;
+    }
+}
+
+async function loadOverview() {
+    const res = await fetch('/api/overview', { cache: 'no-store' });
+    const data = await res.json();
+    renderOverview(data);
+}
+
+loadOverview();
+setInterval(loadOverview, AUTO_REFRESH_MS);
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+"""
+量化工作台配置
+"""
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BASE_DIR / "data" / "quant_workbench"
+MARKET_DIR = DATA_DIR / "market"
+STATUS_FILE = DATA_DIR / "status.json"
+INVESTMENT_DB_PATH = BASE_DIR / "data" / "investment.db"
+REPORTS_DB_PATH = BASE_DIR / "data" / "reports.db"
+LOG_PATH = BASE_DIR / "logs" / "quant_workbench.log"
+APP_PORT = 8010
+

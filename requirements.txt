@@ -16,3 +16,6 @@ pydantic-settings>=2.1.0
 aiofiles>=23.2.1
 feedparser>=6.0.10
 chardet>=5.2.0
+pandas>=2.2.0
+requests>=2.31.0
+duckdb>=1.2.1
