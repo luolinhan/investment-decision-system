@@ -20,6 +20,15 @@ _investment_service = None
 _db_service = None
 _news_service = None
 
+LEGACY_INDEX_ALIASES = {
+    "FTA50": "ftsea50",
+    "YANG": "yang",
+    "hkHSI": "hsi",
+    "usDJI": "dji",
+    "usIXIC": "ixic",
+    "usSPX": "inx",
+}
+
 def get_investment_service():
     global _investment_service
     if _investment_service is None:
@@ -39,6 +48,16 @@ def get_news_service():
     return _news_service
 
 
+def normalize_index_keys(indices: Dict) -> Dict:
+    normalized = dict(indices or {})
+    for old_key, new_key in LEGACY_INDEX_ALIASES.items():
+        if old_key in normalized and new_key not in normalized:
+            item = dict(normalized[old_key])
+            item["code"] = new_key
+            normalized[new_key] = item
+    return normalized
+
+
 @router.get("/", response_class=HTMLResponse)
 async def investment_dashboard(request: Request):
     """投资决策仪表板页面"""
@@ -47,24 +66,30 @@ async def investment_dashboard(request: Request):
 
 @router.get("/api/overview")
 async def get_market_overview():
-    """获取市场概览数据 - 优先使用本地数据库"""
+    """获取市场概览数据 - 优先使用实时数据"""
     db = get_db_service()
     realtime = get_investment_service()
 
-    # 从本地数据库获取指数数据
-    indices = db.get_all_indices_latest()
-
-    # 从本地数据库获取利率
-    rates = db.get_interest_rates_latest()
-
-    # 从本地数据库获取市场情绪
-    sentiment = db.get_market_sentiment_latest()
-
-    # 从本地数据库获取VIX
-    vix = db.get_vix_latest()
-
-    # 实时获取关注股票行情（这个需要实时API）
-    watch_stocks = realtime.get_watch_stocks()
+    try:
+        realtime_data = realtime.get_market_overview()
+        indices = normalize_index_keys(db.get_all_indices_latest())
+        indices.update(realtime_data.get("indices", {}))
+        rates = realtime_data.get("rates", {})
+        sentiment = realtime_data.get("sentiment", {})
+        vix_raw = realtime_data.get("fear_greed", {}).get("vix", {})
+        vix = {
+            "close": vix_raw.get("value"),
+            "change_pct": vix_raw.get("change_pct"),
+            "date": (vix_raw.get("quote_time") or "")[:10] or None,
+        } if vix_raw else {}
+        watch_stocks = realtime_data.get("watch_stocks") or realtime.get_watch_stocks()
+    except Exception as exc:
+        print(f"实时市场概览获取失败: {exc}")
+        indices = normalize_index_keys(db.get_all_indices_latest())
+        rates = db.get_interest_rates_latest()
+        sentiment = db.get_market_sentiment_latest()
+        vix = db.get_vix_latest()
+        watch_stocks = realtime.get_watch_stocks()
 
     return {
         "update_time": __import__('datetime').datetime.now().isoformat(),
@@ -186,10 +211,19 @@ async def get_financial_news():
 async def get_macro_overview():
     """获取宏观流动性概览"""
     db = get_db_service()
-    rates = db.get_interest_rates_latest()
-    vix = db.get_vix_latest()
-    sentiment = db.get_market_sentiment_latest()
+    realtime = get_investment_service()
     north_money = db.get_north_money(30)
+
+    try:
+        realtime_data = realtime.get_market_overview()
+        rates = realtime_data.get("rates", {}) or db.get_interest_rates_latest()
+        vix_raw = realtime_data.get("fear_greed", {}).get("vix", {})
+        vix = {"close": vix_raw.get("value"), "change_pct": vix_raw.get("change_pct")} if vix_raw else db.get_vix_latest()
+        sentiment = realtime_data.get("sentiment", {}) or db.get_market_sentiment_latest()
+    except Exception:
+        rates = db.get_interest_rates_latest()
+        vix = db.get_vix_latest()
+        sentiment = db.get_market_sentiment_latest()
 
     # 计算北向资金趋势
     trend = "neutral"
@@ -224,8 +258,12 @@ async def get_rates_history(days: int = 365):
 @router.get("/api/macro/liquidity-indicators")
 async def get_liquidity_indicators():
     """获取流动性指标"""
-    db = get_db_service()
-    rates = db.get_interest_rates_latest()
+    realtime = get_investment_service()
+
+    try:
+        rates = realtime.get_market_overview().get("rates", {})
+    except Exception:
+        rates = get_db_service().get_interest_rates_latest()
 
     indicators = []
     if rates and rates.get("shibor"):

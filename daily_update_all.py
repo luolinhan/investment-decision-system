@@ -33,29 +33,11 @@ def main():
     # 2. 市场指数数据
     results['market'] = run_script('fetch_market_data.py', '市场指数数据采集')
 
-    # 3. 添加VIX和利率默认数据
-    print("\n" + "="*60)
-    print("补充VIX和利率数据")
-    print("="*60)
-
-    import sqlite3
-    conn = sqlite3.connect('data/investment.db')
-    c = conn.cursor()
-    today = datetime.now().strftime('%Y-%m-%d')
-
-    # VIX (默认18.5)
-    c.execute("INSERT OR REPLACE INTO vix_history (trade_date, vix_close) VALUES (?, ?)", (today, 18.5))
-
-    # SHIBOR (默认值)
-    c.execute("""INSERT OR REPLACE INTO interest_rates
-        (trade_date, shibor_overnight, shibor_1w, shibor_1m, shibor_3m, shibor_6m, shibor_1y)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (today, 1.75, 1.85, 1.95, 2.05, 2.15, 2.25))
-
-    conn.commit()
-    conn.close()
-    print("VIX和利率数据已更新")
-    results['vix_rates'] = True
+    # 3. 实时参考数据落库
+    results['reference'] = run_script(
+        'sync_market_reference_data.py',
+        '市场参考数据同步（VIX / 利率 / 情绪 / 当前指数）'
+    )
 
     # 汇总结果
     print("\n" + "="*60)
