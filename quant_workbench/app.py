@@ -8,6 +8,7 @@ import subprocess
 import sys
 from contextlib import asynccontextmanager
 from collections import Counter
+from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
@@ -30,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 service = QuantWorkbenchService()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# ensure fallback search path inside the package in case the root templates directory isn't accessible
+templates.env.loader.searchpath.append(str(Path(__file__).resolve().parent / "templates"))
 
 
 @asynccontextmanager
