@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 - 研报中心{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">仪表盘</h1>
+        <p class="page-subtitle">研报数据概览与实时监控</p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+        <button class="btn btn-secondary" onclick="downloadAllPdfs()">
+            <i class="bi bi-cloud-download"></i>
+            <span>下载PDF</span>
+        </button>
+        <button class="btn btn-primary" onclick="collectAll()">
+            <i class="bi bi-arrow-repeat"></i>
+            <span>立即采集</span>
+        </button>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card fade-in" style="animation-delay: 0.1s;">
+        <div class="stat-icon cyan">
+            <i class="bi bi-file-earmark-text"></i>
+        </div>
+        <div class="stat-value" id="totalReports">-</div>
+        <div class="stat-label">总研报数</div>
+    </div>
+    <div class="stat-card fade-in" style="animation-delay: 0.2s;">
+        <div class="stat-icon green">
+            <i class="bi bi-calendar-check"></i>
+        </div>
+        <div class="stat-value" id="todayReports">-</div>
+        <div class="stat-label">今日新增</div>
+    </div>
+    <div class="stat-card fade-in" style="animation-delay: 0.3s;">
+        <div class="stat-icon purple">
+            <i class="bi bi-bar-chart-line"></i>
+        </div>
+        <div class="stat-value" id="weekReports">-</div>
+        <div class="stat-label">本周新增</div>
+    </div>
+    <div class="stat-card fade-in" style="animation-delay: 0.4s;">
+        <div class="stat-icon gold">
+            <i class="bi bi-file-pdf"></i>
+        </div>
+        <div class="stat-value" id="pdfCount">-</div>
+        <div class="stat-label">已下载PDF</div>
+    </div>
+</div>
+
+<!-- Main Grid -->
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+    <!-- Latest Reports -->
+    <div class="card fade-in" style="animation-delay: 0.5s;">
+        <div class="card-header">
+            <span><i class="bi bi-lightning"></i>最新研报</span>
+            <a href="/reports" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;">
+                查看全部 <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+        <div class="card-body" id="latestReports">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Institutions -->
+    <div class="card fade-in" style="animation-delay: 0.6s;">
+        <div class="card-header">
+            <span><i class="bi bi-building"></i>热门机构</span>
+        </div>
+        <div class="card-body" id="topInstitutions">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Stocks -->
+<div class="card fade-in" style="margin-top: 1.5rem; animation-delay: 0.7s;">
+    <div class="card-header">
+        <span><i class="bi bi-graph-up-arrow"></i>热门股票研报分布</span>
+    </div>
+    <div class="card-body" id="topStocks">
+        <div class="loading">
+            <div class="spinner"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load all data
+    async function loadData() {
+        try {
+            const stats = await api('/api/reports/stats/overview');
+
+            // Animate numbers
+            animateNumber(document.getElementById('totalReports'), stats.total_reports);
+            animateNumber(document.getElementById('todayReports'), stats.today_reports);
+            animateNumber(document.getElementById('weekReports'), stats.week_reports);
+            animateNumber(document.getElementById('pdfCount'), stats.pdf_count);
+
+            // Update sidebar badge
+            document.getElementById('reportCount').textContent = stats.total_reports;
+
+            // Render institutions
+            renderInstitutions(stats.top_institutions);
+
+            // Render stocks
+            renderStocks(stats.top_stocks);
+
+            // Load latest reports
+            await loadLatestReports();
+
+        } catch (error) {
+            console.error('Load data failed:', error);
+        }
+    }
+
+    function renderInstitutions(institutions) {
+        if (!institutions || institutions.length === 0) {
+            document.getElementById('topInstitutions').innerHTML = '<div class="empty-state"><p>暂无数据</p></div>';
+            return;
+        }
+
+        const html = institutions.map((item, i) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; ${i < institutions.length - 1 ? 'border-bottom: 1px solid var(--border-color);' : ''}">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span style="width: 24px; height: 24px; background: ${i < 3 ? 'var(--accent-cyan-dim)' : 'var(--bg-secondary)'}; border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; color: ${i < 3 ? 'var(--accent-cyan)' : 'var(--text-muted)'};">${i + 1}</span>
+                    <span style="font-size: 0.9rem;">${item.name}</span>
+                </div>
+                <span style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary);">${item.count}</span>
+            </div>
+        `).join('');
+
+        document.getElementById('topInstitutions').innerHTML = html;
+    }
+
+    function renderStocks(stocks) {
+        if (!stocks || stocks.length === 0) {
+            document.getElementById('topStocks').innerHTML = '<div class="empty-state"><p>暂无数据</p></div>';
+            return;
+        }
+
+        const maxCount = Math.max(...stocks.map(s => s.count));
+
+        const html = `
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                ${stocks.map(item => `
+                    <div style="position: relative; background: var(--bg-secondary); border-radius: 0.75rem; padding: 1rem; overflow: hidden;">
+                        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${(item.count / maxCount * 100)}%; background: var(--accent-cyan-dim); transition: width 0.5s ease;"></div>
+                        <div style="position: relative; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500;">${item.name}</span>
+                            <span style="font-family: var(--font-mono); font-size: 0.9rem; color: var(--accent-cyan);">${item.count}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        document.getElementById('topStocks').innerHTML = html;
+    }
+
+    async function loadLatestReports() {
+        try {
+            const data = await api('/api/reports?page_size=8');
+
+            if (data.reports.length === 0) {
+                document.getElementById('latestReports').innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-inbox"></i>
+                        <p>暂无研报数据</p>
+                        <button class="btn btn-primary" onclick="collectAll()">立即采集</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = data.reports.map(report => `
+                <div class="report-card" onclick="location.href='/report/${report.id}'">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div class="report-title">${report.title}</div>
+                            <div class="report-meta">
+                                ${report.stock_name ? `<span><i class="bi bi-graph-up"></i>${report.stock_name}</span>` : ''}
+                                ${report.institution ? `<span><i class="bi bi-building"></i>${report.institution}</span>` : ''}
+                                ${report.publish_date ? `<span><i class="bi bi-calendar"></i>${formatDate(report.publish_date)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div style="margin-left: 1rem; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                            ${report.rating ? `<span class="badge-rating ${getRatingClass(report.rating)}">${report.rating}</span>` : ''}
+                            ${report.local_pdf_path ? '<i class="bi bi-file-pdf" style="color: var(--accent-red);"></i>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('latestReports').innerHTML = html;
+
+        } catch (error) {
+            console.error('Load reports failed:', error);
+        }
+    }
+
+    async function collectAll() {
+        const btn = event.target.closest('.btn');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span><span>采集中...</span>';
+
+        try {
+            const result = await api('/api/reports/collect', {
+                method: 'POST',
+                body: JSON.stringify({ days: 30 })
+            });
+
+            if (result.success) {
+                showToast(result.message);
+                setTimeout(loadData, 1000);
+            } else {
+                showToast(result.message, 'error');
+            }
+        } catch (error) {
+            showToast('采集失败: ' + error.message, 'error');
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+
+    async function downloadAllPdfs() {
+        showToast('开始下载PDF...', 'info');
+        // This would trigger the PDF download process
+        try {
+            const response = await fetch('/api/reports/download-pdfs', { method: 'POST' });
+            const result = await response.json();
+            showToast(`已下载 ${result.count} 个PDF`);
+            setTimeout(loadData, 1000);
+        } catch (error) {
+            showToast('下载PDF需要手动执行', 'error');
+        }
+    }
+
+    // Initialize
+    loadData();
+</script>
+{% endblock %}

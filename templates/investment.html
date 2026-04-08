@@ -1,0 +1,4876 @@
+{% extends "base.html" %}
+
+{% block title %}投资决策 - 研报中心{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Tab导航样式 */
+    .tab-nav {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.5rem;
+        overflow-x: auto;
+    }
+
+    .tab-btn {
+        padding: 0.75rem 1.25rem;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 0.5rem 0.5rem 0 0;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: var(--transition-smooth);
+        white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-card);
+    }
+
+    .tab-btn.active {
+        color: var(--accent-cyan);
+        background: var(--bg-card);
+        border-bottom: 2px solid var(--accent-cyan);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* 市场卡片 */
+    .market-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.25rem;
+        text-align: center;
+        transition: var(--transition-smooth);
+        position: relative;
+    }
+
+    .market-card:hover {
+        border-color: var(--border-glow);
+        transform: translateY(-2px);
+    }
+
+    .market-card .date {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        position: absolute;
+        top: 0.5rem;
+        right: 0.75rem;
+    }
+
+    .market-card .name {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+    }
+
+    .market-card .value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .market-card .change {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 0.15rem;
+    }
+
+    .market-card .change.positive { color: var(--accent-green); }
+    .market-card .change.negative { color: var(--accent-red); }
+
+    .chart-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .chart-title {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .chart-wrapper {
+        height: 280px;
+        position: relative;
+    }
+
+    .rate-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+
+    .rate-item {
+        background: var(--bg-secondary);
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+        text-align: center;
+    }
+
+    .rate-item .label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-bottom: 0.15rem;
+    }
+
+    .rate-item .value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        color: var(--accent-cyan);
+    }
+
+    .fear-greed-meter {
+        height: 16px;
+        background: linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444);
+        border-radius: 8px;
+        position: relative;
+        margin: 1rem 0;
+    }
+
+    .fear-greed-indicator {
+        position: absolute;
+        top: -4px;
+        width: 24px;
+        height: 24px;
+        background: white;
+        border-radius: 50%;
+        border: 3px solid var(--bg-primary);
+        transform: translateX(-50%);
+        transition: left 0.5s ease;
+    }
+
+    .stock-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .stock-table th {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+
+    .stock-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+
+    .stock-table tr:hover {
+        background: var(--bg-card-hover);
+    }
+
+    .stock-table .positive { color: var(--accent-green); }
+    .stock-table .negative { color: var(--accent-red); }
+
+    .watch-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .watch-summary-card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.82));
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+    }
+
+    .watch-summary-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .watch-summary-value {
+        font-size: 1.65rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .watch-summary-sub {
+        margin-top: 0.35rem;
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+
+    .watch-group-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .watch-group-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .watch-group-title {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .watch-group-subtitle {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+
+    .watch-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.45rem;
+    }
+
+    .watch-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--accent-cyan);
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+
+    .watch-code {
+        display: block;
+        margin-top: 0.18rem;
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+    }
+
+    .watch-empty {
+        text-align: center;
+        color: var(--text-muted);
+        padding: 2rem 1rem;
+        border: 1px dashed var(--border-color);
+        border-radius: 0.9rem;
+    }
+
+    .decision-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .decision-item {
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.72));
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .decision-item .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.35rem;
+    }
+
+    .decision-item .value {
+        font-size: 1.3rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .decision-item .sub {
+        margin-top: 0.3rem;
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+    }
+
+    .driver-board {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .driver-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.85rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .driver-card .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .driver-card .value {
+        margin-top: 0.35rem;
+        font-size: 1.3rem;
+        font-family: var(--font-mono);
+        font-weight: 700;
+    }
+
+    .driver-card .sub {
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+
+    .driver-card.positive .value { color: var(--accent-green); }
+    .driver-card.negative .value { color: var(--accent-red); }
+    .driver-card.neutral .value { color: var(--accent-gold); }
+
+    .matrix-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .matrix-item {
+        border: 1px solid var(--border-color);
+        border-radius: 0.7rem;
+        padding: 0.75rem 0.85rem;
+        background: rgba(15, 23, 42, 0.7);
+        display: grid;
+        grid-template-columns: 140px 1fr auto;
+        gap: 0.8rem;
+        align-items: center;
+    }
+
+    .matrix-item .regime {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .matrix-item .action {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        line-height: 1.55;
+    }
+
+    .matrix-item .position {
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--accent-cyan);
+        white-space: nowrap;
+    }
+
+    .opportunity-snapshot-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .opportunity-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.85rem;
+        background: var(--bg-secondary);
+        padding: 0.9rem 1rem;
+    }
+
+    .opportunity-card .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .opportunity-card .value {
+        margin-top: 0.3rem;
+        font-size: 1.35rem;
+        font-family: var(--font-mono);
+        font-weight: 700;
+    }
+
+    .opportunity-card .sub {
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+
+    .macro-dimension-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .macro-dimension {
+        border: 1px solid var(--border-color);
+        border-radius: 0.8rem;
+        padding: 0.75rem 0.85rem;
+        background: var(--bg-secondary);
+    }
+
+    .macro-dimension .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .macro-dimension .value {
+        margin-top: 0.25rem;
+        font-family: var(--font-mono);
+        font-size: 1.05rem;
+        font-weight: 700;
+    }
+
+    .macro-dimension .sub {
+        margin-top: 0.18rem;
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+    }
+
+    .macro-dimension.positive .value { color: var(--accent-green); }
+    .macro-dimension.negative .value { color: var(--accent-red); }
+    .macro-dimension.neutral .value { color: var(--accent-gold); }
+
+    .action-hint {
+        border: 1px dashed var(--border-color);
+        border-radius: 0.8rem;
+        padding: 0.8rem 0.9rem;
+        color: var(--text-secondary);
+        font-size: 0.84rem;
+        line-height: 1.6;
+        background: rgba(15, 23, 42, 0.45);
+    }
+
+    .entry-quality-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .entry-rule-box {
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        background: rgba(15, 23, 42, 0.7);
+        padding: 0.95rem 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .entry-rule-box .title {
+        font-size: 0.84rem;
+        font-weight: 600;
+        margin-bottom: 0.55rem;
+    }
+
+    .entry-rule-box ul {
+        margin: 0;
+        padding-left: 1rem;
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        line-height: 1.7;
+    }
+
+    .opportunity-main-grid {
+        display: grid;
+        grid-template-columns: 1.8fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .opportunity-side-grid {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    .pool-status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.28rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        font-size: 0.74rem;
+        font-weight: 600;
+        background: rgba(51, 65, 85, 0.3);
+        color: var(--text-secondary);
+    }
+
+    .pool-status-chip.success {
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--accent-green);
+        border-color: rgba(34, 197, 94, 0.25);
+    }
+
+    .pool-status-chip.error {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--accent-red);
+        border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .pool-status-chip.idle {
+        background: rgba(59, 130, 246, 0.1);
+        color: var(--accent-cyan);
+        border-color: rgba(59, 130, 246, 0.22);
+    }
+
+    .candidate-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.95rem;
+        padding: 0.9rem 0.95rem;
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(17, 24, 39, 0.7));
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .candidate-card:hover {
+        border-color: var(--border-glow);
+        transform: translateY(-1px);
+    }
+
+    .candidate-card.active {
+        border-color: rgba(56, 189, 248, 0.42);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18) inset;
+    }
+
+    .candidate-card .head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .candidate-card .name {
+        font-weight: 600;
+    }
+
+    .candidate-card .sub {
+        margin-top: 0.18rem;
+        color: var(--text-muted);
+        font-size: 0.76rem;
+        font-family: var(--font-mono);
+    }
+
+    .candidate-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.55rem;
+    }
+
+    .mini-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.18rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(51, 65, 85, 0.28);
+        color: var(--text-secondary);
+        font-size: 0.72rem;
+    }
+
+    .mini-chip.positive {
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--accent-green);
+    }
+
+    .mini-chip.negative {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--accent-red);
+    }
+
+    .mini-chip.neutral {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--accent-gold);
+    }
+
+    .detail-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .detail-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+    }
+
+    .detail-subtitle {
+        margin-top: 0.22rem;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        font-family: var(--font-mono);
+    }
+
+    .detail-score-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.85rem;
+    }
+
+    .detail-score-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.85rem;
+        padding: 0.75rem 0.8rem;
+        background: rgba(15, 23, 42, 0.55);
+    }
+
+    .detail-score-card .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .detail-score-card .value {
+        font-size: 1.15rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .detail-kv-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .detail-dual-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .detail-kv {
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 0.8rem;
+        padding: 0.7rem 0.75rem;
+        background: rgba(15, 23, 42, 0.42);
+    }
+
+    .detail-kv .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-bottom: 0.3rem;
+    }
+
+    .detail-kv .value {
+        font-size: 0.96rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+    }
+
+    .detail-section-title {
+        font-size: 0.84rem;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+    }
+
+    .detail-list {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .detail-list-item {
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 0.75rem;
+        padding: 0.72rem 0.78rem;
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        line-height: 1.6;
+        background: rgba(15, 23, 42, 0.38);
+    }
+
+    .workflow-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-bottom: 1rem;
+    }
+
+    .workflow-btn {
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border-radius: 999px;
+        padding: 0.45rem 0.85rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .workflow-btn:hover {
+        color: var(--text-primary);
+        border-color: var(--border-glow);
+        background: var(--accent-cyan-dim);
+    }
+
+    .health-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .health-card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.86));
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        padding: 1rem;
+    }
+
+    .health-card .label {
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.35rem;
+    }
+
+    .health-card .value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .health-card .sub {
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+
+    .stability-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .stability-card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.84));
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        padding: 0.95rem 1rem;
+    }
+
+    .stability-card .label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .stability-card .value {
+        margin-top: 0.25rem;
+        font-family: var(--font-mono);
+        font-size: 1.35rem;
+        font-weight: 700;
+    }
+
+    .stability-card .sub {
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        line-height: 1.5;
+    }
+
+    .stability-card.positive .value { color: var(--accent-green); }
+    .stability-card.negative .value { color: var(--accent-red); }
+    .stability-card.neutral .value { color: var(--accent-gold); }
+
+    .signal-feed {
+        display: grid;
+        gap: 0.55rem;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+
+    .signal-feed-item {
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(15, 23, 42, 0.7);
+        font-size: 0.8rem;
+    }
+
+    .signal-feed-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .signal-feed-meta {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+    }
+
+    .issue-item {
+        padding: 0.75rem 0.9rem;
+        border-radius: 0.7rem;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        margin-bottom: 0.65rem;
+    }
+
+    .issue-item.warning {
+        border-color: rgba(251, 191, 36, 0.45);
+        background: rgba(251, 191, 36, 0.08);
+    }
+
+    .issue-item.error {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: rgba(239, 68, 68, 0.1);
+    }
+
+    .index-section-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin: 1.5rem 0 0.75rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .special-index {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .special-index .value {
+        color: var(--accent-red);
+    }
+
+    /* 估值水位条 */
+    .valuation-bar {
+        height: 8px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 0.5rem 0;
+    }
+
+    .valuation-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .valuation-bar-fill.low { background: var(--accent-green); }
+    .valuation-bar-fill.medium { background: #eab308; }
+    .valuation-bar-fill.high { background: var(--accent-red); }
+
+    /* 管线阶段标签 */
+    .phase-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .phase-preclinical { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .phase-1 { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .phase-2 { background: rgba(234, 179, 8, 0.2); color: #fbbf24; }
+    .phase-3 { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+    .phase-approved { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+    /* ETL日志 */
+    .log-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+
+    .log-item:last-child {
+        border-bottom: none;
+    }
+
+    .log-status {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 0.5rem;
+    }
+
+    .log-status.success { background: var(--accent-green); }
+    .log-status.error { background: var(--accent-red); }
+    .log-status.running { background: #fbbf24; animation: pulse 1s infinite; }
+
+    .research-hero {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .research-lead {
+        background:
+            linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(167, 139, 250, 0.08)),
+            var(--bg-card);
+        border: 1px solid var(--border-glow);
+        border-radius: 1rem;
+        padding: 1.5rem;
+    }
+
+    .research-kicker {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--accent-cyan);
+        margin-bottom: 0.5rem;
+    }
+
+    .research-title {
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .research-copy {
+        color: var(--text-secondary);
+        line-height: 1.7;
+        font-size: 0.92rem;
+    }
+
+    .research-warning {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(251, 191, 36, 0.25);
+        border-radius: 1rem;
+        padding: 1.5rem;
+    }
+
+    .research-warning-title {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        color: var(--accent-gold);
+    }
+
+    .research-warning p {
+        color: var(--text-secondary);
+        line-height: 1.7;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .research-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .research-stat {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.1rem 1.2rem;
+    }
+
+    .research-stat-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .research-stat-value {
+        font-size: 1.7rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+    }
+
+    .research-stat-sub {
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        margin-top: 0.3rem;
+    }
+
+    .research-filter-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .research-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+
+    .research-chip {
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        padding: 0.55rem 0.9rem;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .research-chip:hover,
+    .research-chip.active {
+        color: var(--text-primary);
+        border-color: var(--border-glow);
+        background: var(--accent-cyan-dim);
+    }
+
+    .research-layout {
+        display: grid;
+        grid-template-columns: 1.7fr 1fr;
+        gap: 1.5rem;
+    }
+
+    .research-feed {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .research-card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(17, 24, 39, 0.88));
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.2rem;
+    }
+
+    .research-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .research-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .research-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 0.22rem 0.65rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+    }
+
+    .research-pill.source {
+        background: rgba(56, 189, 248, 0.16);
+        color: var(--accent-cyan);
+    }
+
+    .research-pill.format {
+        background: rgba(167, 139, 250, 0.14);
+        color: var(--accent-purple);
+    }
+
+    .research-pill.category {
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--accent-green);
+    }
+
+    .research-date {
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .research-card-title {
+        font-size: 1.05rem;
+        font-weight: 600;
+        line-height: 1.45;
+        margin-bottom: 0.55rem;
+    }
+
+    .research-card-summary {
+        color: var(--text-secondary);
+        line-height: 1.7;
+        font-size: 0.9rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .research-tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 1rem;
+    }
+
+    .research-tag {
+        background: rgba(148, 163, 184, 0.1);
+        color: var(--text-secondary);
+        border-radius: 999px;
+        padding: 0.22rem 0.55rem;
+        font-size: 0.75rem;
+    }
+
+    .research-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .research-source-list,
+    .research-side-list,
+    .research-local-list {
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .research-source-item,
+    .research-side-item,
+    .research-local-item {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.85rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .research-source-item h4,
+    .research-side-item h4,
+    .research-local-item h4 {
+        font-size: 0.95rem;
+        margin-bottom: 0.35rem;
+        font-weight: 600;
+    }
+
+    .research-source-meta,
+    .research-side-meta,
+    .research-local-meta {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+    }
+
+    .research-source-link,
+    .research-side-link,
+    .research-local-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 0.65rem;
+        color: var(--accent-cyan);
+        text-decoration: none;
+        font-size: 0.82rem;
+        font-weight: 500;
+    }
+
+    .research-empty {
+        text-align: center;
+        color: var(--text-muted);
+        padding: 2rem 1rem;
+        border: 1px dashed var(--border-color);
+        border-radius: 0.9rem;
+    }
+
+    /* -------------------- 统一视觉层（样式升级） -------------------- */
+    :root {
+        --hub-radius-xs: 0.65rem;
+        --hub-radius-sm: 0.85rem;
+        --hub-radius-md: 1rem;
+        --hub-radius-lg: 1.15rem;
+        --hub-surface-1: rgba(8, 15, 28, 0.82);
+        --hub-surface-2: rgba(16, 28, 48, 0.72);
+        --hub-surface-3: rgba(10, 18, 34, 0.92);
+        --hub-edge: rgba(124, 151, 186, 0.22);
+        --hub-edge-strong: rgba(56, 189, 248, 0.44);
+        --hub-shadow: 0 14px 30px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .main-content {
+        position: relative;
+    }
+
+    .main-content::after {
+        content: "";
+        position: fixed;
+        inset: 0 0 0 var(--sidebar-width);
+        background:
+            linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+        background-size: 26px 26px;
+        opacity: 0.35;
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    .page-header {
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.56));
+        border: 1px solid var(--hub-edge);
+        border-radius: var(--hub-radius-lg);
+        padding: 1rem 1.2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--hub-shadow);
+    }
+
+    .page-title {
+        letter-spacing: -0.03em;
+    }
+
+    .page-subtitle {
+        color: rgba(203, 213, 225, 0.82);
+    }
+
+    .tab-nav {
+        position: sticky;
+        top: 0.9rem;
+        z-index: 20;
+        margin-bottom: 1.2rem;
+        padding: 0.5rem;
+        gap: 0.35rem;
+        border: 1px solid var(--hub-edge);
+        border-radius: var(--hub-radius-md);
+        background: linear-gradient(165deg, rgba(10, 16, 30, 0.9), rgba(15, 23, 42, 0.75));
+        box-shadow: var(--hub-shadow);
+        backdrop-filter: blur(10px);
+    }
+
+    .tab-btn {
+        border: 1px solid transparent;
+        border-radius: var(--hub-radius-sm);
+        padding: 0.65rem 1rem;
+        font-size: 0.83rem;
+        font-weight: 600;
+        color: rgba(148, 163, 184, 0.95);
+    }
+
+    .tab-btn:hover {
+        color: #e2e8f0;
+        background: rgba(51, 65, 85, 0.36);
+        border-color: rgba(148, 163, 184, 0.2);
+        transform: translateY(-1px);
+    }
+
+    .tab-btn.active {
+        color: #dff5ff;
+        border-color: var(--hub-edge-strong);
+        border-bottom: 1px solid var(--hub-edge-strong);
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(14, 165, 233, 0.12));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    .market-card,
+    .chart-container,
+    .decision-item,
+    .driver-card,
+    .opportunity-card,
+    .macro-dimension,
+    .health-card,
+    .stability-card,
+    .watch-summary-card,
+    .research-card,
+    .research-stat,
+    .research-source-item,
+    .research-side-item,
+    .research-local-item {
+        background: linear-gradient(165deg, var(--hub-surface-1), var(--hub-surface-2));
+        border: 1px solid var(--hub-edge);
+        box-shadow: var(--hub-shadow);
+        backdrop-filter: blur(10px);
+    }
+
+    .market-card,
+    .decision-item,
+    .driver-card,
+    .opportunity-card,
+    .macro-dimension,
+    .health-card,
+    .stability-card,
+    .watch-summary-card,
+    .research-stat {
+        border-radius: var(--hub-radius-md);
+    }
+
+    .chart-container,
+    .research-card {
+        border-radius: var(--hub-radius-lg);
+    }
+
+    .market-card:hover,
+    .chart-container:hover,
+    .decision-item:hover,
+    .driver-card:hover,
+    .opportunity-card:hover,
+    .macro-dimension:hover,
+    .research-card:hover {
+        border-color: var(--hub-edge-strong);
+        transform: translateY(-2px);
+    }
+
+    .chart-header {
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .chart-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+
+    .stock-table th {
+        background: rgba(15, 23, 42, 0.56);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        font-weight: 600;
+        letter-spacing: 0.08em;
+    }
+
+    .stock-table td {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .stock-table tr:nth-child(even) td {
+        background: rgba(15, 23, 42, 0.24);
+    }
+
+    .stock-table tr:hover td {
+        background: rgba(56, 189, 248, 0.09);
+    }
+
+    .matrix-item {
+        border-radius: var(--hub-radius-sm);
+        border: 1px solid var(--hub-edge);
+        border-left: 3px solid rgba(56, 189, 248, 0.34);
+        background: linear-gradient(180deg, rgba(9, 15, 28, 0.78), rgba(13, 22, 37, 0.62));
+    }
+
+    .action-hint {
+        border: 1px dashed rgba(148, 163, 184, 0.3);
+        background: linear-gradient(165deg, rgba(8, 15, 29, 0.8), rgba(12, 20, 34, 0.65));
+    }
+
+    .workflow-btn,
+    .research-chip {
+        border-color: var(--hub-edge);
+        background: rgba(15, 23, 42, 0.65);
+    }
+
+    .workflow-btn:hover,
+    .research-chip:hover,
+    .research-chip.active {
+        border-color: var(--hub-edge-strong);
+        background: rgba(56, 189, 248, 0.16);
+    }
+
+    .rate-item,
+    .signal-feed-item,
+    .issue-item,
+    .entry-rule-box {
+        border-color: rgba(148, 163, 184, 0.16);
+    }
+
+    .macro-dimension-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .special-index {
+        background: linear-gradient(135deg, rgba(244, 63, 94, 0.18), rgba(239, 68, 68, 0.06));
+        border-color: rgba(251, 113, 133, 0.34);
+    }
+
+    .special-index .value {
+        color: #fca5a5;
+    }
+
+    .fear-greed-meter {
+        box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.45);
+    }
+
+    .fear-greed-indicator {
+        background: #e2e8f0;
+        box-shadow: 0 3px 8px rgba(2, 6, 23, 0.35);
+    }
+
+    .risk-radar-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.95fr);
+        gap: 1.25rem;
+        align-items: stretch;
+    }
+
+    .risk-chart-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .risk-stat {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(15, 23, 42, 0.92));
+        border: 1px solid rgba(245, 158, 11, 0.28);
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+    }
+
+    .risk-stat-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .risk-stat-value,
+    .risk-card-value {
+        font-size: 1.95rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        line-height: 1.08;
+    }
+
+    .risk-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.6rem;
+        padding: 0.28rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid rgba(56, 189, 248, 0.22);
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--accent-cyan);
+        font-size: 0.74rem;
+        font-weight: 600;
+    }
+
+    .risk-stat-meta,
+    .risk-card-meta,
+    .risk-note,
+    .risk-card-note {
+        color: var(--text-secondary);
+        line-height: 1.6;
+        font-size: 0.84rem;
+    }
+
+    .risk-stat-meta,
+    .risk-card-meta {
+        margin-top: 0.55rem;
+    }
+
+    .risk-chart-wrapper {
+        height: 280px;
+        position: relative;
+    }
+
+    .risk-side-stack {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .risk-card {
+        background: linear-gradient(180deg, rgba(9, 15, 28, 0.82), rgba(13, 22, 37, 0.68));
+        border: 1px solid var(--hub-edge);
+        border-radius: 1rem;
+        padding: 1rem 1.05rem;
+    }
+
+    .risk-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.8rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .risk-card-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .fade-in {
+        animation: hubFadeIn 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    @keyframes hubFadeIn {
+        from { opacity: 0; transform: translateY(12px) scale(0.985); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (max-width: 1200px) {
+        .decision-strip,
+        .health-grid,
+        .stability-grid,
+        .driver-board,
+        .macro-dimension-grid,
+        .entry-quality-grid,
+        .opportunity-snapshot-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .watch-summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .risk-radar-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .opportunity-main-grid,
+        .detail-score-grid,
+        .detail-kv-grid,
+        .detail-dual-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .research-summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .research-layout,
+        .research-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .tab-nav {
+            top: 0.6rem;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .decision-strip,
+        .health-grid,
+        .stability-grid,
+        .driver-board,
+        .macro-dimension-grid,
+        .entry-quality-grid,
+        .opportunity-snapshot-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .matrix-item {
+            grid-template-columns: 1fr;
+        }
+
+        .watch-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .risk-radar-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .opportunity-main-grid,
+        .detail-score-grid,
+        .detail-kv-grid,
+        .detail-dual-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .research-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .research-card-top {
+            flex-direction: column;
+        }
+
+        .main-content::after {
+            inset: 0;
+        }
+
+        .tab-nav {
+            position: relative;
+            top: 0;
+        }
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">投资决策</h1>
+        <p class="page-subtitle">交易决策中枢：状态判断、机会筛选、策略执行与数据健康</p>
+    </div>
+    <div>
+        <button class="btn btn-secondary" onclick="refreshCurrentTab()">
+            <i class="bi bi-arrow-repeat"></i>
+            <span>刷新</span>
+        </button>
+    </div>
+</div>
+
+<!-- Tab导航 -->
+<div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('dashboard', this)">
+        <i class="bi bi-house-door me-1"></i>中枢首页
+    </button>
+    <button class="tab-btn" onclick="switchTab('macro', this)">
+        <i class="bi bi-graph-up me-1"></i>市场状态
+    </button>
+    <button class="tab-btn" onclick="switchTab('fundamentals', this)">
+        <i class="bi bi-bullseye me-1"></i>机会池
+    </button>
+    <button class="tab-btn" onclick="switchTab('workbench', this)">
+        <i class="bi bi-lightning-charge me-1"></i>策略执行
+    </button>
+    <button class="tab-btn" onclick="switchTab('research', this)">
+        <i class="bi bi-journal-richtext me-1"></i>策略证据
+    </button>
+    <button class="tab-btn" onclick="switchTab('data-health', this)">
+        <i class="bi bi-shield-check me-1"></i>数据健康
+    </button>
+</div>
+
+<!-- Tab 1: 中枢首页 -->
+<div id="tab-dashboard" class="tab-content active">
+    <div class="decision-strip">
+        <div class="decision-item">
+            <div class="label">风险状态</div>
+            <div class="value" id="homeRegime">-</div>
+            <div class="sub" id="homeRegimeSub">等待市场状态加载</div>
+        </div>
+        <div class="decision-item">
+            <div class="label">波动温度</div>
+            <div class="value" id="homeVixBand">-</div>
+            <div class="sub" id="homeVixSub">VIX 读取中</div>
+        </div>
+        <div class="decision-item">
+            <div class="label">策略短窗胜率</div>
+            <div class="value" id="homeWatchCoverage">-</div>
+            <div class="sub" id="homeWatchSub">等待策略稳定性</div>
+        </div>
+        <div class="decision-item">
+            <div class="label">数据新鲜度</div>
+            <div class="value" id="homeStorageMode">-</div>
+            <div class="sub" id="homeStorageSub">等待数据健康状态</div>
+        </div>
+    </div>
+
+    <!-- A股主要指数 -->
+    <div class="index-section-title">A股主要指数</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-sh000001">
+            <span class="date" id="date-sh000001">-</span>
+            <div class="name">上证指数</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399001" style="animation-delay: 0.05s;">
+            <span class="date" id="date-sz399001">-</span>
+            <div class="name">深证成指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399006" style="animation-delay: 0.1s;">
+            <span class="date" id="date-sz399006">-</span>
+            <div class="name">创业板指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000300" style="animation-delay: 0.15s;">
+            <span class="date" id="date-sh000300">-</span>
+            <div class="name">沪深300</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-sh000016">
+            <span class="date" id="date-sh000016">-</span>
+            <div class="name">上证50</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000905" style="animation-delay: 0.05s;">
+            <span class="date" id="date-sh000905">-</span>
+            <div class="name">中证500</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sh000852" style="animation-delay: 0.1s;">
+            <span class="date" id="date-sh000852">-</span>
+            <div class="name">中证1000</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-sz399005" style="animation-delay: 0.15s;">
+            <span class="date" id="date-sz399005">-</span>
+            <div class="name">中小板指</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 港股指数 -->
+    <div class="index-section-title">港股指数</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+        <div class="market-card fade-in" id="index-hsi">
+            <span class="date" id="date-hsi">-</span>
+            <div class="name">恒生指数</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in special-index" id="index-ftsea50" style="animation-delay: 0.05s;">
+            <span class="date" id="date-ftsea50">-</span>
+            <div class="name">富时中国A50</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in special-index" id="index-yang" style="animation-delay: 0.1s;">
+            <span class="date" id="date-yang">-</span>
+            <div class="name">富时中国三倍做空</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 美股指数 -->
+    <div class="index-section-title">美股指数</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="market-card fade-in" id="index-dji">
+            <span class="date" id="date-dji">-</span>
+            <div class="name">道琼斯</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-ixic" style="animation-delay: 0.05s;">
+            <span class="date" id="date-ixic">-</span>
+            <div class="name">纳斯达克</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+        <div class="market-card fade-in" id="index-inx" style="animation-delay: 0.1s;">
+            <span class="date" id="date-inx">-</span>
+            <div class="name">标普500</div>
+            <div class="value">-</div>
+            <div class="change">-</div>
+        </div>
+    </div>
+
+    <!-- 恐慌指数与利率 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-activity me-2" style="color: var(--accent-red);"></i>VIX恐慌指数</span>
+            </div>
+            <div id="vixValue" style="font-size: 2rem; font-weight: 700; text-align: center; font-family: var(--font-mono);">-</div>
+            <div class="fear-greed-meter">
+                <div class="fear-greed-indicator" id="vixIndicator" style="left: 50%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); margin-top: 0.25rem;">
+                <span>极度贪婪</span>
+                <span>贪婪</span>
+                <span>中性</span>
+                <span>恐慌</span>
+                <span>极度恐慌</span>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-sunrise me-2" style="color: var(--accent-cyan);"></i>盘前策略</span>
+                <span class="date" id="date-preopen">等待生成</span>
+            </div>
+            <div style="display: grid; gap: 0.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">市场状态</div>
+                    <div id="preopenRegime" style="font-size: 1rem; font-weight: 700; font-family: var(--font-mono);">-</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">目标仓位</div>
+                    <div id="preopenExposure" style="font-size: 0.95rem; font-weight: 700;">-</div>
+                </div>
+                <div id="preopenAction" style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5;">
+                    等待盘前策略生成...
+                </div>
+                <div id="preopenSetupFocus" class="watch-chip-row">
+                    <span class="watch-chip">分型: -</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-emoji-smile me-2" style="color: var(--accent-purple);"></i>市场情绪</span>
+                <span class="date" id="date-sentiment">-</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; text-align: center;" id="sentimentData">
+                <div class="rate-item">
+                    <div class="label">上涨</div>
+                    <div class="value" style="color: var(--accent-green);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">涨停</div>
+                    <div class="value" style="color: var(--accent-green);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">平盘</div>
+                    <div class="value">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">跌停</div>
+                    <div class="value" style="color: var(--accent-red);">-</div>
+                </div>
+                <div class="rate-item">
+                    <div class="label">下跌</div>
+                    <div class="value" style="color: var(--accent-red);">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全球风险雷达 -->
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-globe-americas me-2" style="color: var(--accent-gold);"></i>全球风险雷达</span>
+            <span class="date" id="date-global-risk">-</span>
+        </div>
+        <div class="risk-radar-grid">
+            <div class="risk-chart-shell">
+                <div class="risk-stat">
+                    <div class="risk-stat-label">美国10年期国债收益率</div>
+                    <div class="risk-stat-value" id="us10yValue">-</div>
+                    <div class="risk-badge" id="us10yRegime">-</div>
+                    <div class="risk-stat-meta" id="us10yMeta">-</div>
+                </div>
+                <div class="risk-note" id="us10yCommentary">-</div>
+                <div class="risk-chart-wrapper">
+                    <canvas id="chartUs10Y"></canvas>
+                </div>
+            </div>
+
+            <div class="risk-side-stack">
+                <div class="risk-card">
+                    <div class="risk-card-top">
+                        <div class="risk-card-title"><i class="bi bi-shield-exclamation me-2" style="color: var(--accent-red);"></i>VIX状态</div>
+                        <span class="date" id="date-global-vix">-</span>
+                    </div>
+                    <div class="risk-card-value" id="globalVixValue">-</div>
+                    <div class="risk-badge" id="globalVixZone">-</div>
+                    <div class="risk-card-meta" id="globalVixMeta">-</div>
+                    <div class="risk-card-note" id="globalVixCommentary">-</div>
+                </div>
+
+                <div class="risk-card">
+                    <div class="risk-card-top">
+                        <div class="risk-card-title"><i class="bi bi-pie-chart me-2" style="color: var(--accent-gold);"></i>五角大楼披萨指数</div>
+                        <span class="date" id="date-pizza-index">-</span>
+                    </div>
+                    <div class="risk-card-value" id="pizzaValue">-</div>
+                    <div class="risk-badge" id="pizzaHeadline">-</div>
+                    <div class="risk-card-meta" id="pizzaMeta">-</div>
+                    <div class="risk-card-note" id="pizzaCommentary">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 胜率驱动面板 -->
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-compass me-2"></i>胜率驱动因子</span>
+            <span class="date" id="decisionCenterTime">决策中心加载中</span>
+        </div>
+        <div id="driverBoard" class="driver-board">
+            <div class="driver-card neutral">
+                <div class="label">市场广度</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+            <div class="driver-card neutral">
+                <div class="label">涨跌停比</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+            <div class="driver-card neutral">
+                <div class="label">北向5日</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+            <div class="driver-card neutral">
+                <div class="label">北向动量偏离</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+            <div class="driver-card neutral">
+                <div class="label">VIX波动</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+            <div class="driver-card neutral">
+                <div class="label">数据新鲜度</div>
+                <div class="value">-</div>
+                <div class="sub">等待数据</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 执行矩阵与机会质量 -->
+    <div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-diagram-3 me-2"></i>执行矩阵</span>
+                <span class="date" id="actionMatrixHint">基于市场状态动态调整</span>
+            </div>
+            <div id="actionMatrixBoard" class="matrix-list">
+                <div class="matrix-item">
+                    <div class="regime">Risk-On</div>
+                    <div class="action">等待策略加载</div>
+                    <div class="position">-</div>
+                </div>
+                <div class="matrix-item">
+                    <div class="regime">Neutral</div>
+                    <div class="action">等待策略加载</div>
+                    <div class="position">-</div>
+                </div>
+                <div class="matrix-item">
+                    <div class="regime">Risk-Off</div>
+                    <div class="action">等待策略加载</div>
+                    <div class="position">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-bullseye me-2"></i>机会池质量快照</span>
+            </div>
+            <div id="opportunitySnapshot" class="opportunity-snapshot-grid" style="grid-template-columns: 1fr;">
+                <div class="opportunity-card">
+                    <div class="label">A / B / C</div>
+                    <div class="value">-</div>
+                    <div class="sub">等级分布</div>
+                </div>
+                <div class="opportunity-card">
+                    <div class="label">买入动作占比</div>
+                    <div class="value">-</div>
+                    <div class="sub">可执行候选密度</div>
+                </div>
+                <div class="opportunity-card">
+                    <div class="label">平均分</div>
+                    <div class="value">-</div>
+                    <div class="sub">候选池质量均值</div>
+                </div>
+                <div class="opportunity-card">
+                    <div class="label">风险标记数</div>
+                    <div class="value">-</div>
+                    <div class="sub">触发风控关注</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 胜率控制台 -->
+    <div class="index-section-title">胜率控制台</div>
+    <div class="watch-summary-grid" id="watchSummaryGrid">
+        <div class="watch-summary-card">
+            <div class="watch-summary-label">20日胜率</div>
+            <div class="watch-summary-value">-</div>
+            <div class="watch-summary-sub">等待策略分层快照</div>
+        </div>
+        <div class="watch-summary-card">
+            <div class="watch-summary-label">60日胜率</div>
+            <div class="watch-summary-value">-</div>
+            <div class="watch-summary-sub">等待策略分层快照</div>
+        </div>
+        <div class="watch-summary-card">
+            <div class="watch-summary-label">120日胜率</div>
+            <div class="watch-summary-value">-</div>
+            <div class="watch-summary-sub">等待策略分层快照</div>
+        </div>
+        <div class="watch-summary-card">
+            <div class="watch-summary-label">样本有效性</div>
+            <div class="watch-summary-value">-</div>
+            <div class="watch-summary-sub">样本与数据新鲜度</div>
+        </div>
+    </div>
+    <div id="watchGroupsGrid" class="watch-group-grid">
+        <div class="chart-container fade-in">
+            <div class="watch-empty">等待策略证据加载...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 2: 市场状态 -->
+<div id="tab-macro" class="tab-content">
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-grid-3x3-gap me-2"></i>市场状态维度面板</span>
+            <span class="date" id="macroStateDate">等待决策中心</span>
+        </div>
+        <div id="macroDimensionBoard" class="macro-dimension-grid">
+            <div class="macro-dimension neutral">
+                <div class="label">波动维度</div>
+                <div class="value">-</div>
+                <div class="sub">等待加载</div>
+            </div>
+            <div class="macro-dimension neutral">
+                <div class="label">资金方向</div>
+                <div class="value">-</div>
+                <div class="sub">等待加载</div>
+            </div>
+            <div class="macro-dimension neutral">
+                <div class="label">资金动量</div>
+                <div class="value">-</div>
+                <div class="sub">等待加载</div>
+            </div>
+            <div class="macro-dimension neutral">
+                <div class="label">广度维度</div>
+                <div class="value">-</div>
+                <div class="sub">等待加载</div>
+            </div>
+            <div class="macro-dimension neutral">
+                <div class="label">涨跌停结构</div>
+                <div class="value">-</div>
+                <div class="sub">等待加载</div>
+            </div>
+        </div>
+        <div class="action-hint" id="macroActionHint">市场状态行动提示加载中...</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-water me-2" style="color: var(--accent-cyan);"></i>北向资金</span>
+                <span id="northMoneyTrend" class="badge bg-secondary">-</span>
+            </div>
+            <div style="text-align: center; margin-bottom: 1rem;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">近5日净流入</div>
+                <div id="northMoney5d" style="font-size: 2rem; font-weight: 700; font-family: var(--font-mono);">-</div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="chartNorthMoney"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-speedometer2 me-2" style="color: var(--accent-purple);"></i>关键风向标</span>
+            </div>
+            <div id="liquidityIndicators" style="padding: 1rem;">
+                <p style="color: var(--text-muted); text-align: center;">加载中...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-graph-up me-2"></i>风向标历史趋势</span>
+            <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="loadRatesHistory(this.value)">
+                <option value="30">30天</option>
+                <option value="90" selected>90天</option>
+                <option value="180">180天</option>
+                <option value="365">1年</option>
+            </select>
+        </div>
+        <div class="chart-wrapper" style="height: 350px;">
+            <canvas id="chartRatesHistory"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 3: 机会池 -->
+<div id="tab-fundamentals" class="tab-content">
+    <div class="workflow-row">
+        <button class="workflow-btn" onclick="switchTab('fundamentals')">核心池评分</button>
+        <button class="workflow-btn" onclick="switchTab('sector')">行业模型视图</button>
+        <button class="workflow-btn" onclick="switchTab('quant')">估值与技术筛选</button>
+    </div>
+
+    <div class="entry-rule-box">
+        <div class="title"><i class="bi bi-bullseye me-2"></i>机会池设计原则</div>
+        <ul>
+            <li>先从核心指数成分股出发，先保障基本面与业绩质量，再讨论机会入池。</li>
+            <li>评分先看质量、增长、估值、技术、交易确认、催化、风险，再叠加本地覆盖率。</li>
+            <li>只有综合分、风控闸门和覆盖率同时过线，才进入优先机会池，避免高噪声决策。</li>
+        </ul>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-collection me-2"></i>核心池选择</span>
+            <span class="date" id="opportunityPoolUpdatedAt">-</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
+            <select class="form-select" style="width: auto; min-width: 220px;" id="opportunityPoolSelect" onchange="loadFundamentalsData()">
+                <option value="all">核心池总览</option>
+                <option value="hs300">沪深300</option>
+                <option value="star50">科创50</option>
+                <option value="hstech">恒生科技</option>
+                <option value="ths_beauty100">同花顺漂亮100</option>
+            </select>
+            <button class="btn btn-primary" onclick="syncOpportunityPools()">同步核心池到本地</button>
+            <span style="color: var(--text-muted);">当前样本 <span id="opportunityPoolMemberCount">0</span> 只</span>
+        </div>
+    </div>
+
+    <div id="opportunityPoolSummary" class="entry-quality-grid">
+        <div class="opportunity-card">
+            <div class="label">核心池样本</div>
+            <div class="value">-</div>
+            <div class="sub">等待本地结果</div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-layers me-2"></i>股票池状态</span>
+        </div>
+        <div id="poolStatusBoard" class="watch-chip-row">
+            <span class="watch-chip">等待同步核心池</span>
+        </div>
+    </div>
+
+    <div class="opportunity-main-grid">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-table me-2"></i>池内综合评分表</span>
+                <span class="date">点击行查看下钻</span>
+            </div>
+            <div style="max-height: 640px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>标的</th>
+                            <th>所属池</th>
+                            <th>综合分</th>
+                            <th>机会标签</th>
+                            <th>质量</th>
+                            <th>增长</th>
+                            <th>估值</th>
+                            <th>技术</th>
+                            <th>风险</th>
+                            <th>覆盖</th>
+                            <th>动作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opportunityPoolTable">
+                        <tr><td colspan="11" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="opportunity-side-grid">
+            <div class="chart-container fade-in">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="bi bi-stars me-2"></i>优先机会</span>
+                </div>
+                <div id="opportunityCandidates">
+                    <div class="watch-empty">等待评分结果</div>
+                </div>
+            </div>
+
+            <div class="chart-container fade-in">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="bi bi-database-check me-2"></i>覆盖说明</span>
+                </div>
+                <div id="opportunityCoverageNotes" style="display: grid; gap: 0.75rem;">
+                    <div class="watch-empty">等待覆盖统计</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-search me-2"></i>个股下钻分析</span>
+            <span class="date" id="opportunityDetailCode">-</span>
+        </div>
+        <div id="opportunityStockDetail">
+            <div class="watch-empty">选择一只股票查看详细指标、风控闸门和入池判断。</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 4: 行业模型 -->
+<div id="tab-sector" class="tab-content">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-cpu" style="font-size: 2rem; color: var(--accent-cyan);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="tmtCount">-</div>
+            <div style="color: var(--text-muted);">TMT公司</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-capsule" style="font-size: 2rem; color: var(--accent-green);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="biotechCount">-</div>
+            <div style="color: var(--text-muted);">创新药管线</div>
+        </div>
+        <div class="chart-container fade-in" style="text-align: center; padding: 2rem;">
+            <i class="bi bi-cart3" style="font-size: 2rem; color: var(--accent-gold);"></i>
+            <div style="font-size: 2rem; font-weight: 700; margin: 0.5rem 0;" id="consumerCount">-</div>
+            <div style="color: var(--text-muted);">消费公司</div>
+        </div>
+    </div>
+
+    <!-- 行业子标签 -->
+    <ul class="nav nav-tabs mb-3" id="sectorTabs">
+        <li class="nav-item">
+            <a class="nav-link active" onclick="loadSectorTab('tmt')">TMT</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" onclick="loadSectorTab('biotech')">创新药</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" onclick="loadSectorTab('consumer')">消费</a>
+        </li>
+    </ul>
+
+    <!-- TMT数据 -->
+    <div id="sector-tmt" class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title">TMT行业指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>MAU(百万)</th>
+                        <th>ARPU</th>
+                        <th>付费率</th>
+                        <th>留存D1</th>
+                        <th>营收增速</th>
+                        <th>毛利率</th>
+                        <th>研发占比</th>
+                    </tr>
+                </thead>
+                <tbody id="tmtTable">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 创新药管线 -->
+    <div id="sector-biotech" class="chart-container fade-in" style="display: none;">
+        <div class="chart-header">
+            <span class="chart-title">创新药管线</span>
+            <select class="form-select" style="width: auto; padding: 0.4rem; font-size: 0.8rem;" onchange="filterBiotechPhase(this.value)">
+                <option value="">全部阶段</option>
+                <option value="preclinical">临床前</option>
+                <option value="phase1">临床I期</option>
+                <option value="phase2">临床II期</option>
+                <option value="phase3">临床III期</option>
+                <option value="approved">已批准</option>
+            </select>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>药物名称</th>
+                        <th>适应症</th>
+                        <th>阶段</th>
+                        <th>预计上市</th>
+                        <th>区域</th>
+                    </tr>
+                </thead>
+                <tbody id="biotechTable">
+                    <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 消费行业 -->
+    <div id="sector-consumer" class="chart-container fade-in" style="display: none;">
+        <div class="chart-header">
+            <span class="chart-title">消费行业指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>公司</th>
+                        <th>营收增速</th>
+                        <th>同店增速</th>
+                        <th>门店数</th>
+                        <th>线上占比</th>
+                        <th>毛利率</th>
+                        <th>会员数(万)</th>
+                    </tr>
+                </thead>
+                <tbody id="consumerTable">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无数据，请导入CSV</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 5: 量化技术 -->
+<div id="tab-quant" class="tab-content">
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-bar-chart-line me-2"></i>估值水位</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>PE(TTM)</th>
+                        <th>PE 5年分位</th>
+                        <th>PB</th>
+                        <th>PB 5年分位</th>
+                        <th>估值水平</th>
+                    </tr>
+                </thead>
+                <tbody id="valuationTable">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">暂无数据</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-activity me-2"></i>技术指标</span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>MA20</th>
+                        <th>MA50</th>
+                        <th>MA200</th>
+                        <th>RSI</th>
+                        <th>MACD</th>
+                        <th>趋势</th>
+                    </tr>
+                </thead>
+                <tbody id="technicalTable">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">暂无数据，请运行计算脚本</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 股票筛选器 -->
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-funnel me-2"></i>股票筛选器</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem;">
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PE上限</label>
+                <input type="number" class="form-control" id="filterPEMax" placeholder="如: 30">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PE下限</label>
+                <input type="number" class="form-control" id="filterPEMin" placeholder="如: 0">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">PB上限</label>
+                <input type="number" class="form-control" id="filterPBMax" placeholder="如: 3">
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted);">RSI范围</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="number" class="form-control" id="filterRSIMin" placeholder="最小">
+                    <input type="number" class="form-control" id="filterRSIMax" placeholder="最大">
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="runScreener()">筛选</button>
+        <div id="screenerResults" style="margin-top: 1rem;"></div>
+    </div>
+</div>
+
+<!-- Tab 6: 数据健康 -->
+<div id="tab-data-health" class="tab-content">
+    <div class="health-grid" id="dataHealthSummary">
+        <div class="health-card">
+            <div class="label">健康分</div>
+            <div class="value">-</div>
+            <div class="sub">等待接口返回</div>
+        </div>
+        <div class="health-card">
+            <div class="label">错误数</div>
+            <div class="value">-</div>
+            <div class="sub">关键链路错误</div>
+        </div>
+        <div class="health-card">
+            <div class="label">告警数</div>
+            <div class="value">-</div>
+            <div class="sub">可修复风险项</div>
+        </div>
+        <div class="health-card">
+            <div class="label">快照状态</div>
+            <div class="value">-</div>
+            <div class="sub">overview/watch_stocks</div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-exclamation-triangle me-2"></i>自动识别问题</span>
+        </div>
+        <div id="dataHealthIssues">
+            <div class="watch-empty">加载中...</div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-table me-2"></i>数据表概览</span>
+            </div>
+            <div id="tablesOverview" style="max-height: 300px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>表名</th>
+                            <th>记录数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablesTable">
+                        <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-upload me-2"></i>CSV数据导入</span>
+            </div>
+            <div style="padding: 1rem;">
+                <div class="mb-3">
+                    <label style="font-size: 0.75rem; color: var(--text-muted);">目标表</label>
+                    <select class="form-select" id="importTable">
+                        <option value="sector_tmt">TMT行业数据</option>
+                        <option value="sector_biotech">创新药管线</option>
+                        <option value="sector_consumer">消费行业数据</option>
+                        <option value="valuation_bands">估值水位</option>
+                        <option value="technical_indicators">技术指标</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label style="font-size: 0.75rem; color: var(--text-muted);">CSV文件路径</label>
+                    <input type="text" class="form-control" id="importPath" placeholder="如: data/templates/sector_tmt.csv">
+                </div>
+                <button class="btn btn-primary" onclick="importCSV()">导入</button>
+                <div id="importResult" style="margin-top: 1rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-clock-history me-2"></i>ETL日志</span>
+        </div>
+        <div id="etlLogs" style="max-height: 400px; overflow-y: auto;">
+            <div style="text-align: center; color: var(--text-muted); padding: 2rem;">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 7: 量化工作台 -->
+<div id="tab-workbench" class="tab-content">
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="market-card fade-in">
+            <div class="name">市场状态</div>
+            <div class="value" id="workbenchRegime">-</div>
+            <div class="change" id="workbenchRegimeScore">-</div>
+        </div>
+        <div class="market-card fade-in" style="animation-delay: 0.05s;">
+            <div class="name">候选数</div>
+            <div class="value" id="workbenchTotal">-</div>
+            <div class="change">A档 <span id="workbenchGradeA">-</span></div>
+        </div>
+        <div class="market-card fade-in" style="animation-delay: 0.1s;">
+            <div class="name">Top 信号</div>
+            <div class="value" id="workbenchTopName">-</div>
+            <div class="change">得分 <span id="workbenchTopScore">-</span></div>
+        </div>
+        <div class="market-card fade-in" style="animation-delay: 0.15s;">
+            <div class="name">同步时间</div>
+            <div class="value" id="workbenchSyncTime">-</div>
+            <div class="change" id="workbenchSyncSummary">-</div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-bar-chart-steps me-2"></i>样本稳定性（20/60/120）</span>
+            <span class="date" id="workbenchPerfDate">等待策略样本</span>
+        </div>
+        <div id="workbenchStabilityGrid" class="stability-grid">
+            <div class="stability-card neutral">
+                <div class="label">近20样本</div>
+                <div class="value">-</div>
+                <div class="sub">等待计算</div>
+            </div>
+            <div class="stability-card neutral">
+                <div class="label">近60样本</div>
+                <div class="value">-</div>
+                <div class="sub">等待计算</div>
+            </div>
+            <div class="stability-card neutral">
+                <div class="label">近120样本</div>
+                <div class="value">-</div>
+                <div class="sub">等待计算</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
+            <div style="max-height: 320px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>Setup</th>
+                            <th>样本(120)</th>
+                            <th>胜率</th>
+                            <th>平均收益</th>
+                            <th>PF</th>
+                            <th>最大回撤</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workbenchSetupPerfTable">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">等待策略分层统计</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="workbenchSignalFeed" class="signal-feed">
+                <div class="watch-empty">等待信号日志</div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-table me-2"></i>候选列表</span>
+                <button class="btn btn-secondary" onclick="refreshWorkbench()">刷新工作台</button>
+            </div>
+            <div style="max-height: 500px; overflow-y: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>等级</th>
+                            <th>标的</th>
+                            <th>Setup</th>
+                            <th>动作</th>
+                            <th>得分</th>
+                            <th>5日</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workbenchTable">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-card-list me-2"></i>标的详情</span>
+                <span class="date" id="workbenchDetailCode">-</span>
+            </div>
+            <div id="workbenchDetail">
+                <div style="color: var(--text-muted); padding: 1rem;">点击候选查看详情</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab 8: 策略证据 -->
+<div id="tab-research" class="tab-content">
+    <div class="research-hero">
+        <div class="research-lead fade-in">
+            <div class="research-kicker">Strategy Evidence</div>
+            <div class="research-title">策略证据与复盘</div>
+            <div class="research-copy">
+                这个页面只保留和胜率直接相关的证据：分窗口胜率、分型稳定性、近期信号结果、执行纪律。
+                不再堆“可读内容”，只看可执行和可复盘的量化证据。
+            </div>
+        </div>
+        <div class="research-warning fade-in">
+            <div class="research-warning-title">
+                <i class="bi bi-shield-exclamation"></i>
+                <span>使用约束</span>
+            </div>
+            <p id="evidenceHint">
+                胜率不能只看单个窗口。至少同时观察 20/60/120 日窗口样本量与回撤，再决定仓位与进攻节奏。
+            </p>
+        </div>
+    </div>
+
+    <div class="research-summary-grid">
+        <div class="research-stat fade-in">
+            <div class="research-stat-label">As Of</div>
+            <div class="research-stat-value" id="evidenceAsOfDate">-</div>
+            <div class="research-stat-sub">策略快照日期</div>
+        </div>
+        <div class="research-stat fade-in" style="animation-delay: 0.05s;">
+            <div class="research-stat-label">Win 20D</div>
+            <div class="research-stat-value" id="evidenceWin20">-</div>
+            <div class="research-stat-sub">短窗胜率</div>
+        </div>
+        <div class="research-stat fade-in" style="animation-delay: 0.1s;">
+            <div class="research-stat-label">Win 60D</div>
+            <div class="research-stat-value" id="evidenceWin60">-</div>
+            <div class="research-stat-sub">中窗胜率</div>
+        </div>
+        <div class="research-stat fade-in" style="animation-delay: 0.15s;">
+            <div class="research-stat-label">Win 120D</div>
+            <div class="research-stat-value" id="evidenceWin120">-</div>
+            <div class="research-stat-sub">长窗稳定性</div>
+        </div>
+    </div>
+
+    <div class="chart-container fade-in">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-funnel me-2"></i>复盘筛选</span>
+            <span class="date" id="evidenceUpdatedAt">-</span>
+        </div>
+        <div class="research-filter-bar" style="grid-template-columns: 180px 1fr 180px;">
+            <select id="evidenceSetupFilter" class="form-select" onchange="loadStrategyEvidenceData()">
+                <option value="">全策略</option>
+            </select>
+            <div style="color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center;">
+                优先看样本量≥30且120日胜率稳定的分型，再决定是否放大仓位。
+            </div>
+            <button class="btn btn-secondary" onclick="loadStrategyEvidenceData()">
+                <i class="bi bi-arrow-repeat"></i>刷新证据
+            </button>
+        </div>
+    </div>
+
+    <div class="research-layout">
+        <div class="chart-container fade-in">
+            <div class="chart-header">
+                <span class="chart-title"><i class="bi bi-table me-2"></i>分型稳定性排行（120日）</span>
+                <span class="date" id="evidenceSetupCount">-</span>
+            </div>
+            <div style="max-height: 520px; overflow: auto;">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>Setup</th>
+                            <th>样本</th>
+                            <th>胜率</th>
+                            <th>平均收益</th>
+                            <th>盈亏比</th>
+                            <th>最大回撤</th>
+                        </tr>
+                    </thead>
+                    <tbody id="evidenceSetupTable">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <div class="chart-container fade-in">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="bi bi-graph-up-arrow me-2"></i>120日胜率趋势</span>
+                </div>
+                <canvas id="evidenceTrendChart" style="width: 100%; height: 220px;"></canvas>
+            </div>
+
+            <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="bi bi-journal-text me-2"></i>最近信号复盘</span>
+                    <span class="date" id="evidenceSignalCount">-</span>
+                </div>
+                <div id="evidenceSignalFeed" class="research-feed">
+                    <div class="research-empty">加载中...</div>
+                </div>
+            </div>
+
+            <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="bi bi-check2-square me-2"></i>执行纪律清单</span>
+                </div>
+                <div id="evidenceChecklist" class="research-side-list">
+                    <div class="research-empty">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/chart.min.js"></script>
+<script>
+    let charts = {};
+    let currentTab = 'dashboard';
+    const evidenceState = {
+        perf: null,
+        selectedSetup: '',
+    };
+    const opportunityPoolState = {
+        payload: null,
+        selectedCode: null
+    };
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatNumber(value, digits = 2) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return '-';
+        }
+        return Number(value).toFixed(digits);
+    }
+
+    function formatSignedNumber(value, digits = 2, suffix = '') {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return '-';
+        }
+        const num = Number(value);
+        return `${num >= 0 ? '+' : ''}${num.toFixed(digits)}${suffix}`;
+    }
+
+    function formatSignedPercent(value, digits = 2) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return '-';
+        }
+        const num = Number(value);
+        return `${num >= 0 ? '+' : ''}${num.toFixed(digits)}%`;
+    }
+
+    function formatQuoteTime(value) {
+        if (!value) return '未返回时间';
+        return String(value).replace('T', ' ').slice(0, 16);
+    }
+
+    function getSignalClass(signal) {
+        if (signal === 'positive') return 'positive';
+        if (signal === 'negative') return 'negative';
+        return 'neutral';
+    }
+
+    function normalizeDecisionPayload(payload = {}) {
+        const rawDrivers = payload.drivers_map || payload.drivers || {};
+        const drivers = Array.isArray(rawDrivers)
+            ? rawDrivers.reduce((acc, item) => {
+                if (item && item.key) {
+                    acc[item.key] = {
+                        ...item,
+                        value: item.value,
+                        signal: item.signal,
+                        comment: item.hint || item.comment || '',
+                        band: item.display || ''
+                    };
+                }
+                return acc;
+            }, {})
+            : rawDrivers;
+        const matrix = payload.action_matrix || [];
+        const summary = payload.opportunity_summary || payload.opportunity_snapshot || {};
+        const macro = payload.macro || payload.regime || {};
+        return { drivers, matrix, summary, macro };
+    }
+
+    function renderDriverBoard(payload = {}) {
+        const { drivers } = normalizeDecisionPayload(payload);
+        const board = document.getElementById('driverBoard');
+        if (!board) return;
+
+        const entries = [
+            { key: 'breadth_ratio', label: '市场广度', unit: 'x', fallback: '-', sub: '上涨/下跌比值' },
+            { key: 'limit_ratio', label: '涨跌停比', unit: 'x', fallback: '-', sub: '涨停/跌停比值' },
+            { key: 'north_money_5d', label: '北向5日', unit: '亿', fallback: '-', sub: '近5交易日合计' },
+            { key: 'north_flow_impulse', label: '北向动量偏离', unit: '亿', fallback: '-', sub: '5日流入相对20日基线' },
+            { key: 'vix_close', label: 'VIX波动', unit: '', fallback: '-', sub: '外部波动水平' },
+            { key: 'storage_fresh_pct', label: '数据新鲜度', unit: '%', fallback: '-', sub: '本地快照与表健康' }
+        ];
+
+        board.innerHTML = entries.map(item => {
+            const detail = drivers[item.key] || {};
+            const signal = detail.signal || 'neutral';
+            const rawValue = detail.value;
+            const value = rawValue === null || rawValue === undefined
+                ? item.fallback
+                : `${formatNumber(rawValue, item.unit === '亿' ? 0 : 2)}${item.unit}`;
+            const sub = detail.comment || item.sub;
+            return `
+                <div class="driver-card ${getSignalClass(signal)}">
+                    <div class="label">${item.label}</div>
+                    <div class="value">${value}</div>
+                    <div class="sub">${escapeHtml(sub)}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderActionMatrix(payload = {}) {
+        const { matrix } = normalizeDecisionPayload(payload);
+        const container = document.getElementById('actionMatrixBoard');
+        if (!container) return;
+
+        const fallback = [
+            { scenario: 'risk_on', action: '进攻模式，聚焦A/B档候选并执行分批建仓', position: '60%-80%' },
+            { scenario: 'neutral', action: '中性模式，优先高确定性因子共振标的', position: '30%-50%' },
+            { scenario: 'risk_off', action: '防守模式，控制回撤并减少追高交易', position: '10%-25%' }
+        ];
+        const rows = matrix.length ? matrix : fallback;
+
+        container.innerHTML = rows.map(row => `
+            <div class="matrix-item">
+                <div class="regime">${escapeHtml(String(row.regime || row.scenario || 'neutral').replace('_', '-'))}</div>
+                <div class="action">${escapeHtml(row.action || row.comment || '等待策略动作')}</div>
+                <div class="position">${escapeHtml(row.position || row.position_range || '-')}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderOpportunitySnapshot(payload = {}) {
+        const { summary } = normalizeDecisionPayload(payload);
+        const container = document.getElementById('opportunitySnapshot');
+        if (!container) return;
+
+        const gradeCounts = summary.grade_counts || {};
+        const total = Number(summary.total_candidates || 0);
+        const buyCount = Number(summary.buy_count || 0);
+        const buyRatio = total > 0 ? (buyCount / total) * 100 : 0;
+
+        container.innerHTML = `
+            <div class="opportunity-card">
+                <div class="label">A / B / C</div>
+                <div class="value">${gradeCounts.A || 0} / ${gradeCounts.B || 0} / ${gradeCounts.C || 0}</div>
+                <div class="sub">等级分布</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">买入动作占比</div>
+                <div class="value">${formatNumber(buyRatio, 1)}%</div>
+                <div class="sub">${buyCount}/${total} 候选标记为买入动作</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">平均分</div>
+                <div class="value">${formatNumber(summary.average_score || 0, 1)}</div>
+                <div class="sub">机会池质量均值</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">风险标记数</div>
+                <div class="value">${summary.risk_flagged || 0}</div>
+                <div class="sub">触发风控关注</div>
+            </div>
+        `;
+    }
+
+    function renderMacroDimensions(payload = {}) {
+        const { drivers, macro } = normalizeDecisionPayload(payload);
+        const container = document.getElementById('macroDimensionBoard');
+        if (!container) return;
+
+        const dims = [
+            {
+                label: '波动维度',
+                value: drivers.vix_close?.value,
+                text: drivers.vix_close?.band || 'VIX',
+                sub: drivers.vix_close?.comment || '监控外部波动扰动',
+                signal: drivers.vix_close?.signal || 'neutral',
+                digits: 2
+            },
+            {
+                label: '资金方向',
+                value: drivers.north_money_5d?.value,
+                text: '北向5日净流入',
+                sub: drivers.north_money_5d?.comment || '观察外资是否持续给增量资金',
+                signal: drivers.north_money_5d?.signal || 'neutral',
+                digits: 1
+            },
+            {
+                label: '资金动量',
+                value: drivers.north_flow_impulse?.value,
+                text: '5D-20D基线',
+                sub: drivers.north_flow_impulse?.comment || '识别资金加速流入或转弱',
+                signal: drivers.north_flow_impulse?.signal || 'neutral',
+                digits: 1
+            },
+            {
+                label: '广度维度',
+                value: drivers.breadth_ratio?.value,
+                text: '上涨/下跌',
+                sub: drivers.breadth_ratio?.comment || '识别普涨还是抱团',
+                signal: drivers.breadth_ratio?.signal || 'neutral',
+                digits: 2
+            },
+            {
+                label: '涨跌停结构',
+                value: drivers.limit_ratio?.value,
+                text: '涨停/跌停',
+                sub: drivers.limit_ratio?.comment || '连板扩散与风险偏好',
+                signal: drivers.limit_ratio?.signal || 'neutral',
+                digits: 2
+            }
+        ];
+
+        container.innerHTML = dims.map(dim => `
+            <div class="macro-dimension ${getSignalClass(dim.signal)}">
+                <div class="label">${dim.label}</div>
+                <div class="value">${dim.value === undefined || dim.value === null ? '-' : formatNumber(dim.value, dim.digits || 2)}</div>
+                <div class="sub">${escapeHtml(dim.text)} · ${escapeHtml(dim.sub)}</div>
+            </div>
+        `).join('');
+
+        const hint = document.getElementById('macroActionHint');
+        if (hint) {
+            const regime = macro.label || macro.regime_label || macro.regime || 'neutral';
+            const mode = macro.execution_mode ? `执行模式 ${macro.execution_mode}` : '';
+            const action = mode || '暂无建议，维持分层仓位和风控纪律';
+            hint.textContent = `状态 ${regime}: ${action}`;
+        }
+    }
+
+    async function loadDecisionCenter() {
+        try {
+            const data = await api('/investment/api/decision-center');
+            renderDriverBoard(data);
+            renderActionMatrix(data);
+            renderOpportunitySnapshot(data);
+            renderMacroDimensions(data);
+            renderWinRateConsole(data);
+            const timeEl = document.getElementById('decisionCenterTime');
+            if (timeEl) {
+                timeEl.textContent = data.generated_at ? formatQuoteTime(data.generated_at) : '聚合接口已返回';
+            }
+            const macroDate = document.getElementById('macroStateDate');
+            if (macroDate) {
+                macroDate.textContent = data.generated_at ? formatQuoteTime(data.generated_at) : '已更新';
+            }
+        } catch (error) {
+            console.error('加载决策中心失败:', error);
+        }
+    }
+
+    function renderHomeDecision(overview = {}, watchData = {}) {
+        const sentiment = overview.sentiment || {};
+        const vix = overview.vix || {};
+        const storage = (watchData && watchData.storage) || overview.storage || {};
+
+        const up = Number(sentiment.up_count || 0);
+        const down = Number(sentiment.down_count || 0);
+        const regimeLabel = up > down * 1.2 ? 'Risk-On' : down > up * 1.2 ? 'Risk-Off' : 'Neutral';
+        const regimeSub = sentiment.date ? `${sentiment.date} 市场广度` : '市场广度待更新';
+
+        const vixValue = Number(vix.close || 0);
+        const vixBand = !vix.close ? '-' : vixValue < 14 ? '低波动' : vixValue < 22 ? '中性波动' : '高波动';
+        const vixSub = vix.close ? `VIX ${vixValue.toFixed(2)}` : 'VIX 暂缺';
+
+        const coverageText = '-';
+        const coverageSub = '等待策略分层快照';
+
+        const storageMode = storage.updated_at ? '已同步' : '-';
+        const storageSub = storage.updated_at ? `本地快照 ${formatQuoteTime(storage.updated_at)}` : '等待数据健康状态';
+
+        const setText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+
+        setText('homeRegime', regimeLabel);
+        setText('homeRegimeSub', regimeSub);
+        setText('homeVixBand', vixBand);
+        setText('homeVixSub', vixSub);
+        setText('homeWatchCoverage', coverageText);
+        setText('homeWatchSub', coverageSub);
+        setText('homeStorageMode', storageMode);
+        setText('homeStorageSub', storageSub);
+    }
+
+    function getWindowMetric(windows, size) {
+        return (windows || []).find(item => Number(item.window_size) === Number(size)) || {};
+    }
+
+    function formatStrategyPercent(value, digits = 1) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return '-';
+        }
+        return `${Number(value).toFixed(digits)}%`;
+    }
+
+    function renderWinRateConsole(payload = {}) {
+        const summaryGrid = document.getElementById('watchSummaryGrid');
+        const groupsGrid = document.getElementById('watchGroupsGrid');
+        if (!summaryGrid || !groupsGrid) return;
+
+        const strategy = payload.strategy_stability || {};
+        const windows = strategy.windows || [];
+        const setups = strategy.setups || [];
+        const signals = strategy.recent_signals || [];
+        const health = payload.data_health || {};
+        const opportunity = payload.opportunity_summary || {};
+
+        const w20 = getWindowMetric(windows, 20);
+        const w60 = getWindowMetric(windows, 60);
+        const w120 = getWindowMetric(windows, 120);
+        const dataFreshPct = Number(health.storage_fresh_pct || 0);
+        const sample120 = Number(w120.sample_size || 0);
+        const qualityLabel = sample120 >= 80 && dataFreshPct >= 85 ? '高' : sample120 >= 30 && dataFreshPct >= 70 ? '中' : '低';
+        const setHeaderText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setHeaderText('homeWatchCoverage', formatStrategyPercent(w20.win_rate));
+        setHeaderText('homeWatchSub', `20窗样本 ${w20.sample_size || 0} · 盈亏比 ${formatNumber(w20.profit_factor || 0, 2)}`);
+        setHeaderText('homeStorageMode', `${formatNumber(dataFreshPct, 1)}%`);
+        setHeaderText('homeStorageSub', `fresh ${health.fresh_count || 0}/${health.total_storage || 0}`);
+
+        summaryGrid.innerHTML = `
+            <div class="watch-summary-card">
+                <div class="watch-summary-label">20日胜率</div>
+                <div class="watch-summary-value">${formatStrategyPercent(w20.win_rate)}</div>
+                <div class="watch-summary-sub">样本 ${w20.sample_size || 0} · 盈亏比 ${formatNumber(w20.profit_factor || 0, 2)}</div>
+            </div>
+            <div class="watch-summary-card">
+                <div class="watch-summary-label">60日胜率</div>
+                <div class="watch-summary-value">${formatStrategyPercent(w60.win_rate)}</div>
+                <div class="watch-summary-sub">样本 ${w60.sample_size || 0} · 平均收益 ${formatSignedPercent(w60.avg_return || 0, 2)}</div>
+            </div>
+            <div class="watch-summary-card">
+                <div class="watch-summary-label">120日胜率</div>
+                <div class="watch-summary-value">${formatStrategyPercent(w120.win_rate)}</div>
+                <div class="watch-summary-sub">样本 ${w120.sample_size || 0} · 最大回撤 ${formatSignedPercent(w120.max_drawdown || 0, 2)}</div>
+            </div>
+            <div class="watch-summary-card">
+                <div class="watch-summary-label">样本有效性</div>
+                <div class="watch-summary-value">${qualityLabel}</div>
+                <div class="watch-summary-sub">120窗样本 ${sample120} · 数据新鲜度 ${formatNumber(dataFreshPct, 1)}%</div>
+            </div>
+        `;
+
+        const setupRows = setups.slice(0, 8).map(item => `
+            <tr>
+                <td>${escapeHtml(item.setup_label || item.setup_name || '-')}</td>
+                <td style="font-family: var(--font-mono);">${item.sample_size || 0}</td>
+                <td class="${Number(item.win_rate || 0) >= 55 ? 'positive' : 'negative'}">${formatStrategyPercent(item.win_rate)}</td>
+                <td class="${Number(item.avg_return || 0) >= 0 ? 'positive' : 'negative'}">${formatSignedPercent(item.avg_return || 0, 2)}</td>
+                <td style="font-family: var(--font-mono);">${formatNumber(item.profit_factor || 0, 2)}</td>
+            </tr>
+        `).join('');
+
+        const signalItems = signals.slice(0, 10).map(item => {
+            const ret = Number(item.outcome_return || 0);
+            const cls = ret >= 0 ? 'positive' : 'negative';
+            const time = formatQuoteTime(item.signal_time || item.trade_date);
+            const setup = item.setup_label || item.setup_name || '-';
+            return `
+                <div class="detail-list-item">
+                    <div style="display: flex; justify-content: space-between; gap: 0.5rem;">
+                        <span style="font-weight: 600;">${escapeHtml(item.name || '-')} · ${escapeHtml(item.code || '-')}</span>
+                        <span class="${cls}" style="font-family: var(--font-mono);">${formatSignedPercent(ret, 2)}</span>
+                    </div>
+                    <div style="margin-top: 0.15rem; color: var(--text-muted); font-size: 0.78rem;">
+                        ${escapeHtml(time)} · ${escapeHtml(setup)} · ${escapeHtml(item.action || '-')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const totalCandidates = Number(opportunity.total_candidates || 0);
+        const buyCount = Number(opportunity.buy_count || 0);
+        const buyRatioPct = totalCandidates > 0 ? (buyCount / totalCandidates) * 100 : 0;
+        const riskFlagged = Number(opportunity.risk_flagged || 0);
+        const riskRatioPct = totalCandidates > 0 ? (riskFlagged / totalCandidates) * 100 : 0;
+        const checklist = [
+            {
+                pass: Number(w120.sample_size || 0) >= 60 && Number(w120.win_rate || 0) >= 55,
+                text: `长窗稳定性: 120窗胜率 ${formatStrategyPercent(w120.win_rate)}，样本 ${w120.sample_size || 0}`,
+            },
+            {
+                pass: Number(w60.win_rate || 0) >= 55,
+                text: `中窗确认: 60窗胜率 ${formatStrategyPercent(w60.win_rate)}`,
+            },
+            {
+                pass: buyRatioPct <= 35,
+                text: `信号选择性: 买入占比 ${formatNumber(buyRatioPct, 1)}%`,
+            },
+            {
+                pass: riskRatioPct <= 35,
+                text: `风险暴露: 风险标记占比 ${formatNumber(riskRatioPct, 1)}%`,
+            },
+            {
+                pass: dataFreshPct >= 85,
+                text: `数据新鲜度: ${formatNumber(dataFreshPct, 1)}%`,
+            },
+        ];
+
+        groupsGrid.innerHTML = `
+            <div class="chart-container fade-in">
+                <div class="watch-group-header">
+                    <div>
+                        <div class="watch-group-title">策略分型排行</div>
+                        <div class="watch-group-subtitle">按120窗样本和胜率观察可复制性</div>
+                    </div>
+                    <div class="watch-chip-row">
+                        <span class="watch-chip">${setups.length} 个分型</span>
+                    </div>
+                </div>
+                ${setups.length ? `
+                    <div style="max-height: 320px; overflow: auto;">
+                        <table class="stock-table">
+                            <thead>
+                                <tr>
+                                    <th>Setup</th>
+                                    <th>样本</th>
+                                    <th>胜率</th>
+                                    <th>平均收益</th>
+                                    <th>盈亏比</th>
+                                </tr>
+                            </thead>
+                            <tbody>${setupRows}</tbody>
+                        </table>
+                    </div>
+                ` : '<div class="watch-empty">暂无分型胜率样本，先执行策略同步</div>'}
+            </div>
+
+            <div class="chart-container fade-in">
+                <div class="watch-group-header">
+                    <div>
+                        <div class="watch-group-title">最近信号复盘</div>
+                        <div class="watch-group-subtitle">只保留可回看结果的交易证据</div>
+                    </div>
+                    <div class="watch-chip-row">
+                        <span class="watch-chip">${signals.length} 条</span>
+                    </div>
+                </div>
+                <div class="detail-list">
+                    ${signalItems || '<div class="watch-empty">暂无可复盘信号</div>'}
+                </div>
+            </div>
+
+            <div class="chart-container fade-in">
+                <div class="watch-group-header">
+                    <div>
+                        <div class="watch-group-title">执行纪律清单</div>
+                        <div class="watch-group-subtitle">不满足条件时主动降仓或停手</div>
+                    </div>
+                </div>
+                <div class="detail-list">
+                    ${checklist.map(item => `
+                        <div class="detail-list-item">
+                            <span class="${item.pass ? 'positive' : 'negative'}">${item.pass ? '通过' : '未通过'}</span>
+                            <span style="margin-left: 0.35rem;">${escapeHtml(item.text)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderDataHealth(data = {}) {
+        const summary = data.summary || {};
+        const storage = data.storage || {};
+        const tables = data.tables || [];
+        const issues = data.issues || [];
+
+        const healthScore = summary.health_score ?? summary.score ?? '-';
+        const warningCount = summary.warning_count ?? issues.filter(i => (i.level || '').toLowerCase() === 'warning').length;
+        const errorCount = summary.error_count ?? issues.filter(i => (i.level || '').toLowerCase() === 'error').length;
+
+        const storageEntries = Array.isArray(storage)
+            ? storage
+            : Object.values(storage || {});
+        const freshCount = storageEntries.filter(item => item && item.is_fresh).length;
+        const totalStorage = storageEntries.length;
+
+        const summaryEl = document.getElementById('dataHealthSummary');
+        if (summaryEl) {
+            summaryEl.innerHTML = `
+                <div class="health-card">
+                    <div class="label">健康分</div>
+                    <div class="value">${escapeHtml(String(healthScore))}</div>
+                    <div class="sub">综合评估（表完整性 + 快照新鲜度）</div>
+                </div>
+                <div class="health-card">
+                    <div class="label">错误数</div>
+                    <div class="value">${escapeHtml(String(errorCount))}</div>
+                    <div class="sub">建议立即处理</div>
+                </div>
+                <div class="health-card">
+                    <div class="label">告警数</div>
+                    <div class="value">${escapeHtml(String(warningCount))}</div>
+                    <div class="sub">建议当日修复</div>
+                </div>
+                <div class="health-card">
+                    <div class="label">快照状态</div>
+                    <div class="value">${freshCount}/${totalStorage || 0}</div>
+                    <div class="sub">fresh / total</div>
+                </div>
+            `;
+        }
+
+        const issueEl = document.getElementById('dataHealthIssues');
+        if (issueEl) {
+            if (!issues.length) {
+                issueEl.innerHTML = '<div class="watch-empty">暂无自动识别问题</div>';
+            } else {
+                issueEl.innerHTML = issues.map(issue => {
+                    const level = String(issue.level || 'warning').toLowerCase();
+                    const title = issue.title || issue.code || '健康项';
+                    const detail = issue.message || issue.detail || '';
+                    return `
+                        <div class="issue-item ${level === 'error' ? 'error' : 'warning'}">
+                            <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(title)}</div>
+                            <div style="color: var(--text-secondary); font-size: 0.85rem;">${escapeHtml(detail)}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        const tableEl = document.getElementById('tablesTable');
+        if (tableEl && tables.length) {
+            tableEl.innerHTML = tables.map(t => `
+                <tr>
+                    <td>
+                        ${escapeHtml(t.name || t.table || '-')}
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(t.latest_date || t.latest || '-')}</div>
+                    </td>
+                    <td style="font-family: var(--font-mono);">
+                        ${escapeHtml(String(t.count ?? t.records ?? '-'))}
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(t.status || '-')}</div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // ==================== Tab切换 ====================
+    function switchTab(tabName, trigger = null) {
+        currentTab = tabName;
+
+        // 更新Tab按钮状态
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        const target = trigger || event?.currentTarget || event?.target;
+        if (target) {
+            target.classList.add('active');
+        }
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+
+        // 加载对应Tab的数据
+        loadTabData(tabName);
+    }
+
+    function loadTabData(tabName) {
+        switch(tabName) {
+            case 'dashboard':
+                loadDashboardData();
+                break;
+            case 'macro':
+                loadMacroData();
+                break;
+            case 'fundamentals':
+                loadFundamentalsData();
+                break;
+            case 'sector':
+                loadSectorData();
+                break;
+            case 'quant':
+                loadQuantData();
+                break;
+            case 'workbench':
+                loadWorkbenchData();
+                break;
+            case 'research':
+                loadStrategyEvidenceData();
+                break;
+            case 'data-health':
+                loadDataHealthTab();
+                break;
+            case 'etl':
+                loadDataHealthTab();
+                break;
+        }
+    }
+
+    function refreshCurrentTab() {
+        loadTabData(currentTab);
+    }
+
+    // ==================== 全景中枢 ====================
+    async function loadDashboardData() {
+        loadMarketData();
+        loadDecisionCenter();
+        loadPreopenStrategy();
+        loadGlobalRiskRadar(180);
+    }
+
+    async function loadMarketData() {
+        try {
+            const data = await api('/investment/api/overview');
+
+            // 更新指数卡片
+            for (const [code, info] of Object.entries(data.indices || {})) {
+                const card = document.getElementById(`index-${code}`);
+                const dateEl = document.getElementById(`date-${code}`);
+                if (card) {
+                    card.querySelector('.value').textContent = info.close?.toFixed(2) || '-';
+                    if (dateEl && info.date) {
+                        dateEl.textContent = info.date;
+                    }
+                    const changeEl = card.querySelector('.change');
+                    const changePct = info.change_pct || 0;
+                    changeEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+                    changeEl.className = 'change ' + (changePct >= 0 ? 'positive' : 'negative');
+                }
+            }
+
+            // VIX恐慌指数
+            if (data.vix) {
+                const vix = data.vix.close;
+                document.getElementById('vixValue').textContent = vix?.toFixed(2) || '-';
+                const position = Math.max(0, Math.min(100, (40 - vix) * 2.5));
+                document.getElementById('vixIndicator').style.left = position + '%';
+            }
+
+            // 市场情绪
+            if (data.sentiment) {
+                const items = document.querySelectorAll('#sentimentData .rate-item');
+                items[0].querySelector('.value').textContent = data.sentiment.up_count || '-';
+                items[1].querySelector('.value').textContent = data.sentiment.limit_up_count || '-';
+                items[2].querySelector('.value').textContent = data.sentiment.flat_count || '-';
+                items[3].querySelector('.value').textContent = data.sentiment.limit_down_count || '-';
+                items[4].querySelector('.value').textContent = data.sentiment.down_count || '-';
+                if (data.sentiment.date) {
+                    document.getElementById('date-sentiment').textContent = data.sentiment.date;
+                }
+            }
+
+            const watchData = data.watch_stocks || {};
+            if (!watchData.storage && data.storage) {
+                watchData.storage = data.storage;
+            }
+            renderHomeDecision(data, watchData);
+
+        } catch (error) {
+            console.error('加载市场数据失败:', error);
+        }
+    }
+
+    async function loadPreopenStrategy() {
+        try {
+            const data = await api('/investment/api/strategy/preopen/latest?max_age_seconds=57600');
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            if (data.status === 'building') {
+                setText('date-preopen', data.generated_at ? formatQuoteTime(data.generated_at) : '-');
+                setText('preopenRegime', 'BUILDING');
+                setText('preopenExposure', '-');
+                setText('preopenAction', data.message || '盘前策略后台生成中...');
+                const setupFocus = document.getElementById('preopenSetupFocus');
+                if (setupFocus) {
+                    setupFocus.innerHTML = '<span class="watch-chip">后台生成中</span>';
+                }
+                return;
+            }
+            setText('date-preopen', data.generated_at ? formatQuoteTime(data.generated_at) : '-');
+            setText('preopenRegime', (data.regime || '-').toUpperCase());
+            setText('preopenExposure', data.target_exposure || '-');
+            const aiSummary = (data.daily_intelligence || {}).summary;
+            const finalAction = aiSummary
+                ? `${data.core_action || ''} AI情报: ${aiSummary}`
+                : (data.core_action || '暂无盘前执行建议');
+            setText('preopenAction', finalAction);
+
+            const setupFocus = document.getElementById('preopenSetupFocus');
+            if (setupFocus) {
+                const rows = data.setup_focus || [];
+                if (!rows.length) {
+                    setupFocus.innerHTML = '<span class="watch-chip">分型: 暂无</span>';
+                } else {
+                    setupFocus.innerHTML = rows.slice(0, 3).map(item => `<span class="watch-chip">${escapeHtml(item)}</span>`).join('');
+                }
+            }
+        } catch (error) {
+            console.error('加载盘前策略失败:', error);
+        }
+    }
+
+    async function loadIndexHistory(symbol, days) {
+        try {
+            const data = await api(`/investment/api/index-history/${symbol}?days=${days}`);
+            if (data.data && data.data.length > 0) {
+                const canvasId = symbol === 'hsi' ? 'chartHSI' : 'chartShanghai';
+                const label = symbol === 'hsi' ? '恒生指数' : '上证指数';
+                renderLineChart(canvasId, data.data, label);
+            }
+        } catch (error) {
+            console.error('加载指数历史失败:', error);
+        }
+    }
+
+    async function loadInterestRates(days) {
+        try {
+            const data = await api(`/investment/api/interest-rates?days=${days}`);
+            if (data.data && data.data.length > 0) {
+                renderShiborChart(data.data);
+            }
+        } catch (error) {
+            console.error('加载利率数据失败:', error);
+        }
+    }
+
+    async function loadGlobalRiskRadar(days) {
+        try {
+            const data = await api(`/investment/api/global-risk?days=${days}`);
+            const us10y = data.us10y || {};
+            const vix = data.vix || {};
+            const pizza = data.pentagon_pizza || {};
+
+            document.getElementById('date-global-risk').textContent = formatQuoteTime(data.update_time);
+
+            if (typeof us10y.latest === 'number') {
+                document.getElementById('us10yValue').textContent = `${formatNumber(us10y.latest, 2)}%`;
+                document.getElementById('us10yRegime').textContent = us10y.regime || '美国10Y';
+                document.getElementById('us10yMeta').textContent = `截至 ${us10y.as_of || '-'} | 较前值 ${formatSignedNumber(us10y.delta_bps, 1, 'bp')}`;
+                document.getElementById('us10yCommentary').textContent = us10y.commentary || '暂无解读';
+            }
+            if (us10y.history && us10y.history.length > 0) {
+                renderUs10YChart(us10y.history);
+            }
+
+            if (typeof vix.latest === 'number') {
+                document.getElementById('globalVixValue').textContent = formatNumber(vix.latest, 2);
+                document.getElementById('globalVixZone').textContent = vix.zone || 'VIX';
+                document.getElementById('globalVixMeta').textContent = `截至 ${vix.as_of || '-'} | 日变动 ${formatSignedPercent(vix.delta_pct, 2)}`;
+                document.getElementById('globalVixCommentary').textContent = vix.commentary || '暂无解读';
+                document.getElementById('date-global-vix').textContent = vix.as_of || '-';
+            }
+
+            if (typeof pizza.level === 'number') {
+                document.getElementById('pizzaValue').textContent = `DOUGHCON ${pizza.level}`;
+                document.getElementById('pizzaHeadline').textContent = pizza.headline || '披萨监测';
+                const locationsText = pizza.locations_monitored ? `${pizza.locations_monitored} 个监测点位` : '点位数未知';
+                const watchText = pizza.watch_status || '状态未知';
+                document.getElementById('pizzaMeta').textContent = `${locationsText} | ${watchText}`;
+                document.getElementById('pizzaCommentary').textContent = pizza.description || '暂无解读';
+                document.getElementById('date-pizza-index').textContent = formatQuoteTime(pizza.as_of);
+            }
+        } catch (error) {
+            console.error('加载全球风险雷达失败:', error);
+        }
+    }
+
+    // ==================== 宏观流动性 ====================
+    async function loadMacroData() {
+        try {
+            const [data] = await Promise.all([
+                api('/investment/api/macro/overview'),
+                loadDecisionCenter()
+            ]);
+
+            // 北向资金趋势
+            const trendMap = {
+                'strong_inflow': { text: '强劲流入', class: 'bg-success' },
+                'inflow': { text: '流入', class: 'bg-success' },
+                'neutral': { text: '平衡', class: 'bg-secondary' },
+                'outflow': { text: '流出', class: 'bg-danger' },
+                'strong_outflow': { text: '大幅流出', class: 'bg-danger' }
+            };
+            const trend = trendMap[data.north_money_trend] || trendMap['neutral'];
+            document.getElementById('northMoneyTrend').textContent = trend.text;
+            document.getElementById('northMoneyTrend').className = 'badge ' + trend.class;
+
+            const nm5d = data.north_money_5d;
+            document.getElementById('northMoney5d').textContent = (nm5d >= 0 ? '+' : '') + nm5d.toFixed(0) + '亿';
+            document.getElementById('northMoney5d').style.color = nm5d >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+
+            // 加载北向资金图表
+            loadNorthMoneyChart();
+
+            // 流动性指标
+            const indicators = await api('/investment/api/macro/liquidity-indicators');
+            const indicatorsEl = document.getElementById('liquidityIndicators');
+            if (indicators.indicators && indicators.indicators.length > 0) {
+                indicatorsEl.innerHTML = indicators.indicators.map(ind => `
+                    <div style="display: flex; justify-content: space-between; padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.5rem; margin-bottom: 0.5rem;">
+                        <span>${ind.name}</span>
+                        <span style="font-family: var(--font-mono);" class="${ind.level === 'negative' || ind.level === 'tight' ? 'negative' : ind.level === 'positive' || ind.level === 'loose' ? 'positive' : ''}">
+                            ${ind.display || (ind.value === null || ind.value === undefined ? '-' : String(ind.value))}
+                        </span>
+                    </div>
+                `).join('');
+            }
+
+            // 利率历史
+            loadRatesHistory(90);
+
+        } catch (error) {
+            console.error('加载宏观数据失败:', error);
+        }
+    }
+
+    async function loadNorthMoneyChart() {
+        const data = await api('/investment/api/north-money?days=60');
+        if (data.data && data.data.length > 0) {
+            const ctx = document.getElementById('chartNorthMoney').getContext('2d');
+            if (charts['chartNorthMoney']) charts['chartNorthMoney'].destroy();
+
+            const labels = data.data.map(d => d.date);
+            const values = data.data.map(d => d.total_inflow);
+
+            charts['chartNorthMoney'] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '净流入(亿)',
+                        data: values,
+                        backgroundColor: values.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
+                        borderRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+                    }
+                }
+            });
+        }
+    }
+
+    async function loadRatesHistory(days) {
+        const [northMoneyData, vixData] = await Promise.all([
+            api(`/investment/api/north-money?days=${days}`),
+            api(`/investment/api/vix-history?days=${days}`)
+        ]);
+
+        const northRows = Array.isArray(northMoneyData.data) ? northMoneyData.data : [];
+        const vixRows = Array.isArray(vixData.data) ? vixData.data : [];
+        if (northRows.length > 0 || vixRows.length > 0) {
+            const merged = new Map();
+            northRows.forEach(row => {
+                const key = row.date;
+                merged.set(key, {
+                    date: key,
+                    north: Number(row.total_inflow ?? 0),
+                    vix: null
+                });
+            });
+            vixRows.forEach(row => {
+                const key = row.date;
+                const current = merged.get(key) || { date: key, north: null, vix: null };
+                current.vix = Number(row.close ?? row.vix_close ?? 0);
+                merged.set(key, current);
+            });
+            const rows = Array.from(merged.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+            const ctx = document.getElementById('chartRatesHistory').getContext('2d');
+            if (charts['chartRatesHistory']) charts['chartRatesHistory'].destroy();
+
+            charts['chartRatesHistory'] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: rows.map(d => d.date),
+                    datasets: [
+                        {
+                            type: 'bar',
+                            label: '北向净流入(亿)',
+                            data: rows.map(d => d.north),
+                            backgroundColor: rows.map(d => (d.north ?? 0) >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)'),
+                            borderRadius: 2,
+                            yAxisID: 'yNorth'
+                        },
+                        {
+                            type: 'line',
+                            label: 'VIX',
+                            data: rows.map(d => d.vix),
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            tension: 0.25,
+                            pointRadius: 0,
+                            yAxisID: 'yVix'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top', labels: { color: '#94a3b8' } } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
+                        yNorth: {
+                            type: 'linear',
+                            position: 'left',
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#64748b' }
+                        },
+                        yVix: {
+                            type: 'linear',
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // ==================== 微观基本面 ====================
+    function formatMetric(value, digits = 1, suffix = '') {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return '-';
+        }
+        return `${Number(value).toFixed(digits)}${suffix}`;
+    }
+
+    function getScoreChipClass(value, reverse = false) {
+        const score = Number(value || 0);
+        if (reverse) {
+            if (score <= 45) return 'positive';
+            if (score >= 60) return 'negative';
+            return 'neutral';
+        }
+        if (score >= 70) return 'positive';
+        if (score >= 50) return 'neutral';
+        return 'negative';
+    }
+
+    function getPoolStatusClass(status) {
+        if (status === 'success') return 'success';
+        if (status === 'error') return 'error';
+        return 'idle';
+    }
+
+    function renderOpportunitySummary(payload = {}) {
+        const summary = payload.summary || {};
+        const container = document.getElementById('opportunityPoolSummary');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="opportunity-card">
+                <div class="label">核心池样本</div>
+                <div class="value">${escapeHtml(String(summary.total_members ?? 0))}</div>
+                <div class="sub">去重后的池内股票数</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">财务覆盖</div>
+                <div class="value">${escapeHtml(String(summary.finance_covered ?? 0))}</div>
+                <div class="sub">有最新报表支撑的标的</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">高覆盖样本</div>
+                <div class="value">${escapeHtml(String(summary.high_coverage_count ?? 0))}</div>
+                <div class="sub">本地数据维度较完整</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">A档机会</div>
+                <div class="value">${escapeHtml(String(summary.grade_a_count ?? 0))}</div>
+                <div class="sub">综合分与风控同时过线</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">可操作样本</div>
+                <div class="value">${escapeHtml(String(summary.actionable_count ?? 0))}</div>
+                <div class="sub">优先入池 + 观察入池</div>
+            </div>
+            <div class="opportunity-card">
+                <div class="label">平均综合分</div>
+                <div class="value">${formatMetric(summary.average_score, 1)}</div>
+                <div class="sub">全池横向比较基线</div>
+            </div>
+        `;
+    }
+
+    function renderPoolStatusBoard(payload = {}) {
+        const board = document.getElementById('poolStatusBoard');
+        const updatedAt = document.getElementById('opportunityPoolUpdatedAt');
+        const countEl = document.getElementById('opportunityPoolMemberCount');
+        if (!board || !updatedAt || !countEl) return;
+
+        const statuses = payload.statuses || [];
+        const summary = payload.summary || {};
+        countEl.textContent = String(summary.total_members || 0);
+        updatedAt.textContent = payload.generated_at ? formatQuoteTime(payload.generated_at) : '-';
+
+        if (!statuses.length) {
+            board.innerHTML = '<span class="watch-chip">尚未生成本地核心池</span>';
+            return;
+        }
+
+        board.innerHTML = statuses.map(item => `
+            <span class="pool-status-chip ${getPoolStatusClass(item.sync_status)}">
+                ${escapeHtml(item.pool_name || '-')}
+                <span style="font-family: var(--font-mono);">${escapeHtml(String(item.member_count ?? 0))}</span>
+                <span style="color: var(--text-muted);">A档 ${escapeHtml(String(item.grade_a_count ?? 0))}</span>
+            </span>
+        `).join('');
+    }
+
+    function renderOpportunityPoolTable(payload = {}) {
+        const table = document.getElementById('opportunityPoolTable');
+        if (!table) return;
+        const rows = payload.leaderboard || [];
+        if (!rows.length) {
+            table.innerHTML = '<tr><td colspan="11" style="text-align: center; color: var(--text-muted);">当前核心池暂无本地评分结果</td></tr>';
+            return;
+        }
+
+        table.innerHTML = rows.map(item => {
+            const active = opportunityPoolState.selectedCode === item.code;
+            const pools = (item.pool_names || []).slice(0, 2).join(' / ');
+            const extraPools = (item.pool_names || []).length > 2 ? ` +${(item.pool_names || []).length - 2}` : '';
+            const qualityClass = getScoreChipClass(item.quality_score);
+            const growthClass = getScoreChipClass(item.growth_score);
+            const valuationClass = getScoreChipClass(item.valuation_score);
+            const technicalClass = getScoreChipClass(item.technical_score);
+            const riskClass = getScoreChipClass(item.risk_score, true);
+            const coverageClass = getScoreChipClass(item.coverage_score);
+            return `
+                <tr onclick="selectOpportunityStock('${escapeHtml(item.code)}')" style="cursor: pointer; ${active ? 'background: rgba(56, 189, 248, 0.08);' : ''}">
+                    <td>
+                        <div style="font-weight: 600;">${escapeHtml(item.name || '-')}</div>
+                        <span class="watch-code">${escapeHtml(item.display_code || item.code || '-')}</span>
+                    </td>
+                    <td>
+                        <span class="mini-chip neutral">${escapeHtml(pools || '-')}</span>
+                        ${extraPools ? `<span class="mini-chip">${escapeHtml(extraPools)}</span>` : ''}
+                    </td>
+                    <td style="font-family: var(--font-mono); font-weight: 700;">${formatMetric(item.total_score, 1)}</td>
+                    <td><span class="mini-chip ${getScoreChipClass(item.total_score)}">${escapeHtml(item.theme || '-')}</span></td>
+                    <td><span class="mini-chip ${qualityClass}">${formatMetric(item.quality_score, 0)}</span></td>
+                    <td><span class="mini-chip ${growthClass}">${formatMetric(item.growth_score, 0)}</span></td>
+                    <td><span class="mini-chip ${valuationClass}">${formatMetric(item.valuation_score, 0)}</span></td>
+                    <td><span class="mini-chip ${technicalClass}">${formatMetric(item.technical_score, 0)}</span></td>
+                    <td><span class="mini-chip ${riskClass}">${formatMetric(item.risk_score, 0)}</span></td>
+                    <td><span class="mini-chip ${coverageClass}">${formatMetric(item.coverage_score, 0)}%</span></td>
+                    <td>
+                        <span class="mini-chip ${item.action_key === 'buy' ? 'positive' : item.action_key === 'watch' ? 'neutral' : 'negative'}">
+                            ${escapeHtml(item.action_label || '-')}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderOpportunityCandidates(payload = {}) {
+        const container = document.getElementById('opportunityCandidates');
+        if (!container) return;
+        const items = payload.opportunities || [];
+        if (!items.length) {
+            container.innerHTML = '<div class="watch-empty">当前核心池没有达到入池阈值的标的</div>';
+            return;
+        }
+
+        container.innerHTML = items.map(item => `
+            <div class="candidate-card ${opportunityPoolState.selectedCode === item.code ? 'active' : ''}" onclick="selectOpportunityStock('${escapeHtml(item.code)}')">
+                <div class="head">
+                    <div>
+                        <div class="name">${escapeHtml(item.name || '-')}</div>
+                        <div class="sub">${escapeHtml(item.display_code || item.code || '-')}</div>
+                    </div>
+                    <span class="mini-chip ${item.action_key === 'buy' ? 'positive' : 'neutral'}">${escapeHtml(item.grade || '-')}</span>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 700; font-family: var(--font-mono);">${formatMetric(item.total_score, 1)}</div>
+                <div style="margin-top: 0.35rem; color: var(--text-secondary); font-size: 0.8rem;">${escapeHtml(item.theme || '等待确认')}</div>
+                <div class="candidate-chip-row">
+                    <span class="mini-chip ${getScoreChipClass(item.quality_score)}">质量 ${formatMetric(item.quality_score, 0)}</span>
+                    <span class="mini-chip ${getScoreChipClass(item.growth_score)}">增长 ${formatMetric(item.growth_score, 0)}</span>
+                    <span class="mini-chip ${getScoreChipClass(item.valuation_score)}">估值 ${formatMetric(item.valuation_score, 0)}</span>
+                    <span class="mini-chip ${getScoreChipClass(item.risk_score, true)}">风险 ${formatMetric(item.risk_score, 0)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderOpportunityCoverageNotes(payload = {}) {
+        const container = document.getElementById('opportunityCoverageNotes');
+        if (!container) return;
+        const summary = payload.summary || {};
+        const statuses = payload.statuses || [];
+        const total = Number(summary.total_members || 0);
+        const notes = [
+            `基本面覆盖 ${summary.finance_covered || 0}/${total}：只有报表维度真实命中的股票，才适合做“业绩优先”的高胜率筛选。`,
+            `估值覆盖 ${summary.valuation_covered || 0}/${total}，技术覆盖 ${summary.technical_covered || 0}/${total}，因子覆盖 ${summary.factor_covered || 0}/${total}，催化覆盖 ${summary.catalyst_covered || 0}/${total}。`,
+            `高覆盖样本 ${summary.high_coverage_count || 0}：这些标的同时拥有多维本地数据，更适合进入优先机会池。`,
+        ];
+        statuses.slice(0, 4).forEach(item => {
+            notes.push(`${item.pool_name}：样本 ${item.member_count || 0}，A档 ${item.grade_a_count || 0}，平均分 ${formatMetric(item.average_score, 1)}`);
+        });
+        container.innerHTML = notes.map(text => `<div class="detail-list-item">${escapeHtml(text)}</div>`).join('');
+    }
+
+    function renderOpportunityDetailPlaceholder(message) {
+        const container = document.getElementById('opportunityStockDetail');
+        const codeEl = document.getElementById('opportunityDetailCode');
+        if (codeEl) codeEl.textContent = '-';
+        if (container) {
+            container.innerHTML = `<div class="watch-empty">${escapeHtml(message || '选择一只股票查看详细指标、风控闸门和入池判断。')}</div>`;
+        }
+    }
+
+    function renderOpportunityStockDetailPanel(payload = {}) {
+        const container = document.getElementById('opportunityStockDetail');
+        const codeEl = document.getElementById('opportunityDetailCode');
+        if (!container || !codeEl) return;
+
+        const stock = payload.stock || {};
+        const reports = payload.reports || [];
+        const events = payload.events || [];
+        const nextChecks = payload.next_checks || [];
+        codeEl.textContent = stock.display_code || stock.code || '-';
+
+        const metricCards = [
+            { label: '综合分', value: formatMetric(stock.total_score, 1) },
+            { label: '质量', value: formatMetric(stock.quality_score, 1) },
+            { label: '增长', value: formatMetric(stock.growth_score, 1) },
+            { label: '估值', value: formatMetric(stock.valuation_score, 1) },
+            { label: '技术', value: formatMetric(stock.technical_score, 1) },
+            { label: '交易确认', value: formatMetric(stock.confirmation_score, 1) },
+            { label: '风险', value: formatMetric(stock.risk_score, 1) },
+            { label: '覆盖率', value: formatMetric(stock.coverage_score, 0, '%') },
+        ];
+
+        const kvRows = [
+            { label: 'PE(TTM)', value: stock.pe_ttm > 0 ? formatMetric(stock.pe_ttm, 1) : stock.pe_ttm < 0 ? '亏损' : '-' },
+            { label: 'PB', value: formatMetric(stock.pb, 2) },
+            { label: 'ROE', value: formatMetric(stock.roe, 1, '%') },
+            { label: '毛利率', value: formatMetric(stock.gross_margin, 1, '%') },
+            { label: '净利率', value: formatMetric(stock.net_margin, 1, '%') },
+            { label: '营收增速', value: formatMetric(stock.revenue_yoy, 1, '%') },
+            { label: '利润增速', value: formatMetric(stock.net_profit_yoy, 1, '%') },
+            { label: 'PE五年分位', value: formatMetric(stock.pe_percentile_5y, 1, '%') },
+            { label: 'RSI14', value: formatMetric(stock.rsi_14, 1) },
+            { label: 'ATR%', value: formatMetric(stock.atr_pct, 2, '%') },
+            { label: '估值水平', value: stock.valuation_level || '-' },
+            { label: '报告日期', value: stock.report_date || '-' },
+        ];
+
+        container.innerHTML = `
+            <div class="detail-grid">
+                <div class="detail-header">
+                    <div>
+                        <div class="detail-title">${escapeHtml(stock.name || '-')}</div>
+                        <div class="detail-subtitle">${escapeHtml((stock.pool_names || []).join(' / ') || '未归类')}</div>
+                    </div>
+                    <div class="candidate-chip-row" style="justify-content: flex-end;">
+                        <span class="mini-chip ${stock.action_key === 'buy' ? 'positive' : stock.action_key === 'watch' ? 'neutral' : 'negative'}">${escapeHtml(stock.action_label || '-')}</span>
+                        <span class="mini-chip ${getScoreChipClass(stock.total_score)}">${escapeHtml(stock.theme || '-')}</span>
+                        <span class="mini-chip">${escapeHtml(stock.grade || '-')}档</span>
+                    </div>
+                </div>
+
+                <div class="detail-score-grid">
+                    ${metricCards.map(item => `
+                        <div class="detail-score-card">
+                            <div class="label">${escapeHtml(item.label)}</div>
+                            <div class="value">${escapeHtml(item.value)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div>
+                    <div class="detail-section-title">关键指标</div>
+                    <div class="detail-kv-grid">
+                        ${kvRows.map(item => `
+                            <div class="detail-kv">
+                                <div class="label">${escapeHtml(item.label)}</div>
+                                <div class="value">${escapeHtml(item.value)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="detail-section-title">入池闸门</div>
+                    <div class="candidate-chip-row">
+                        ${(stock.gates || []).map(gate => `
+                            <span class="mini-chip ${gate.passed ? 'positive' : 'negative'}">
+                                ${escapeHtml(gate.label)} ${formatMetric(gate.value, 0)}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="detail-dual-grid">
+                    <div>
+                        <div class="detail-section-title">正向支撑</div>
+                        <div class="detail-list">
+                            ${(stock.positives || []).length ? (stock.positives || []).map(item => `<div class="detail-list-item">${escapeHtml(item)}</div>`).join('') : '<div class="detail-list-item">暂无明显正向支撑</div>'}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-section-title">主要约束</div>
+                        <div class="detail-list">
+                            ${(stock.negatives || []).length ? (stock.negatives || []).map(item => `<div class="detail-list-item">${escapeHtml(item)}</div>`).join('') : '<div class="detail-list-item">当前未见突出约束项</div>'}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-dual-grid">
+                    <div>
+                        <div class="detail-section-title">研报/催化</div>
+                        <div class="detail-list">
+                            ${reports.length ? reports.map(item => `
+                                <div class="detail-list-item">
+                                    <div style="font-weight: 600; margin-bottom: 0.2rem;">${escapeHtml(item.title || '-')}</div>
+                                    <div style="color: var(--text-muted); font-size: 0.75rem;">${escapeHtml(item.institution || '-')} / ${escapeHtml(item.publish_date || '-')}</div>
+                                </div>
+                            `).join('') : '<div class="detail-list-item">本地暂无近90天研报样本</div>'}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="detail-section-title">事件与待核查</div>
+                        <div class="detail-list">
+                            ${events.length ? events.map(item => `
+                                <div class="detail-list-item">
+                                    <div style="font-weight: 600; margin-bottom: 0.2rem;">${escapeHtml(item.event_type || '-')} / ${escapeHtml(item.event_date || '-')}</div>
+                                    <div style="color: var(--text-muted); font-size: 0.75rem;">重要度 ${escapeHtml(String(item.importance ?? '-'))} ${escapeHtml(item.note || '')}</div>
+                                </div>
+                            `).join('') : ''}
+                            ${nextChecks.length ? nextChecks.map(item => `<div class="detail-list-item">${escapeHtml(item)}</div>`).join('') : (!events.length ? '<div class="detail-list-item">当前无事件日历，优先补齐数据链路</div>' : '')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function loadOpportunityStockDetail(code) {
+        if (!code) {
+            renderOpportunityDetailPlaceholder('当前没有可下钻的股票。');
+            return;
+        }
+        const pool = document.getElementById('opportunityPoolSelect')?.value || 'all';
+        try {
+            const payload = await api(`/investment/api/opportunity-pools/detail/${encodeURIComponent(code)}?pool=${encodeURIComponent(pool)}`);
+            opportunityPoolState.selectedCode = code;
+            renderOpportunityPoolTable(opportunityPoolState.payload || {});
+            renderOpportunityCandidates(opportunityPoolState.payload || {});
+            renderOpportunityStockDetailPanel(payload);
+        } catch (error) {
+            console.error('加载机会池个股详情失败:', error);
+            renderOpportunityDetailPlaceholder('个股详情暂不可用，请稍后重试。');
+        }
+    }
+
+    function selectOpportunityStock(code) {
+        if (!code) return;
+        opportunityPoolState.selectedCode = code;
+        renderOpportunityPoolTable(opportunityPoolState.payload || {});
+        renderOpportunityCandidates(opportunityPoolState.payload || {});
+        loadOpportunityStockDetail(code);
+    }
+
+    async function syncOpportunityPools() {
+        const pool = document.getElementById('opportunityPoolSelect')?.value || 'all';
+        try {
+            await api(`/investment/api/opportunity-pools/sync?pool=${encodeURIComponent(pool)}`, { method: 'POST' });
+            await loadFundamentalsData();
+        } catch (error) {
+            console.error('同步核心池失败:', error);
+        }
+    }
+
+    async function loadFundamentalsData() {
+        loadDecisionCenter();
+        const pool = document.getElementById('opportunityPoolSelect')?.value || 'all';
+        try {
+            const payload = await api(`/investment/api/opportunity-pools/overview?pool=${encodeURIComponent(pool)}&limit=220`);
+            opportunityPoolState.payload = payload;
+            renderOpportunitySummary(payload);
+            renderPoolStatusBoard(payload);
+            renderOpportunityPoolTable(payload);
+            renderOpportunityCandidates(payload);
+            renderOpportunityCoverageNotes(payload);
+
+            const leaderboard = payload.leaderboard || [];
+            const activeExists = leaderboard.some(item => item.code === opportunityPoolState.selectedCode);
+            const nextCode = activeExists
+                ? opportunityPoolState.selectedCode
+                : (payload.opportunities?.[0]?.code || leaderboard[0]?.code || null);
+            if (nextCode) {
+                await loadOpportunityStockDetail(nextCode);
+            } else {
+                renderOpportunityDetailPlaceholder(payload.message || '当前核心池暂无可下钻标的。');
+            }
+        } catch (error) {
+            console.error('加载机会池失败:', error);
+            renderOpportunityDetailPlaceholder('机会池接口暂不可用，请稍后重试。');
+        }
+    }
+
+    // ==================== 行业模型 ====================
+    async function loadSectorData() {
+        const overview = await api('/investment/api/sector/overview');
+        document.getElementById('tmtCount').textContent = overview.tmt_count || 0;
+        document.getElementById('biotechCount').textContent = overview.biotech_count || 0;
+        document.getElementById('consumerCount').textContent = overview.consumer_count || 0;
+
+        loadSectorTab('tmt');
+    }
+
+    function loadSectorTab(tab) {
+        document.querySelectorAll('#sectorTabs .nav-link').forEach(el => el.classList.remove('active'));
+        event?.target?.classList.add('active');
+
+        document.getElementById('sector-tmt').style.display = tab === 'tmt' ? 'block' : 'none';
+        document.getElementById('sector-biotech').style.display = tab === 'biotech' ? 'block' : 'none';
+        document.getElementById('sector-consumer').style.display = tab === 'consumer' ? 'block' : 'none';
+
+        if (tab === 'tmt') loadTMTData();
+        else if (tab === 'biotech') loadBiotechData();
+        else if (tab === 'consumer') loadConsumerData();
+    }
+
+    async function loadTMTData() {
+        const data = await api('/investment/api/sector/tmt');
+        const table = document.getElementById('tmtTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td>${s.mau?.toFixed(1) || '-'}</td>
+                    <td>${s.arpu?.toFixed(2) || '-'}</td>
+                    <td>${s.paying_ratio?.toFixed(1) || '-'}%</td>
+                    <td>${s.retention_d1?.toFixed(1) || '-'}%</td>
+                    <td class="${(s.revenue_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.revenue_yoy?.toFixed(1) || '-'}%</td>
+                    <td>${s.gross_margin?.toFixed(1) || '-'}%</td>
+                    <td>${s.rd_ratio?.toFixed(1) || '-'}%</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    async function loadBiotechData(phase = null) {
+        let url = '/investment/api/sector/biotech';
+        if (phase) url += `?phase=${phase}`;
+        const data = await api(url);
+        const table = document.getElementById('biotechTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(d => `
+                <tr>
+                    <td>${d.company_name}</td>
+                    <td>${d.drug_name}</td>
+                    <td>${d.indication || '-'}</td>
+                    <td><span class="phase-badge phase-${d.phase}">${d.phase_cn || d.phase}</span></td>
+                    <td>${d.expected_approval || '-'}</td>
+                    <td>${d.region || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    function filterBiotechPhase(phase) {
+        loadBiotechData(phase);
+    }
+
+    async function loadConsumerData() {
+        const data = await api('/investment/api/sector/consumer');
+        const table = document.getElementById('consumerTable');
+        if (data.data && data.data.length > 0) {
+            table.innerHTML = data.data.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td class="${(s.revenue_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.revenue_yoy?.toFixed(1) || '-'}%</td>
+                    <td class="${(s.same_store_sales_yoy || 0) >= 0 ? 'positive' : 'negative'}">${s.same_store_sales_yoy?.toFixed(1) || '-'}%</td>
+                    <td>${s.store_count || '-'}</td>
+                    <td>${s.online_ratio?.toFixed(1) || '-'}%</td>
+                    <td>${s.gross_margin?.toFixed(1) || '-'}%</td>
+                    <td>${s.member_count?.toFixed(0) || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // ==================== 量化技术 ====================
+    async function loadQuantData() {
+        // 估值水位
+        const valuation = await api('/investment/api/quant/valuation');
+        const vTable = document.getElementById('valuationTable');
+        if (valuation.data && valuation.data.length > 0) {
+            vTable.innerHTML = valuation.data.map(v => {
+                const peClass = v.pe_percentile_5y < 30 ? 'low' : v.pe_percentile_5y > 70 ? 'high' : 'medium';
+                return `
+                    <tr>
+                        <td>${v.code}</td>
+                        <td>${v.name}</td>
+                        <td>${v.pe_ttm?.toFixed(2) || '-'}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div class="valuation-bar" style="width: 60px;">
+                                    <div class="valuation-bar-fill ${peClass}" style="width: ${v.pe_percentile_5y || 0}%;"></div>
+                                </div>
+                                <span>${v.pe_percentile_5y?.toFixed(0) || '-'}%</span>
+                            </div>
+                        </td>
+                        <td>${v.pb?.toFixed(2) || '-'}</td>
+                        <td>${v.pb_percentile_5y?.toFixed(0) || '-'}%</td>
+                        <td>${v.valuation_level || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 技术指标
+        const technical = await api('/investment/api/quant/technical');
+        const tTable = document.getElementById('technicalTable');
+        if (technical.data && technical.data.length > 0) {
+            tTable.innerHTML = technical.data.map(t => `
+                <tr>
+                    <td>${t.code}</td>
+                    <td>${t.name}</td>
+                    <td>${t.ma20?.toFixed(2) || '-'}</td>
+                    <td>${t.ma50?.toFixed(2) || '-'}</td>
+                    <td>${t.ma200?.toFixed(2) || '-'}</td>
+                    <td>${t.rsi_14?.toFixed(1) || '-'}</td>
+                    <td class="${(t.macd_hist || 0) >= 0 ? 'positive' : 'negative'}">${t.macd?.toFixed(2) || '-'}</td>
+                    <td>${t.trend_signal || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // ==================== 量化工作台 ====================
+    function formatGrade(grade) {
+        const cls = grade === 'A' ? 'positive' : grade === 'B' ? '' : 'negative';
+        return `<span class="${cls}">${grade || '-'}</span>`;
+    }
+
+    function getPerfSignalClass(row = {}) {
+        const winRate = Number(row.win_rate ?? 0);
+        const avgReturn = Number(row.avg_return ?? 0);
+        if (winRate >= 60 && avgReturn >= 0) return 'positive';
+        if (winRate < 45 || avgReturn < 0) return 'negative';
+        return 'neutral';
+    }
+
+    function renderStrategyPerf(data = {}) {
+        const dateEl = document.getElementById('workbenchPerfDate');
+        if (dateEl) {
+            const asOf = data.as_of_date ? `${data.as_of_date} 样本快照` : '暂无样本，请先刷新工作台';
+            dateEl.textContent = asOf;
+        }
+
+        const windows = Array.isArray(data.windows) ? data.windows : [];
+        const map = windows.reduce((acc, row) => {
+            const key = Number(row.window_size);
+            if (key > 0) acc[key] = row;
+            return acc;
+        }, {});
+
+        const board = document.getElementById('workbenchStabilityGrid');
+        if (board) {
+            board.innerHTML = [20, 60, 120].map(window => {
+                const row = map[window] || {};
+                const sampleSize = row.sample_size ?? 0;
+                const winRate = row.win_rate === null || row.win_rate === undefined ? '-' : `${formatNumber(row.win_rate, 1)}%`;
+                const pfRaw = row.profit_factor;
+                const profitFactor = pfRaw === null || pfRaw === undefined ? '-' : (Number(pfRaw) >= 99 ? '>99' : formatNumber(pfRaw, 2));
+                const maxDrawdown = row.max_drawdown === null || row.max_drawdown === undefined ? '-' : `${formatNumber(row.max_drawdown, 2)}%`;
+                return `
+                    <div class="stability-card ${getPerfSignalClass(row)}">
+                        <div class="label">近${window}样本</div>
+                        <div class="value">${winRate}</div>
+                        <div class="sub">样本 ${sampleSize} · PF ${profitFactor} · 最大回撤 ${maxDrawdown}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const setupTable = document.getElementById('workbenchSetupPerfTable');
+        const setupRows = Array.isArray(data.setups) ? data.setups : [];
+        if (setupTable) {
+            if (!setupRows.length) {
+                setupTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无 setup 分层样本</td></tr>';
+            } else {
+                setupTable.innerHTML = setupRows.map(item => {
+                    const avgClass = Number(item.avg_return ?? 0) >= 0 ? 'positive' : 'negative';
+                    const winClass = Number(item.win_rate ?? 0) >= 50 ? 'positive' : 'negative';
+                    const ddClass = Number(item.max_drawdown ?? 0) <= -8 ? 'negative' : '';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(item.setup_label || item.setup_name || '-')}</td>
+                            <td>${item.sample_size ?? 0}</td>
+                            <td class="${winClass}">${formatNumber(item.win_rate, 1)}%</td>
+                            <td class="${avgClass}">${formatSignedPercent(item.avg_return, 2)}</td>
+                            <td>${item.profit_factor === null || item.profit_factor === undefined ? '-' : formatNumber(item.profit_factor, 2)}</td>
+                            <td class="${ddClass}">${item.max_drawdown === null || item.max_drawdown === undefined ? '-' : formatNumber(item.max_drawdown, 2) + '%'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        const feed = document.getElementById('workbenchSignalFeed');
+        const signals = Array.isArray(data.recent_signals) ? data.recent_signals : [];
+        if (feed) {
+            if (!signals.length) {
+                feed.innerHTML = '<div class="watch-empty">暂无信号日志</div>';
+            } else {
+                feed.innerHTML = signals.slice(0, 16).map(item => {
+                    const ret = item.outcome_return;
+                    const retText = ret === null || ret === undefined ? '-' : formatSignedPercent(ret, 2);
+                    const retClass = ret === null || ret === undefined ? '' : (Number(ret) >= 0 ? 'positive' : 'negative');
+                    const title = `${item.name || item.code || '-'} · ${item.setup_label || item.setup_name || '-'}`;
+                    const factors = (item.trigger_factors || []).slice(0, 2).join(' / ') || '触发因子待补充';
+                    return `
+                        <div class="signal-feed-item">
+                            <div class="signal-feed-title">
+                                <strong>${escapeHtml(title)}</strong>
+                                <span class="${retClass}">${retText}</span>
+                            </div>
+                            <div class="signal-feed-meta">
+                                ${escapeHtml(String(item.signal_time || '-').replace('T', ' ').slice(0, 16))} · ${escapeHtml(item.action || '-')} · H${escapeHtml(String(item.hold_days || '-'))}
+                            </div>
+                            <div style="margin-top: 0.3rem; color: var(--text-secondary); font-size: 0.76rem;">
+                                ${escapeHtml(factors)}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    }
+
+    async function loadWorkbenchData() {
+        try {
+            const [workbenchResp, perfResp] = await Promise.allSettled([
+                api('/investment/api/workbench/overview'),
+                api('/investment/api/strategy/perf')
+            ]);
+            const data = workbenchResp.status === 'fulfilled' ? (workbenchResp.value || {}) : {};
+            const perf = perfResp.status === 'fulfilled' ? perfResp.value : {};
+            const summary = data.summary || {};
+            const regime = data.market_regime || {};
+            const status = data.status || {};
+
+            document.getElementById('workbenchRegime').textContent = regime.label || '-';
+            document.getElementById('workbenchRegimeScore').textContent = `分数 ${regime.score ?? '-'}`;
+            document.getElementById('workbenchTotal').textContent = summary.total_candidates ?? 0;
+            document.getElementById('workbenchGradeA').textContent = summary.grade_counts?.A ?? 0;
+            document.getElementById('workbenchTopName').textContent = summary.top_name || '-';
+            document.getElementById('workbenchTopScore').textContent = summary.top_score ?? '-';
+            document.getElementById('workbenchSyncTime').textContent = status.last_sync_at ? status.last_sync_at.replace('T', ' ').slice(0, 19) : '-';
+            document.getElementById('workbenchSyncSummary').textContent = `日线 ${status.daily_files || 0} / 5分钟 ${status.intraday_files || 0}`;
+            renderStrategyPerf(perf || {});
+
+            const table = document.getElementById('workbenchTable');
+            const items = data.opportunities || [];
+            if (items.length > 0) {
+                table.innerHTML = items.map(item => `
+                    <tr onclick="loadWorkbenchDetail('${item.code}')">
+                        <td>${formatGrade(item.grade)}</td>
+                        <td>
+                            <div style="font-weight: 600;">${item.name || '-'}</div>
+                            <div style="color: var(--text-muted); font-size: 0.75rem;">${item.code || '-'}</div>
+                        </td>
+                        <td>${item.setup_label || item.setup_name || '-'}</td>
+                        <td>${item.action || '-'}</td>
+                        <td>${item.score ?? '-'}</td>
+                        <td class="${(item.ret_5 || 0) >= 0 ? 'positive' : 'negative'}">${item.ret_5 ?? '-'}%</td>
+                    </tr>
+                `).join('');
+                loadWorkbenchDetail(items[0].code);
+            } else {
+                const reason = data.error ? `工作台计算失败：${escapeHtml(data.error)}` : '暂无候选';
+                table.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">${reason}</td></tr>`;
+                document.getElementById('workbenchDetail').innerHTML = '<div style="color: var(--text-muted); padding: 1rem;">当前无可展示候选，稍后重试或先执行工作台刷新</div>';
+            }
+        } catch (error) {
+            console.error('加载工作台失败:', error);
+            const table = document.getElementById('workbenchTable');
+            if (table) {
+                table.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">工作台接口暂不可用</td></tr>';
+            }
+        }
+    }
+
+    async function loadWorkbenchDetail(code) {
+        try {
+            document.getElementById('workbenchDetailCode').textContent = code;
+            const data = await api(`/investment/api/workbench/stocks/${code}`);
+            const latest = data.latest || {};
+            const strategy = latest.strategy || {};
+            const factors = latest.factors || {};
+            const riskFlags = (latest.risk_flags || []).slice(0, 4);
+            const thesis = (strategy.thesis || []).slice(0, 4);
+            const invalids = (strategy.invalid_conditions || []).slice(0, 4);
+
+            const detail = `
+                <div style="display: grid; gap: 0.75rem;">
+                    <div><strong>主 Setup:</strong> ${strategy.setup_label || strategy.setup_name || '-'}</div>
+                    <div><strong>建议动作:</strong> ${strategy.action || '-'} / ${strategy.position_range || '-'}</div>
+                    <div><strong>回测摘要:</strong> ${strategy.backtest_summary || '回测样本待生成'}</div>
+                    <div><strong>事件提醒:</strong> ${strategy.event_summary || '事件日历未接入，按周复核'}</div>
+                    <div><strong>六因子:</strong> Q${factors.quality ?? '-'} / G${factors.growth ?? '-'} / V${factors.valuation ?? '-'} / F${factors.flow ?? '-'} / T${factors.technical ?? '-'} / R${factors.risk ?? '-'}</div>
+                    <div><strong>逻辑摘要:</strong> ${thesis.length ? thesis.join('；') : '暂无'}</div>
+                    <div><strong>失效条件:</strong> ${invalids.length ? invalids.join('；') : '暂无'}</div>
+                    <div><strong>风险提示:</strong> ${riskFlags.length ? riskFlags.join('；') : '暂无'}</div>
+                </div>
+            `;
+            document.getElementById('workbenchDetail').innerHTML = detail;
+        } catch (error) {
+            console.error('加载工作台详情失败:', error);
+        }
+    }
+
+    async function refreshWorkbench() {
+        try {
+            await api('/investment/api/workbench/refresh', { method: 'POST' });
+            await loadWorkbenchData();
+        } catch (error) {
+            console.error('刷新工作台失败:', error);
+        }
+    }
+
+    async function runScreener() {
+        const params = new URLSearchParams();
+        const peMax = document.getElementById('filterPEMax').value;
+        const peMin = document.getElementById('filterPEMin').value;
+        const pbMax = document.getElementById('filterPBMax').value;
+        const rsiMin = document.getElementById('filterRSIMin').value;
+        const rsiMax = document.getElementById('filterRSIMax').value;
+
+        if (peMax) params.append('pe_max', peMax);
+        if (peMin) params.append('pe_min', peMin);
+        if (pbMax) params.append('pb_max', pbMax);
+        if (rsiMin) params.append('rsi_min', rsiMin);
+        if (rsiMax) params.append('rsi_max', rsiMax);
+
+        const data = await api(`/investment/api/quant/screener?${params.toString()}`);
+        const resultEl = document.getElementById('screenerResults');
+
+        if (data.results && data.results.length > 0) {
+            resultEl.innerHTML = `
+                <div style="margin-bottom: 0.5rem; color: var(--text-muted);">找到 ${data.count} 只股票</div>
+                <table class="stock-table">
+                    <thead><tr><th>代码</th><th>名称</th><th>PE</th><th>PB</th><th>RSI</th></tr></thead>
+                    <tbody>
+                        ${data.results.map(r => `
+                            <tr>
+                                <td>${r.code}</td>
+                                <td>${r.name}</td>
+                                <td>${r.pe_ttm?.toFixed(2) || '-'}</td>
+                                <td>${r.pb?.toFixed(2) || '-'}</td>
+                                <td>${r.rsi_14?.toFixed(1) || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            resultEl.innerHTML = '<div style="color: var(--text-muted);">未找到符合条件的股票</div>';
+        }
+    }
+
+    // ==================== 策略证据 ====================
+    function updateEvidenceSetupFilter(setups = []) {
+        const filter = document.getElementById('evidenceSetupFilter');
+        if (!filter) return;
+        const selected = evidenceState.selectedSetup || '';
+        const options = [
+            '<option value="">全策略</option>',
+            ...setups.map(item => {
+                const code = item.setup_name || '';
+                const label = item.setup_label || item.setup_name || '-';
+                return `<option value="${escapeHtml(code)}"${code === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+            })
+        ];
+        filter.innerHTML = options.join('');
+    }
+
+    function renderEvidenceTrend(perf = {}) {
+        const canvas = document.getElementById('evidenceTrendChart');
+        if (!canvas) return;
+        const rows = perf.trend_120d || [];
+        if (!rows.length) {
+            if (charts.evidenceTrendChart) {
+                charts.evidenceTrendChart.destroy();
+                delete charts.evidenceTrendChart;
+            }
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            return;
+        }
+        const labels = rows.map(item => item.trade_date || '');
+        const values = rows.map(item => Number(item.win_rate || 0));
+        if (charts.evidenceTrendChart) {
+            charts.evidenceTrendChart.destroy();
+        }
+        charts.evidenceTrendChart = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: '120日胜率(%)',
+                        data: values,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.25,
+                        fill: true,
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        ticks: {
+                            color: '#94a3b8',
+                            callback: value => `${value}%`,
+                        },
+                        grid: { color: 'rgba(148,163,184,0.15)' },
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8', maxTicksLimit: 6 },
+                        grid: { display: false },
+                    }
+                }
+            }
+        });
+    }
+
+    function renderStrategyEvidence(perf = {}) {
+        const setups = perf.setups || [];
+        const windows = perf.windows || [];
+        const signals = perf.recent_signals || [];
+        const updatedAt = perf.generated_at ? formatQuoteTime(perf.generated_at) : '-';
+
+        const w20 = getWindowMetric(windows, 20);
+        const w60 = getWindowMetric(windows, 60);
+        const w120 = getWindowMetric(windows, 120);
+
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        setText('evidenceAsOfDate', perf.as_of_date || '-');
+        setText('evidenceWin20', formatStrategyPercent(w20.win_rate));
+        setText('evidenceWin60', formatStrategyPercent(w60.win_rate));
+        setText('evidenceWin120', formatStrategyPercent(w120.win_rate));
+        setText('evidenceUpdatedAt', updatedAt);
+        setText('evidenceSetupCount', `${setups.length} 个分型`);
+        setText('evidenceSignalCount', `${signals.length} 条`);
+
+        const setupTable = document.getElementById('evidenceSetupTable');
+        if (setupTable) {
+            if (!setups.length) {
+                setupTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">暂无分型绩效样本</td></tr>';
+            } else {
+                setupTable.innerHTML = setups.map(item => {
+                    const wr = Number(item.win_rate || 0);
+                    const avgRet = Number(item.avg_return || 0);
+                    const cls = wr >= 55 ? 'positive' : 'negative';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(item.setup_label || item.setup_name || '-')}</td>
+                            <td style="font-family: var(--font-mono);">${item.sample_size || 0}</td>
+                            <td class="${cls}">${formatStrategyPercent(item.win_rate)}</td>
+                            <td class="${avgRet >= 0 ? 'positive' : 'negative'}">${formatSignedPercent(avgRet, 2)}</td>
+                            <td style="font-family: var(--font-mono);">${formatNumber(item.profit_factor || 0, 2)}</td>
+                            <td class="${Number(item.max_drawdown || 0) >= -8 ? 'positive' : 'negative'}">${formatSignedPercent(item.max_drawdown || 0, 2)}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        const signalFeed = document.getElementById('evidenceSignalFeed');
+        if (signalFeed) {
+            if (!signals.length) {
+                signalFeed.innerHTML = '<div class="research-empty">暂无近期可复盘信号</div>';
+            } else {
+                signalFeed.innerHTML = signals.slice(0, 16).map(item => {
+                    const ret = Number(item.outcome_return || 0);
+                    const retClass = ret >= 0 ? 'positive' : 'negative';
+                    const time = formatQuoteTime(item.signal_time || item.trade_date);
+                    return `
+                        <div class="research-card">
+                            <div class="research-card-top">
+                                <div class="research-pills">
+                                    <span class="research-pill source">${escapeHtml(item.setup_label || item.setup_name || '-')}</span>
+                                    <span class="research-pill format">${escapeHtml(item.action || '-')}</span>
+                                </div>
+                                <div class="research-date">${escapeHtml(time)}</div>
+                            </div>
+                            <div class="research-card-title">${escapeHtml(item.name || '-')} · ${escapeHtml(item.code || '-')}</div>
+                            <div class="research-card-summary">
+                                持有 ${item.hold_days || 0} 天，结果 <span class="${retClass}" style="font-weight: 700;">${formatSignedPercent(ret, 2)}</span>，
+                                最大回撤 ${formatSignedPercent(item.max_drawdown || 0, 2)}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        const checklist = document.getElementById('evidenceChecklist');
+        if (checklist) {
+            const passList = [
+                {
+                    pass: Number(w20.win_rate || 0) >= 58,
+                    text: `短窗速度: 20日胜率 ${formatStrategyPercent(w20.win_rate)}`,
+                },
+                {
+                    pass: Number(w60.win_rate || 0) >= 56,
+                    text: `中窗确认: 60日胜率 ${formatStrategyPercent(w60.win_rate)}`,
+                },
+                {
+                    pass: Number(w120.win_rate || 0) >= 55 && Number(w120.sample_size || 0) >= 60,
+                    text: `长窗稳定: 120日样本 ${w120.sample_size || 0}，胜率 ${formatStrategyPercent(w120.win_rate)}`,
+                },
+                {
+                    pass: Number(w120.max_drawdown || 0) >= -12,
+                    text: `回撤约束: 120日最大回撤 ${formatSignedPercent(w120.max_drawdown || 0, 2)}`,
+                },
+            ];
+            checklist.innerHTML = passList.map(item => `
+                <div class="research-side-item">
+                    <h4 class="${item.pass ? 'positive' : 'negative'}">${item.pass ? '通过' : '未通过'}</h4>
+                    <div class="research-side-meta">${escapeHtml(item.text)}</div>
+                </div>
+            `).join('');
+        }
+
+        renderEvidenceTrend(perf);
+    }
+
+    async function loadStrategyEvidenceData() {
+        const filter = document.getElementById('evidenceSetupFilter');
+        evidenceState.selectedSetup = filter ? filter.value : '';
+        try {
+            const params = new URLSearchParams({
+                windows: '20,60,120',
+                auto_sync: 'true',
+            });
+            if (evidenceState.selectedSetup) {
+                params.append('setup_name', evidenceState.selectedSetup);
+            }
+            const perf = await api(`/investment/api/strategy/perf?${params.toString()}`);
+            evidenceState.perf = perf;
+            updateEvidenceSetupFilter(perf.setups || []);
+            renderStrategyEvidence(perf);
+        } catch (error) {
+            console.error('加载策略证据失败:', error);
+            const table = document.getElementById('evidenceSetupTable');
+            const signalFeed = document.getElementById('evidenceSignalFeed');
+            if (table) {
+                table.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">策略证据接口暂不可用</td></tr>';
+            }
+            if (signalFeed) {
+                signalFeed.innerHTML = '<div class="research-empty">策略证据接口暂不可用</div>';
+            }
+        }
+    }
+
+    // ==================== 数据管理 ====================
+    async function loadETLData() {
+        // 表概览
+        const tables = await api('/investment/api/etl/tables');
+        const tTable = document.getElementById('tablesTable');
+        if (tables.tables) {
+            tTable.innerHTML = tables.tables.map(t => `
+                <tr>
+                    <td>${t.name}</td>
+                    <td>${t.count}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ETL日志
+        const logs = await api('/investment/api/etl/logs?limit=20');
+        const logsEl = document.getElementById('etlLogs');
+        if (logs.data && logs.data.length > 0) {
+            logsEl.innerHTML = logs.data.map(log => `
+                <div class="log-item">
+                    <span class="log-status ${log.status}"></span>
+                    <strong>${log.job_name}</strong>
+                    <span style="color: var(--text-muted); margin-left: 1rem;">${log.start_time}</span>
+                    <span style="float: right; color: var(--text-muted);">
+                        ${log.records_processed || 0} 条记录
+                    </span>
+                    ${log.error_message ? `<div style="color: var(--accent-red); font-size: 0.8rem; margin-top: 0.25rem;">${log.error_message}</div>` : ''}
+                </div>
+            `).join('');
+        } else {
+            logsEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">暂无日志</div>';
+        }
+    }
+
+    async function loadDataHealthTab() {
+        try {
+            const data = await api('/investment/api/data-health/overview');
+            renderDataHealth(data);
+        } catch (error) {
+            console.error('加载数据健康失败:', error);
+            const issueEl = document.getElementById('dataHealthIssues');
+            if (issueEl) {
+                issueEl.innerHTML = '<div class="watch-empty">数据健康接口暂不可用</div>';
+            }
+        }
+        await loadETLData();
+    }
+
+    async function importCSV() {
+        const table = document.getElementById('importTable').value;
+        const path = document.getElementById('importPath').value;
+        const resultEl = document.getElementById('importResult');
+
+        if (!path) {
+            resultEl.innerHTML = '<div style="color: var(--accent-red);">请输入CSV文件路径</div>';
+            return;
+        }
+
+        resultEl.innerHTML = '<div style="color: var(--text-muted);">导入中...</div>';
+
+        const result = await api('/investment/api/etl/import-csv', {
+            method: 'POST',
+            body: JSON.stringify({ table: table, path: path })
+        });
+
+        if (result.status === 'success') {
+            resultEl.innerHTML = `<div style="color: var(--accent-green);">成功导入 ${result.imported} 条记录</div>`;
+            loadETLData();
+        } else {
+            resultEl.innerHTML = `<div style="color: var(--accent-red);">${result.message}</div>`;
+        }
+    }
+
+    // ==================== 图表渲染 ====================
+    function renderLineChart(canvasId, data, label) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+
+        if (charts[canvasId]) {
+            charts[canvasId].destroy();
+        }
+
+        const labels = data.map(d => d.date);
+        const values = data.map(d => d.close);
+
+        charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: values,
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#64748b',
+                            maxTicksLimit: 6
+                        }
+                    },
+                    y: {
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b' }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+
+    function renderShiborChart(data) {
+        const ctx = document.getElementById('chartShibor').getContext('2d');
+
+        if (charts['chartShibor']) {
+            charts['chartShibor'].destroy();
+        }
+
+        const labels = data.map(d => d.date);
+
+        charts['chartShibor'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '隔夜',
+                        data: data.map(d => d.shibor_overnight),
+                        borderColor: '#38bdf8',
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '1周',
+                        data: data.map(d => d.shibor_1w),
+                        borderColor: '#a78bfa',
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '1月',
+                        data: data.map(d => d.shibor_1m),
+                        borderColor: '#34d399',
+                        tension: 0.3,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#94a3b8', boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b' }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderUs10YChart(data) {
+        const canvas = document.getElementById('chartUs10Y');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        if (charts['chartUs10Y']) {
+            charts['chartUs10Y'].destroy();
+        }
+
+        charts['chartUs10Y'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(d => d.date),
+                datasets: [{
+                    label: '美国10年期国债收益率',
+                    data: data.map(d => d.value),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                    borderWidth: 2,
+                    tension: 0.28,
+                    fill: true,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#94a3b8', boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#64748b', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#64748b',
+                            callback: value => `${value}%`
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+
+    // ==================== 初始化 ====================
+    loadDashboardData();
+
+    // 每60秒自动刷新
+    setInterval(refreshCurrentTab, 60000);
+</script>
+{% endblock %}

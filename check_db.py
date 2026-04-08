@@ -1,0 +1,1 @@
+'import sqlite3; conn=sqlite3.connect("data/investment.db"); c=conn.cursor(); rows=c.execute("SELECT code,total FROM stock_factor_snapshot WHERE model=\'conservative\' ORDER BY total DESC LIMIT 10").fetchall(); print(rows)'  
