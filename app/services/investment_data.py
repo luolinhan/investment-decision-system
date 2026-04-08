@@ -1247,6 +1247,160 @@ class InvestmentDataService:
                 return cached
             raise
 
+
+    def _fetch_gold_radar(self, days: int = 180):
+        """Gold price from local commodity_prices table."""
+        history = []
+        try:
+            import sqlite3 as _sql
+            conn = _sql.connect("data/investment.db")
+            c = conn.cursor()
+            rows = c.execute(
+                "SELECT trade_date, price FROM commodity_prices "
+                "WHERE commodity_type='gold' ORDER BY trade_date DESC LIMIT ?",
+                (days,),
+            ).fetchall()
+            conn.close()
+            history = [{"date": r[0], "value": round(float(r[1]), 2)} for r in reversed(rows) if r[1]]
+        except Exception as exc:
+            print(f"Gold history failed: {exc}")
+        payload = self._build_series_summary(history, source="sqlite:commodity_prices", unit="CNY/g")
+        payload.update(self._classify_gold(payload.get("latest")))
+        return payload
+
+    def _fetch_oil_radar(self, days: int = 180):
+        """Oil price from local commodity_prices table."""
+        history = []
+        try:
+            import sqlite3 as _sql
+            conn = _sql.connect("data/investment.db")
+            c = conn.cursor()
+            rows = c.execute(
+                "SELECT trade_date, price FROM commodity_prices "
+                "WHERE commodity_type='oil' ORDER BY trade_date DESC LIMIT ?",
+                (days,),
+            ).fetchall()
+            conn.close()
+            history = [{"date": r[0], "value": round(float(r[1]), 2)} for r in reversed(rows) if r[1]]
+        except Exception as exc:
+            print(f"Oil history failed: {exc}")
+        payload = self._build_series_summary(history, source="sqlite:commodity_prices", unit="CNY/bbl")
+        payload.update(self._classify_oil(payload.get("latest")))
+        return payload
+
+    def _fetch_yield_spread_radar(self, days: int = 180):
+        """US 10Y-2Y yield spread."""
+        history = []
+        try:
+            import sqlite3 as _sql
+            conn = _sql.connect("data/investment.db")
+            c = conn.cursor()
+            rows = c.execute(
+                "SELECT trade_date, us_10y_2y_spread FROM us_treasury_history "
+                "WHERE us_10y_2y_spread IS NOT NULL ORDER BY trade_date DESC LIMIT ?",
+                (days,),
+            ).fetchall()
+            conn.close()
+            history = [{"date": r[0], "value": round(float(r[1]), 2)} for r in reversed(rows) if r[1] is not None]
+        except Exception as exc:
+            print(f"Yield spread failed: {exc}")
+        payload = self._build_series_summary(history, source="sqlite:us_treasury_history", unit="bps")
+        payload.update(self._classify_yield_spread(payload.get("latest")))
+        return payload
+
+    def _fetch_dxy_radar(self, days: int = 180):
+        """US Dollar Index via yfinance."""
+        history = []
+        try:
+            import yfinance as yf
+            df = yf.download("DX-Y.NYB", period=f"{min(days, 365)}d", progress=False)
+            if df is not None and not df.empty:
+                for date_idx, row in df.iterrows():
+                    try:
+                        cv = float(row["Close"].iloc[0]) if hasattr(row["Close"], "iloc") else float(row["Close"])
+                    except Exception:
+                        cv = float(row["Close"])
+                    history.append({"date": date_idx.strftime("%Y-%m-%d"), "value": round(cv, 2)})
+        except Exception as exc:
+            print(f"DXY failed: {exc}")
+        payload = self._build_series_summary(history, source="yahoo:DX-Y.NYB", unit="")
+        payload.update(self._classify_dxy(payload.get("latest")))
+        return payload
+
+    def _classify_gold(self, value):
+        if value is None: return {}
+        # CNY/gram: 1000+ extreme, 800+ elevated, 600+ neutral
+        if value >= 1000: return {"zone": "risk_haven_surge", "commentary": "\u9ec4\u91d1\u6781\u7aef\u9ad8\u4f4d\uff0c\u907f\u9669\u9700\u6c42\u5f3a\u70c8"}
+        if value >= 800: return {"zone": "elevated", "commentary": "\u9ec4\u91d1\u504f\u9ad8\uff0c\u53cd\u6620\u901a\u80c0\u5bf9\u51b2\u6216\u5730\u7f18\u4e0d\u786e\u5b9a\u6027"}
+        if value >= 600: return {"zone": "neutral", "commentary": "\u9ec4\u91d1\u6b63\u5e38\u533a\u95f4"}
+        return {"zone": "low", "commentary": "\u9ec4\u91d1\u4f4e\u8ff7\uff0c\u98ce\u9669\u504f\u597d\u8f83\u5f3a"}
+
+    def _classify_oil(self, value):
+        if value is None: return {}
+        # CNY/barrel: 700+ supply shock, 550+ elevated, 400+ neutral
+        if value >= 700: return {"zone": "supply_shock", "commentary": "\u6cb9\u4ef7\u9ad8\u4f4d\uff0c\u6ede\u80c0\u98ce\u9669\u4e0a\u5347"}
+        if value >= 550: return {"zone": "elevated", "commentary": "\u6cb9\u4ef7\u504f\u9ad8\uff0c\u5173\u6ce8\u901a\u80c0\u4f20\u5bfc"}
+        if value >= 400: return {"zone": "neutral", "commentary": "\u6cb9\u4ef7\u5747\u8861\u533a\u95f4"}
+        return {"zone": "demand_weakness", "commentary": "\u6cb9\u4ef7\u4f4e\u8ff7\uff0c\u9700\u6c42\u653e\u7f13\u4fe1\u53f7"}
+
+    def _classify_yield_spread(self, value):
+        if value is None: return {}
+        if value < -0.5: return {"zone": "deep_inversion", "commentary": "\u6536\u76ca\u7387\u66f2\u7ebf\u6df1\u5ea6\u5012\u6302\uff0c\u8870\u9000\u9884\u8b66"}
+        if value < 0: return {"zone": "inverted", "commentary": "\u6536\u76ca\u7387\u66f2\u7ebf\u5012\u6302\uff0c\u8870\u9000\u4fe1\u53f7"}
+        if value < 0.5: return {"zone": "flat", "commentary": "\u6536\u76ca\u7387\u66f2\u7ebf\u5e73\u5766"}
+        return {"zone": "normal", "commentary": "\u6536\u76ca\u7387\u66f2\u7ebf\u6b63\u5e38"}
+
+    def _classify_dxy(self, value):
+        if value is None: return {}
+        if value >= 108: return {"zone": "strong_dollar", "commentary": "\u5f3a\u7f8e\u5143\u538b\u5236\u65b0\u5174\u5e02\u573a\u548c\u5546\u54c1"}
+        if value >= 103: return {"zone": "firm", "commentary": "\u7f8e\u5143\u504f\u5f3a"}
+        if value >= 97: return {"zone": "neutral", "commentary": "\u7f8e\u5143\u4e2d\u6027\u533a\u95f4"}
+        return {"zone": "weak_dollar", "commentary": "\u5f31\u7f8e\u5143\u652f\u6491\u65b0\u5174\u5e02\u573a\u548c\u5546\u54c1"}
+
+    def _compute_composite_risk_score(self, radar):
+        score = 50.0
+        signals = []
+        vix = self._safe_float(radar.get('vix', {}).get('latest'))
+        if vix is not None:
+            if vix >= 35: score += 15; signals.append(('VIX', 'extreme_fear', 15))
+            elif vix >= 25: score += 8; signals.append(('VIX', 'fear', 8))
+            elif vix >= 18: score += 2; signals.append(('VIX', 'caution', 2))
+            elif vix < 13: score -= 8; signals.append(('VIX', 'complacent', -8))
+            else: signals.append(('VIX', 'neutral', 0))
+        us10y = self._safe_float(radar.get('us10y', {}).get('latest'))
+        if us10y is not None:
+            if us10y >= 5.0: score += 10; signals.append(('US10Y', 'very_tight', 10))
+            elif us10y >= 4.5: score += 5; signals.append(('US10Y', 'tight', 5))
+            elif us10y < 3.5: score -= 5; signals.append(('US10Y', 'accommodative', -5))
+            else: signals.append(('US10Y', 'neutral', 0))
+        spread = self._safe_float(radar.get('yield_spread', {}).get('latest'))
+        if spread is not None:
+            if spread < -0.5: score += 10; signals.append(('YieldSpread', 'deep_inversion', 10))
+            elif spread < 0: score += 5; signals.append(('YieldSpread', 'inverted', 5))
+            else: signals.append(('YieldSpread', 'normal', 0))
+        dxy = self._safe_float(radar.get('dxy', {}).get('latest'))
+        if dxy is not None:
+            if dxy >= 108: score += 8; signals.append(('DXY', 'strong', 8))
+            elif dxy < 97: score -= 5; signals.append(('DXY', 'weak', -5))
+            else: signals.append(('DXY', 'neutral', 0))
+        gold = self._safe_float(radar.get('gold', {}).get('latest'))
+        if gold is not None:
+            if gold >= 1000: score += 5; signals.append(('Gold', 'haven_surge', 5))
+            elif gold < 600: score -= 3; signals.append(('Gold', 'low', -3))
+            else: signals.append(('Gold', 'neutral', 0))
+        oil = self._safe_float(radar.get('oil', {}).get('latest'))
+        if oil is not None:
+            if oil >= 700: score += 8; signals.append(('Oil', 'supply_shock', 8))
+            elif oil < 350: score += 5; signals.append(('Oil', 'demand_collapse', 5))
+            else: signals.append(('Oil', 'neutral', 0))
+        score = max(0, min(100, score))
+        if score >= 75: level, label, color = 'extreme', 'Extreme Risk', '#ef4444'
+        elif score >= 60: level, label, color = 'high', 'High Risk', '#f97316'
+        elif score >= 40: level, label, color = 'moderate', 'Moderate', '#eab308'
+        elif score >= 25: level, label, color = 'low', 'Low Risk', '#84cc16'
+        else: level, label, color = 'very_low', 'Very Low Risk', '#22c55e'
+        return {'score': round(score, 1), 'level': level, 'label': label, 'color': color, 'signals': signals}
+
     def get_global_risk_radar(self, days: int = 180, force_refresh: bool = False) -> Dict[str, Any]:
         if (
             not force_refresh
@@ -1257,15 +1411,12 @@ class InvestmentDataService:
             if cached_days >= days:
                 return {
                     **self._global_risk_cache,
-                    "us10y": {
-                        **self._global_risk_cache.get("us10y", {}),
-                        "history": self._global_risk_cache.get("us10y", {}).get("history", [])[-days:],
-                    },
-                    "vix": {
-                        **self._global_risk_cache.get("vix", {}),
-                        "history": self._global_risk_cache.get("vix", {}).get("history", [])[-days:],
-                    },
-                }
+                    }
+                trimmed = dict(self._global_risk_cache)
+                for _k in ("us10y", "vix", "gold", "oil", "yield_spread", "dxy"):
+                    if _k in trimmed and "history" in trimmed[_k]:
+                        trimmed[_k] = {**trimmed[_k], "history": trimmed[_k]["history"][-days:]}
+                return trimmed
 
         fetch_days = max(days, 180)
         payload = {
@@ -1274,21 +1425,20 @@ class InvestmentDataService:
             "us10y": self._fetch_us_10y_radar(days=fetch_days),
             "vix": self._fetch_vix_radar(days=fetch_days),
             "pentagon_pizza": self._fetch_pentagon_pizza_index(),
+            "gold": self._fetch_gold_radar(days=fetch_days),
+            "oil": self._fetch_oil_radar(days=fetch_days),
+            "yield_spread": self._fetch_yield_spread_radar(days=fetch_days),
+            "dxy": self._fetch_dxy_radar(days=fetch_days),
         }
+        payload["composite_risk"] = self._compute_composite_risk_score(payload)
         self._global_risk_cache = payload
         self._global_risk_cache_at = time.time()
 
-        return {
-            **payload,
-            "us10y": {
-                **payload["us10y"],
-                "history": payload["us10y"].get("history", [])[-days:],
-            },
-            "vix": {
-                **payload["vix"],
-                "history": payload["vix"].get("history", [])[-days:],
-            },
-        }
+        trimmed = dict(payload)
+        for _k in ("us10y", "vix", "gold", "oil", "yield_spread", "dxy"):
+            if _k in trimmed and "history" in trimmed[_k]:
+                trimmed[_k] = {**trimmed[_k], "history": trimmed[_k]["history"][-days:]}
+        return trimmed
 
     def get_hk_stocks_direct(self, keywords: List[str] = None) -> List[Dict[str, Any]]:
         stocks = self.get_watch_stocks().get("hk_stocks", [])

@@ -1626,6 +1626,90 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
+
+    /* Global Risk Score Bar */
+    .risk-score-bar {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    .risk-score-inner {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .risk-score-label {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+    }
+    .risk-score-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        font-family: var(--font-mono);
+    }
+    .risk-score-level {
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+    }
+    .risk-score-signals {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-left: auto;
+    }
+    .risk-signal-chip {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.5rem;
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+    }
+    .risk-signal-chip.positive { color: var(--accent-green); }
+    .risk-signal-chip.negative { color: var(--accent-red); }
+    .risk-radar-grid-v2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    .risk-mini-card {
+        background: var(--bg-secondary);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        text-align: center;
+    }
+    .risk-mini-card .mini-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+    }
+    .risk-mini-card .mini-value {
+        font-size: 1.3rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        margin-bottom: 0.25rem;
+    }
+    .risk-mini-card .mini-zone {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 0.5rem;
+        display: inline-block;
+    }
+    .risk-mini-card .mini-note {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 0.5rem;
+        line-height: 1.3;
+    }
+
 </style>
 {% endblock %}
 
@@ -1667,6 +1751,16 @@
 
 <!-- Tab 1: 中枢首页 -->
 <div id="tab-dashboard" class="tab-content active">
+    <!-- Global Risk Score Bar -->
+    <div id="riskScoreBar" class="risk-score-bar" style="display:none;">
+        <div class="risk-score-inner">
+            <span class="risk-score-label">Global Risk</span>
+            <span class="risk-score-value" id="riskBarScore">-</span>
+            <span class="risk-score-level" id="riskBarLevel">Loading</span>
+            <div class="risk-score-signals" id="riskBarSignals"></div>
+        </div>
+    </div>
+
     <div class="decision-strip">
         <div class="decision-item">
             <div class="label">风险状态</div>
@@ -1910,7 +2004,38 @@
         </div>
     </div>
 
-    <!-- 胜率驱动面板 -->
+
+        <!-- Enhanced Risk Indicators -->
+        <div class="risk-radar-grid-v2" style="margin-top: 1rem;">
+            <div class="risk-mini-card" id="goldCard">
+                <div class="mini-label">Gold</div>
+                <div class="mini-value" id="goldValue">-</div>
+                <div class="mini-zone" id="goldZone">-</div>
+                <div class="mini-note" id="goldNote">-</div>
+            </div>
+            <div class="risk-mini-card" id="oilCard">
+                <div class="mini-label">Oil</div>
+                <div class="mini-value" id="oilValue">-</div>
+                <div class="mini-zone" id="oilZone">-</div>
+                <div class="mini-note" id="oilNote">-</div>
+            </div>
+            <div class="risk-mini-card" id="spreadCard">
+                <div class="mini-label">Yield Spread (10Y-2Y)</div>
+                <div class="mini-value" id="spreadValue">-</div>
+                <div class="mini-zone" id="spreadZone">-</div>
+                <div class="mini-note" id="spreadNote">-</div>
+            </div>
+            <div class="risk-mini-card" id="dxyCard">
+                <div class="mini-label">US Dollar (DXY)</div>
+                <div class="mini-value" id="dxyValue">-</div>
+                <div class="mini-zone" id="dxyZone">-</div>
+                <div class="mini-note" id="dxyNote">-</div>
+            </div>
+        </div>
+
+    </div>
+
+        <!-- 胜率驱动面板 -->
     <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
         <div class="chart-header">
             <span class="chart-title"><i class="bi bi-compass me-2"></i>胜率驱动因子</span>
@@ -3504,6 +3629,71 @@
                 document.getElementById('pizzaCommentary').textContent = pizza.description || '暂无解读';
                 document.getElementById('date-pizza-index').textContent = formatQuoteTime(pizza.as_of);
             }
+
+            // Gold
+            const gold = data.gold || {};
+            if (typeof gold.latest === 'number') {
+                document.getElementById('goldValue').textContent = formatNumber(gold.latest, 1) + (gold.unit ? ' ' + gold.unit : '');
+                const gz = document.getElementById('goldZone');
+                gz.textContent = gold.zone || '-';
+                gz.style.background = gold.zone === 'risk_haven_surge' ? 'var(--accent-red)' : gold.zone === 'elevated' ? 'var(--accent-gold)' : 'var(--bg-card)';
+                gz.style.color = gold.zone === 'risk_haven_surge' || gold.zone === 'elevated' ? '#fff' : 'var(--text-secondary)';
+                document.getElementById('goldNote').textContent = gold.commentary || '-';
+            }
+
+            // Oil
+            const oil = data.oil || {};
+            if (typeof oil.latest === 'number') {
+                document.getElementById('oilValue').textContent = formatNumber(oil.latest, 1) + (oil.unit ? ' ' + oil.unit : '');
+                const oz = document.getElementById('oilZone');
+                oz.textContent = oil.zone || '-';
+                oz.style.background = oil.zone === 'supply_shock' ? 'var(--accent-red)' : oil.zone === 'elevated' ? 'var(--accent-gold)' : 'var(--bg-card)';
+                oz.style.color = oil.zone === 'supply_shock' || oil.zone === 'elevated' ? '#fff' : 'var(--text-secondary)';
+                document.getElementById('oilNote').textContent = oil.commentary || '-';
+            }
+
+            // Yield Spread
+            const spread = data.yield_spread || {};
+            if (typeof spread.latest === 'number') {
+                document.getElementById('spreadValue').textContent = formatNumber(spread.latest, 2) + '%';
+                const sz = document.getElementById('spreadZone');
+                sz.textContent = spread.zone || '-';
+                sz.style.background = spread.zone === 'deep_inversion' ? 'var(--accent-red)' : spread.zone === 'inverted' ? 'var(--accent-gold)' : 'var(--bg-card)';
+                sz.style.color = spread.zone === 'deep_inversion' || spread.zone === 'inverted' ? '#fff' : 'var(--text-secondary)';
+                document.getElementById('spreadNote').textContent = spread.commentary || '-';
+            }
+
+            // DXY
+            const dxy = data.dxy || {};
+            if (typeof dxy.latest === 'number') {
+                document.getElementById('dxyValue').textContent = formatNumber(dxy.latest, 2);
+                const dz = document.getElementById('dxyZone');
+                dz.textContent = dxy.zone || '-';
+                dz.style.background = dxy.zone === 'strong_dollar' ? 'var(--accent-red)' : dxy.zone === 'weak_dollar' ? 'var(--accent-green)' : 'var(--bg-card)';
+                dz.style.color = dxy.zone === 'strong_dollar' || dxy.zone === 'weak_dollar' ? '#fff' : 'var(--text-secondary)';
+                document.getElementById('dxyNote').textContent = dxy.commentary || '-';
+            }
+
+            // Composite Risk Score Bar
+            const cr = data.composite_risk || {};
+            if (typeof cr.score === 'number') {
+                const bar = document.getElementById('riskScoreBar');
+                bar.style.display = 'flex';
+                bar.style.borderColor = cr.color || 'var(--border-color)';
+                document.getElementById('riskBarScore').textContent = cr.score.toFixed(0);
+                document.getElementById('riskBarScore').style.color = cr.color || 'var(--text-primary)';
+                const levelEl = document.getElementById('riskBarLevel');
+                levelEl.textContent = cr.label || '-';
+                levelEl.style.background = cr.color || 'var(--bg-secondary)';
+                levelEl.style.color = '#fff';
+
+                const signalsEl = document.getElementById('riskBarSignals');
+                signalsEl.innerHTML = (cr.signals || []).map(s => {
+                    const cls = s[2] > 0 ? 'negative' : s[2] < 0 ? 'positive' : '';
+                    return `<span class="risk-signal-chip ${cls}">${s[0]} ${s[2] >= 0 ? '+' : ''}${s[2]}</span>`;
+                }).join('');
+            }
+
         } catch (error) {
             console.error('加载全球风险雷达失败:', error);
         }

@@ -47,3 +47,4 @@ check_health.py
 check_north.py
 backfill_history.py
 backfill2.py
+"*.patch.py"  
