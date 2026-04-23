@@ -27,31 +27,29 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "inve
 
 
 def ensure_table_exists(conn: sqlite3.Connection):
-    """确保 global_risk_snapshot 表存在"""
+    """确保 global_risk_snapshot 表存在并包含所有需要的列"""
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS global_risk_snapshot (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             snapshot_date TEXT NOT NULL UNIQUE,
-            us10y_value REAL,
-            us10y_as_of TEXT,
-            vix_value REAL,
-            vix_as_of TEXT,
-            vix_zone TEXT,
-            vix_commentary TEXT,
-            pentagon_level INTEGER,
-            pentagon_headline TEXT,
-            pentagon_status TEXT,
-            pentagon_description TEXT,
-            gold_value REAL,
-            oil_value REAL,
-            dxy_value REAL,
-            yield_spread_value REAL,
-            composite_score REAL,
-            composite_level TEXT,
+            us10y_value REAL, us10y_as_of TEXT,
+            vix_value REAL, vix_as_of TEXT, vix_zone TEXT, vix_commentary TEXT,
+            pentagon_level INTEGER, pentagon_headline TEXT, pentagon_status TEXT, pentagon_description TEXT,
+            gold_value REAL, oil_value REAL, dxy_value REAL, yield_spread_value REAL,
+            composite_score REAL, composite_level TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # ALTER for existing tables missing new columns
+    for col, coltype in [
+        ("vix_commentary", "TEXT"), ("gold_value", "REAL"), ("oil_value", "REAL"),
+        ("dxy_value", "REAL"), ("yield_spread_value", "REAL"), ("created_at", "TEXT DEFAULT CURRENT_TIMESTAMP"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE global_risk_snapshot ADD COLUMN {col} {coltype}")
+        except Exception:
+            pass  # column already exists
     conn.commit()
     print("[OK] Table global_risk_snapshot ensured")
 
