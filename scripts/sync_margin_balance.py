@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import akshare as ak
+    import pandas as pd
 except ImportError:
     print("[FAIL] akshare not installed")
     sys.exit(1)
@@ -36,6 +37,34 @@ def ensure_table(conn):
     conn.commit()
 
 
+def safe_float(val):
+    if val is None or (isinstance(val, float) and val != val):  # NaN check
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def find_column(df, keywords):
+    """Find column index by matching keywords against column names."""
+    cols = list(df.columns)
+    for kw in keywords:
+        for i, c in enumerate(cols):
+            if kw in str(c):
+                return i
+    return None
+
+
+def find_column_name(df, keywords):
+    """Find column name by matching keywords."""
+    for kw in keywords:
+        for c in df.columns:
+            if kw in str(c):
+                return c
+    return None
+
+
 def main():
     print("=" * 60)
     print(f"Margin Balance Sync - {datetime.now()}")
@@ -46,21 +75,38 @@ def main():
     cursor = conn.cursor()
 
     added = 0
-    for exchange, col_map in [
-        ("sse", {"date": 0, "rzye": 1, "rqyl": 4}),
-        ("szse", {"date": 0, "rzye": 1, "rqyl": 4}),
-    ]:
+    for exchange in ["sse", "szse"]:
         try:
             fn = ak.stock_margin_sse if exchange == "sse" else ak.stock_margin_szse
             df = fn()
             key = "sh" if exchange == "sse" else "sz"
-            print(f"  {exchange}: {len(df)} records fetched")
+            cols = list(df.columns)
+            print(f"  {exchange}: {len(df)} records, columns={cols}")
+
+            # Find columns by name (keyword matching)
+            date_col = find_column_name(df, ["日期", "date", "交易日期"])
+            rzye_col = find_column_name(df, ["融资余额"])
+            rqyl_col = find_column_name(df, ["融券余量", "融券余额"])
+
+            if date_col is None:
+                print(f"  [WARN] {exchange}: Could not find date column, using iloc[0]")
+                date_col = cols[0] if cols else 0
+
+            if rzye_col is None:
+                print(f"  [WARN] {exchange}: Could not find rzye column, using iloc[1]")
+                rzye_col = cols[1] if len(cols) > 1 else None
+
+            if rqyl_col is None:
+                print(f"  [WARN] {exchange}: Could not find rqyl column")
 
             for _, row in df.iterrows():
                 try:
-                    date = str(row.iloc[col_map["date"]])[:10]
-                    rzye = float(row.iloc[col_map["rzye"]]) if row.iloc[col_map["rzye"]] is not None else None
-                    rqyl = float(row.iloc[col_map["rqyl"]]) if row.iloc[col_map["rqyl"]] is not None else None
+                    date = str(row[date_col])[:10]
+                    # Validate date format
+                    if not date[:4].isdigit():
+                        continue
+                    rzye = safe_float(row[rzye_col]) if rzye_col else None
+                    rqyl = safe_float(row[rqyl_col]) if rqyl_col else None
 
                     cursor.execute(f"""
                         INSERT OR REPLACE INTO margin_balance

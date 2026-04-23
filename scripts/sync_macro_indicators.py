@@ -4,8 +4,9 @@
 
 数据源:
 - 中国PMI: akshare macro_china_pmi
-- 铜金比: 从 global_risk 的 gold + LME铜价计算 (如果可获取)
+- 铜金比: 从 commodity_prices 的 gold + LME铜价计算 (如果可获取)
 """
+import re
 import sqlite3
 import sys
 import os
@@ -51,6 +52,16 @@ def upsert(conn, date, name, value, unit, source, itype="macro"):
     )
 
 
+def parse_chinese_date(raw):
+    """解析 '2008年01月份' → '2008-01-01'"""
+    m = re.match(r"(\d{4})年(\d{1,2})月", raw)
+    if m:
+        year, month = int(m.group(1)), int(m.group(2))
+        return f"{year:04d}-{month:02d}-01"
+    # Fallback: try first 10 chars
+    return str(raw)[:10]
+
+
 def main():
     print("=" * 60)
     print(f"Macro Indicators Sync - {datetime.now()}")
@@ -63,46 +74,41 @@ def main():
     try:
         df = ak.macro_china_pmi()
         if df is not None and not df.empty:
-            print(f"  PMI: {len(df)} records")
+            print(f"  PMI: {len(df)} records, columns={list(df.columns)}")
             row = df.iloc[-1]
-            # Parse date - handle Chinese format like "2008年01月份"
-            raw_date = str(row.iloc[0]).replace("年", "-").replace("月", "-").replace("份", "").strip()
-            try:
-                dt = datetime.strptime(raw_date, "%Y-%m-")
-                date = dt.strftime("%Y-%m-%d")
-            except ValueError:
-                date = raw_date[:10]
+            date = parse_chinese_date(str(row.iloc[0]))
 
-            value = float(row.iloc[1]) if len(row) > 1 else None
-            if value:
-                upsert(conn, date, "china_manufacturing_pmi", value, "", "akshare")
-                print(f"    {date}: PMI={value}")
-                if len(row) > 2:
-                    nmi = float(row.iloc[2]) if row.iloc[2] is not None else None
-                    if nmi:
-                        upsert(conn, date, "china_non_manufacturing_pmi", nmi, "", "akshare")
-                        print(f"    {date}: NMI={nmi}")
-                conn.commit()
+            # Use column name indexing when possible, fallback to iloc
+            pmi_val = None
+            nmi_val = None
+            if len(df.columns) > 1:
+                col1 = df.columns[1]
+                try:
+                    pmi_val = float(row[col1]) if row[col1] is not None else None
+                except (ValueError, TypeError):
+                    pass
+            if len(df.columns) > 2:
+                col2 = df.columns[2]
+                try:
+                    nmi_val = float(row[col2]) if row[col2] is not None else None
+                except (ValueError, TypeError):
+                    pass
+
+            if pmi_val and 20 < pmi_val < 80:  # PMI sanity check
+                upsert(conn, date, "china_manufacturing_pmi", pmi_val, "", "akshare")
+                print(f"    {date}: PMI={pmi_val}")
+            else:
+                print(f"    [WARN] PMI value {pmi_val} out of range, skipped")
+
+            if nmi_val and 20 < nmi_val < 80:  # NMI sanity check
+                upsert(conn, date, "china_non_manufacturing_pmi", nmi_val, "", "akshare")
+                print(f"    {date}: NMI={nmi_val}")
+            elif nmi_val:
+                print(f"    [WARN] NMI value {nmi_val} out of range, skipped")
+
+            conn.commit()
     except Exception as e:
         print(f"  PMI FAIL: {e}")
-
-    # 2. Copper/Gold ratio (from existing data)
-    try:
-        gold_row = conn.execute(
-            "SELECT MAX(trade_date), MAX(close) FROM vix_history WHERE vix_close > 0"
-        ).fetchone()
-
-        # Get gold from commodity_prices if exists
-        try:
-            gold = conn.execute(
-                "SELECT trade_date, MAX(close) FROM commodity_prices LIMIT 1"
-            ).fetchone()
-        except Exception:
-            gold = None
-
-        print("  Copper/Gold Ratio: skipped (need external copper source)")
-    except Exception as e:
-        print(f"  Copper/Gold FAIL: {e}")
 
     conn.close()
     print("\n[OK] Macro indicators sync done")
