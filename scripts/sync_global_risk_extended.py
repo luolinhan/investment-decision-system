@@ -39,6 +39,13 @@ def main():
 
     conn = sqlite3.connect(DB_PATH)
 
+    # Ensure dxy column exists in us_treasury_history
+    try:
+        conn.execute("ALTER TABLE us_treasury_history ADD COLUMN dxy REAL")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
+
     # 1. US Treasury + DXY from akshare bond_zh_us_rate
     try:
         df = ak.bond_zh_us_rate()
@@ -49,14 +56,15 @@ def main():
             for _, row in df.iterrows():
                 try:
                     date = str(row.iloc[0])[:10]
-                    us_10y = safe_float(row.iloc[1]) if len(row) > 1 else None
-                    us_10y_2y = safe_float(row.iloc[2]) if len(row) > 2 else None
+                    # Columns: [日期, 中国2Y, 中国5Y, 中国10Y, 中国30Y, 中国10Y-2Y, 中国GDP, 美国2Y, 美国5Y, 美国10Y, 美国30Y, 美国10Y-2Y, 美国GDP]
+                    us_2y = safe_float(row.iloc[7]) if len(row) > 7 else None
+                    us_10y = safe_float(row.iloc[9]) if len(row) > 9 else None
+                    spread = safe_float(row.iloc[11]) if len(row) > 11 else None
                     conn.execute("""
                         INSERT OR REPLACE INTO us_treasury_history
                         (trade_date, us_10y, us_2y, us_10y_2y_spread)
                         VALUES (?, ?, ?, ?)
-                    """, (date, us_10y, us_10y_2y,
-                          (us_10y - us_10y_2y) if us_10y and us_10y_2y else None))
+                    """, (date, us_10y, us_2y, spread))
                     added += 1
                 except Exception:
                     continue

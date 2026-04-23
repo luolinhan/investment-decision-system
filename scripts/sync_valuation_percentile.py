@@ -16,7 +16,18 @@ def compute_percentile(values, current):
     """计算当前值在历史序列中的百分位"""
     if not values or current is None:
         return None
-    valid = [v for v in values if v is not None and v > 0]
+    try:
+        current = float(current)
+    except (ValueError, TypeError):
+        return None
+    valid = []
+    for v in values:
+        try:
+            fv = float(v)
+            if fv > 0:
+                valid.append(fv)
+        except (ValueError, TypeError):
+            continue
     if not valid:
         return None
     count_below = sum(1 for v in valid if v < current)
