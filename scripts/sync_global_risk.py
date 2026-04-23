@@ -115,7 +115,7 @@ def main():
     service = InvestmentDataService()
 
     # 获取完整风险雷达数据（180天历史）
-    data = service.fetch_global_risk_radar(days=180)
+    data = service.get_global_risk_radar(days=180)
 
     if not data:
         print("[FAIL] No data received")
