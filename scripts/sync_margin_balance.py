@@ -2,8 +2,8 @@
 """
 同步融资融券余额数据
 
-数据源: akshare stock_margin_sse (上交所融资融券，包含全市场主要数据)
-注意: stock_margin_szse 返回格式与SSE不同且仅1行汇总数据，故仅用SSE
+数据源: akshare stock_margin_sse (上交所融资融券)
+注意: stock_margin_szse 返回格式与SSE不同，仅用SSE
 """
 import sqlite3
 import sys
@@ -37,6 +37,16 @@ def ensure_table(conn):
     conn.commit()
 
 
+def parse_margin_date(raw):
+    """解析多种日期格式: '2023-09-22', '20230922', '2023/09/22'"""
+    s = str(raw).strip()
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    if len(s) >= 10 and s[:4].isdigit():
+        return s[:10].replace("/", "-")
+    return None
+
+
 def safe_float(val):
     if val is None or (isinstance(val, float) and val != val):
         return None
@@ -60,18 +70,16 @@ def main():
         cols = list(df.columns)
         print(f"  SSE: {len(df)} records, columns={cols}")
 
-        # Use iloc with verified SSE column positions:
-        # col[0]=日期, col[1]=融资余额, col[3]=融券余量, col[6]=融资融券余额(total)
         date_idx = 0
-        rzye_idx = 1  # 融资余额
-        rqyl_idx = 3  # 融券余量
-        total_idx = 6 if len(cols) > 6 else None  # 融资融券余额
+        rzye_idx = 1
+        rqyl_idx = 3
+        total_idx = 6 if len(cols) > 6 else None
 
         added = 0
         for _, row in df.iterrows():
             try:
-                date = str(row.iloc[date_idx])[:10]
-                if not date[:4].isdigit():
+                date = parse_margin_date(row.iloc[date_idx])
+                if date is None:
                     continue
                 rzye = safe_float(row.iloc[rzye_idx])
                 rqyl = safe_float(row.iloc[rqyl_idx])
