@@ -43,30 +43,37 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     ensure_table(conn)
 
-    # USD/CNY from Bank of China
     try:
         df = ak.currency_boc_sina(symbol="美元")
-        print(f"  BOC USD/CNY: {len(df)} records, columns: {list(df.columns)}")
+        ncols = len(df.columns)
+        print(f"  BOC USD/CNY: {len(df)} records, {ncols} columns")
+
         added = 0
-        if len(df.columns) >= 2:
-            date_col = df.columns[0]
-            rate_col = df.columns[1]
-            for _, row in df.iterrows():
-                try:
-                    date = str(row[date_col])[:10]
-                    rate = float(row[rate_col]) if row[rate_col] is not None else None
-                    if rate and rate > 5 and rate < 10:
-                        conn.execute("""
-                            INSERT OR REPLACE INTO currency_rates
-                            (trade_date, usd_cny) VALUES (?, ?)
-                        """, (date, rate))
-                        added += 1
-                except Exception:
-                    continue
-            conn.commit()
+        for _, row in df.iterrows():
+            try:
+                date = str(row.iloc[0])[:10]
+                # Column index 3 or 4 is typically the middle/spot rate for USD
+                rate = None
+                for ci in range(1, min(ncols, 6)):
+                    try:
+                        val = float(row.iloc[ci])
+                        if 5 < val < 10:
+                            rate = val
+                            break
+                    except (ValueError, TypeError):
+                        pass
+                if rate:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO currency_rates (trade_date, usd_cny) VALUES (?, ?)",
+                        (date, rate)
+                    )
+                    added += 1
+            except Exception:
+                continue
+        conn.commit()
         print(f"  [OK] Upserted {added} USD/CNY records")
     except Exception as e:
-        print(f"  USD/CNY FAIL: {e}")
+        print(f"  FAIL: {e}")
 
     conn.close()
 
