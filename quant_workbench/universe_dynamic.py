@@ -1,5 +1,9 @@
 """
 动态市场扫描：生成 A 股 + 港股代码清单，并过滤高风险标的（ST/退市等）
+
+支持:
+- A 股: 沪深300 + 中证500 成分股 (akshare index_stock_cons)
+- 港股: 热门港股排行 (akshare stock_hk_hot_rank_em)
 """
 from __future__ import annotations
 
@@ -25,28 +29,98 @@ def _a_share_to_yahoo(code: str) -> str:
     return f"{code}.SZ"
 
 
-def load_a_share_universe(limit: int = 400) -> List[Instrument]:
-    """拉取 A 股列表，过滤高风险标的，截取前 limit（按市值排序）。"""
-    df = ak.stock_info_a_code_name()
-    # 尝试按总市值降序，如果没有字段则按代码排序
-    if "total_market_cap" in df.columns:
-        df = df.sort_values("total_market_cap", ascending=False)
-    df = df[df["name"].apply(_is_low_risk)]
+def _a_share_to_code(code: str) -> str:
+    if code.startswith("6"):
+        return f"sh{code}"
+    return f"sz{code}"
 
-    universe: List[Instrument] = []
-    for _, row in df.head(limit).iterrows():
-        code = str(row["code"]).zfill(6)
-        name = str(row["name"])
-        universe.append(
-            Instrument(
-                code=f"sh{code}" if code.startswith("6") else f"sz{code}",
-                finance_code=f"{code[:6]}.{'SH' if code.startswith('6') else 'SZ'}",
-                report_code=f"{code[:6]}.{'SH' if code.startswith('6') else 'SZ'}",
-                name=name,
-                market="A",
-                category="AutoScan",
-                yahoo_symbol=_a_share_to_yahoo(code),
-                aliases=[name],
+
+def _hk_code_to_instrument(code: str, name: str) -> Instrument:
+    """将港股代码转换为 Instrument。code 格式如 00700。"""
+    padded = code.zfill(5)
+    return Instrument(
+        code=f"hk{padded}",
+        finance_code=f"hk{padded}",
+        report_code=f"{padded}.HK",
+        name=name,
+        market="HK",
+        category="Dynamic",
+        yahoo_symbol=f"{padded}.HK",
+        aliases=[name],
+    )
+
+
+def load_a_share_universe(limit: int = 800) -> List[Instrument]:
+    """
+    拉取 A 股成分股列表，过滤高风险标的。
+    组合沪深300 + 中证500，去重后取前 limit。
+    """
+    instruments: List[Instrument] = []
+    seen = set()
+
+    for index_code in ["000300", "000905"]:
+        try:
+            df = ak.index_stock_cons(symbol=index_code)
+            if df is None or df.empty:
+                continue
+        except Exception as exc:
+            print(f"获取 {index_code} 成分股失败: {exc}")
+            continue
+
+        # 过滤高风险
+        name_col = "品种名称" if "品种名称" in df.columns else "name"
+        code_col = "品种代码" if "品种代码" in df.columns else "code"
+
+        df = df[df[name_col].apply(_is_low_risk)]
+
+        for _, row in df.iterrows():
+            code = str(row[code_col]).zfill(6)
+            name = str(row[name_col])
+            if code in seen:
+                continue
+            seen.add(code)
+
+            instruments.append(
+                Instrument(
+                    code=_a_share_to_code(code),
+                    finance_code=code,
+                    report_code=f"{code}.{'SH' if code.startswith('6') else 'SZ'}",
+                    name=name,
+                    market="A",
+                    category="Index",
+                    yahoo_symbol=_a_share_to_yahoo(code),
+                    aliases=[name],
+                )
             )
-        )
-    return universe
+            if len(instruments) >= limit:
+                break
+
+    return instruments
+
+
+def load_hk_universe(limit: int = 60) -> List[Instrument]:
+    """
+    拉取港股热门排行，过滤后返回 Instrument 列表。
+    """
+    try:
+        df = ak.stock_hk_hot_rank_em()
+        if df is None or df.empty:
+            return []
+    except Exception as exc:
+        print(f"获取港股热榜失败: {exc}")
+        return []
+
+    instruments: List[Instrument] = []
+    for _, row in df.iterrows():
+        code = str(row.get("代码", ""))
+        name = str(row.get("股票名称", ""))
+        if not code or not name:
+            continue
+        if not _is_low_risk(name):
+            continue
+
+        instruments.append(_hk_code_to_instrument(code, name))
+        if len(instruments) >= limit:
+            break
+
+    return instruments

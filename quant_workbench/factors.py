@@ -353,3 +353,275 @@ def score_trend(df: pd.DataFrame) -> Dict[str, Any]:
         "reasons": reasons,
         "risk_flags": risk_flags,
     }
+
+
+# =============================================================================
+# 新增技术指标: MACD, KDJ, Bollinger, 筹码集中度
+# =============================================================================
+
+def compute_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """
+    计算 MACD 指标
+    新增列: macd_dif, macd_dea, macd_hist, macd_golden_cross, macd_dead_cross
+    """
+    data = df.copy()
+    close = data["close"]
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    data["macd_dif"] = ema_fast - ema_slow
+    data["macd_dea"] = data["macd_dif"].ewm(span=signal, adjust=False).mean()
+    data["macd_hist"] = 2 * (data["macd_dif"] - data["macd_dea"])
+
+    # 金叉/死叉检测
+    prev_dif = data["macd_dif"].shift(1)
+    prev_dea = data["macd_dea"].shift(1)
+    data["macd_golden_cross"] = (prev_dif < prev_dea) & (data["macd_dif"] > data["macd_dea"])
+    data["macd_dead_cross"] = (prev_dif > prev_dea) & (data["macd_dif"] < data["macd_dea"])
+
+    # MACD 背离检测
+    data["macd_bullish_divergence"] = _detect_bullish_divergence(data)
+    data["macd_bearish_divergence"] = _detect_bearish_divergence(data)
+
+    return data
+
+
+def _detect_bullish_divergence(df: pd.DataFrame, lookback: int = 30) -> pd.Series:
+    """
+    底背离检测: 价格创新低但 MACD DIF 未创新低
+    """
+    result = pd.Series(False, index=df.index)
+    if len(df) < lookback + 5:
+        return result
+
+    for i in range(lookback, len(df)):
+        window_price = df["close"].iloc[i - lookback:i]
+        window_dif = df["macd_dif"].iloc[i - lookback:i]
+
+        # 价格创新低
+        if df["close"].iloc[i] < window_price.min():
+            # DIF 未创新低
+            if df["macd_dif"].iloc[i] > window_dif.min():
+                result.iloc[i] = True
+
+    return result
+
+
+def _detect_bearish_divergence(df: pd.DataFrame, lookback: int = 30) -> pd.Series:
+    """
+    顶背离检测: 价格创新高但 MACD DIF 未创新高
+    """
+    result = pd.Series(False, index=df.index)
+    if len(df) < lookback + 5:
+        return result
+
+    for i in range(lookback, len(df)):
+        window_price = df["close"].iloc[i - lookback:i]
+        window_dif = df["macd_dif"].iloc[i - lookback:i]
+
+        # 价格创新高
+        if df["close"].iloc[i] > window_price.max():
+            # DIF 未创新高
+            if df["macd_dif"].iloc[i] < window_dif.max():
+                result.iloc[i] = True
+
+    return result
+
+
+def compute_kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3) -> pd.DataFrame:
+    """
+    计算 KDJ 指标
+    新增列: kdj_k, kdj_d, kdj_j, kdj_golden_cross
+    """
+    data = df.copy()
+    low_n = data["low"].rolling(n).min()
+    high_n = data["high"].rolling(n).max()
+    rsv = (data["close"] - low_n) / (high_n - low_n) * 100
+
+    data["kdj_k"] = rsv.ewm(com=m1 - 1, adjust=False).mean()
+    data["kdj_d"] = data["kdj_k"].ewm(com=m2 - 1, adjust=False).mean()
+    data["kdj_j"] = 3 * data["kdj_k"] - 2 * data["kdj_d"]
+
+    # 金叉检测
+    prev_k = data["kdj_k"].shift(1)
+    prev_d = data["kdj_d"].shift(1)
+    data["kdj_golden_cross"] = (prev_k < prev_d) & (data["kdj_k"] > data["kdj_d"])
+
+    return data
+
+
+def compute_bollinger(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
+    """
+    计算布林带指标
+    新增列: boll_mid, boll_upper, boll_lower, boll_width, boll_squeeze, boll_position
+    """
+    data = df.copy()
+    close = data["close"]
+    ma = close.rolling(period).mean()
+    std = close.rolling(period).std()
+
+    data["boll_mid"] = ma
+    data["boll_upper"] = ma + std_dev * std
+    data["boll_lower"] = ma - std_dev * std
+    data["boll_width"] = (data["boll_upper"] - data["boll_lower"]) / ma * 100
+    data["boll_squeeze"] = data["boll_width"] < data["boll_width"].rolling(period * 3).mean() * 0.7
+    data["boll_position"] = (close - data["boll_lower"]) / (data["boll_upper"] - data["boll_lower"])
+
+    return data
+
+
+def score_macd(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    MACD 信号评分
+    返回: {score, reasons, risk_flags}
+    """
+    if df.empty or "macd_dif" not in df.columns:
+        return {"score": 0, "reasons": ["MACD 数据缺失"], "risk_flags": []}
+
+    latest = df.iloc[-1]
+    score = 0
+    reasons = []
+    risk_flags = []
+
+    dif = latest.get("macd_dif")
+    dea = latest.get("macd_dea")
+    hist = latest.get("macd_hist")
+
+    if pd.notna(dif) and pd.notna(dea):
+        if dif > dea:
+            score += 8
+            reasons.append("DIF 在 DEA 之上（多头排列）")
+        elif dif < dea:
+            score -= 5
+            risk_flags.append("DIF 在 DEA 之下（空头排列）")
+
+        # 零轴判断
+        if dif > 0:
+            score += 4
+            reasons.append("DIF 在零轴之上")
+        else:
+            risk_flags.append("DIF 在零轴之下")
+
+    if pd.notna(hist):
+        if hist > 0:
+            score += 3
+            reasons.append("MACD 柱状图为正")
+        elif hist < 0:
+            score -= 2
+            risk_flags.append("MACD 柱状图为负")
+
+        # 柱状图缩短
+        if len(df) >= 3:
+            prev_hist = df["macd_hist"].iloc[-2]
+            if pd.notna(prev_hist) and hist < 0 and hist > prev_hist:
+                score += 4
+                reasons.append("MACD 绿柱缩短，空头动能衰减")
+            elif pd.notna(prev_hist) and hist > 0 and hist < prev_hist:
+                score -= 2
+                risk_flags.append("MACD 红柱缩短，多头动能衰减")
+
+    if latest.get("macd_golden_cross"):
+        score += 6
+        reasons.append("MACD 金叉信号")
+
+    if latest.get("macd_bullish_divergence"):
+        score += 8
+        reasons.append("MACD 底背离信号")
+
+    if latest.get("macd_bearish_divergence"):
+        score -= 8
+        risk_flags.append("MACD 顶背离信号")
+
+    return {
+        "score": max(score, 0),
+        "reasons": reasons,
+        "risk_flags": risk_flags,
+    }
+
+
+def score_kdj(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    KDJ 信号评分
+    """
+    if df.empty or "kdj_k" not in df.columns:
+        return {"score": 0, "reasons": ["KDJ 数据缺失"], "risk_flags": []}
+
+    latest = df.iloc[-1]
+    score = 0
+    reasons = []
+    risk_flags = []
+
+    k = latest.get("kdj_k")
+    d = latest.get("kdj_d")
+    j = latest.get("kdj_j")
+
+    if pd.notna(k) and pd.notna(d):
+        if k > d:
+            score += 4
+            reasons.append("K 值在 D 值之上")
+
+        # 超买/超卖
+        if pd.notna(j):
+            if j > 100:
+                risk_flags.append("J 值超买（>100），注意回调风险")
+                score -= 3
+            elif j > 80:
+                risk_flags.append("J 值偏高（>80）")
+            elif j < 0:
+                reasons.append("J 值超卖（<0），可能有反弹")
+                score += 5
+            elif j < 20:
+                reasons.append("J 值偏低（<20），关注金叉")
+                score += 2
+
+    if latest.get("kdj_golden_cross"):
+        score += 5
+        reasons.append("KDJ 金叉信号")
+
+    return {
+        "score": max(score, 0),
+        "reasons": reasons,
+        "risk_flags": risk_flags,
+    }
+
+
+def score_bollinger(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    布林带信号评分
+    """
+    if df.empty or "boll_mid" not in df.columns:
+        return {"score": 0, "reasons": ["布林带数据缺失"], "risk_flags": []}
+
+    latest = df.iloc[-1]
+    score = 0
+    reasons = []
+    risk_flags = []
+
+    pos = latest.get("boll_position")
+    squeeze = latest.get("boll_squeeze")
+
+    if pd.notna(pos):
+        if pos > 1.0:
+            score += 3
+            reasons.append("价格突破布林上轨，强势但注意超买")
+            risk_flags.append("价格突破上轨，短期可能回调")
+        elif pos > 0.8:
+            score += 2
+            reasons.append("价格接近上轨")
+        elif pos < 0.0:
+            score -= 2
+            reasons.append("价格跌破下轨，超卖但可能继续下跌")
+        elif pos < 0.2:
+            reasons.append("价格接近下轨，关注支撑")
+            score += 1
+        elif pos > 0.5:
+            score += 1
+            reasons.append("价格运行在中轨之上")
+
+    if squeeze:
+        reasons.append("布林带收窄，即将变盘")
+
+    return {
+        "score": max(score, 0),
+        "reasons": reasons,
+        "risk_flags": risk_flags,
+    }

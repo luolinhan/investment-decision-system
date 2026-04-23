@@ -20,35 +20,86 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
-os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+# 清除代理环境变量（东方财富直连不需要代理）
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+    os.environ.pop(_k, None)
 
 import akshare as ak
 
 DEFAULT_WATCH_LIST = {
     "a_stocks": {
+        # 科技 / 半导体
+        "中芯国际": "sh688981",
+        "立讯精密": "sz002475",
+        "韦尔股份": "sh603501",
+        "澜起科技": "sh688008",
+        "兆易创新": "sh603986",
+        "中科创达": "sz300496",
+        "科大讯飞": "sz002230",
+        "金山办公": "sh688111",
+        # 新能源 / 光伏
+        "宁德时代": "sz300750",
+        "隆基绿能": "sh601012",
         "晶澳科技": "sz002459",
         "通威股份": "sh600438",
-        "隆基绿能": "sh601012",
         "锦浪科技": "sz300763",
+        "亿纬锂能": "sz300014",
+        "赣锋锂业": "sz002460",
+        # 消费 / 白酒
+        "贵州茅台": "sh600519",
+        "五粮液": "sz000858",
+        "泸州老窖": "sz000568",
+        "山西汾酒": "sh600809",
+        "海天味业": "sh603288",
+        "中国中免": "sh601888",
+        # 医药 / CXO
         "百济神州": "sh688235",
         "药明康德": "sh603259",
         "复星医药": "sh600196",
-        "中国中免": "sh601888",
+        "迈瑞医疗": "sz300760",
+        "恒瑞医药": "sh600276",
+        # 金融
+        "招商银行": "sh600036",
+        "中国平安": "sh601318",
+        "中信证券": "sh600030",
+        # 制造 / 家电
+        "格力电器": "sz000651",
+        "美的集团": "sz000333",
+        "紫金矿业": "sh601899",
+        "顺丰控股": "sz002352",
     },
     "hk_stocks": {
+        # 恒生科技
         "阿里巴巴": "hk09988",
         "腾讯": "hk00700",
         "美团": "hk03690",
         "小米": "hk01810",
         "快手": "hk01024",
+        "京东": "hk09618",
+        "百度": "hk09888",
+        # 汽车
+        "比亚迪股份": "hk01211",
+        "理想汽车": "hk02015",
+        "小鹏汽车": "hk09868",
+        "蔚来": "hk09866",
+        # 医药
         "百济神州": "hk06160",
         "药明生物": "hk02269",
-        "中国海洋石油": "hk00883",
+        "信达生物": "hk01801",
+        # 金融 / 能源 / 消费
+        "中国平安": "hk02318",
+        "中海油": "hk00883",
+        "中芯国际": "hk00981",
+        "中国移动": "hk00941",
+        "友邦保险": "hk01299",
+        "联想集团": "hk00992",
     },
     "us_stocks": {
         "阿里巴巴": "usBABA",
         "腾讯ADR": "usTCEHY",
+        "拼多多": "usPDD",
+        "京东ADR": "usJD",
+        "网易": "usNTES",
     },
 }
 
@@ -61,7 +112,9 @@ INDEX_CODES = {
     "sh000905": {"name": "中证500", "primary": "sh000905", "secondary": "s_sh000905"},
     "sh000852": {"name": "中证1000", "primary": "sh000852", "secondary": "s_sh000852"},
     "sz399005": {"name": "中小板指", "primary": "sz399005", "secondary": "s_sz399005"},
+    "sz399324": {"name": "红利指数", "primary": "sz399324", "secondary": "s_sz399324"},
     "hsi": {"name": "恒生指数", "primary": "hkHSI", "secondary": "rt_hkHSI"},
+    "hstech": {"name": "恒生科技", "primary": "hkHSTECH", "secondary": "rt_hkHSTECH"},
     "ftsea50": {"name": "富时中国A50", "primary": "usFXI", "secondary": "gb_fxi"},
     "yang": {"name": "富时中国三倍做空", "primary": "usYANG", "secondary": "gb_yang"},
     "dji": {"name": "道琼斯", "primary": "usDJI", "secondary": "gb_dji"},
@@ -1475,6 +1528,141 @@ class InvestmentDataService:
         except Exception as exc:
             print(f"恒生指数历史失败: {exc}")
         return history
+
+    # =============================================================================
+    # 港股数据增强
+    # =============================================================================
+
+    def get_hk_stock_hot_rank(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        港股热门排行（东方财富）
+        """
+        try:
+            df = ak.stock_hk_hot_rank_em()
+            if df is None or df.empty:
+                return []
+            result = []
+            for _, row in df.head(limit).iterrows():
+                code = str(row.get("代码", ""))
+                result.append({
+                    "code": f"hk{code}",
+                    "name": str(row.get("股票名称", "")),
+                    "price": self._safe_float(row.get("最新价")),
+                    "change_pct": self._safe_float(row.get("涨跌幅")),
+                    "volume": self._safe_int(row.get("成交量")),
+                    "turnover": self._safe_float(row.get("成交额")),
+                })
+            return result
+        except Exception as exc:
+            print(f"港股热榜失败: {exc}")
+            return []
+
+    def get_hk_stock_financial(self, symbol: str) -> Dict[str, Any]:
+        """
+        港股财务数据（东方财富）
+        symbol 格式: "00700", "09988" 等
+        """
+        try:
+            df = ak.stock_financial_hk_analysis_indicator_em(symbol=symbol)
+            if df is None or df.empty:
+                return {}
+            latest = df.iloc[-1]
+            return {
+                "pe_ttm": self._safe_float(latest.get("市盈率")),
+                "pb": self._safe_float(latest.get("市净率")),
+                "roe": self._safe_float(latest.get("净资产收益率")),
+                "dividend_yield": self._safe_float(latest.get("股息率")),
+                "eps": self._safe_float(latest.get("每股收益")),
+                "revenue": self._safe_float(latest.get("营业收入")),
+                "net_profit": self._safe_float(latest.get("净利润")),
+            }
+        except Exception as exc:
+            print(f"港股财务数据获取失败 {symbol}: {exc}")
+            return {}
+
+    def get_hk_stock_history(self, symbol: str, days: int = 365) -> List[Dict[str, Any]]:
+        """
+        港股历史行情（东方财富）
+        symbol 格式: "00700"
+        """
+        try:
+            df = ak.stock_hk_hist_daily_em(symbol=symbol)
+            if df is None or df.empty:
+                return []
+            df = df.tail(days)
+            return [
+                {
+                    "date": str(row.get("date", ""))[:10],
+                    "open": self._safe_float(row.get("open")),
+                    "high": self._safe_float(row.get("high")),
+                    "low": self._safe_float(row.get("low")),
+                    "close": self._safe_float(row.get("close")),
+                    "volume": self._safe_float(row.get("volume")),
+                }
+                for _, row in df.iterrows()
+            ]
+        except Exception as exc:
+            print(f"港股历史行情获取失败 {symbol}: {exc}")
+            return []
+
+    def get_hk_index_list(self) -> List[Dict[str, Any]]:
+        """
+        获取港股主要指数行情
+        """
+        indices = [
+            ("HSI", "恒生指数"),
+            ("HSTECH", "恒生科技"),
+            ("HSCEI", "恒生中国企业"),
+            ("HSSCI", "恒生综合指数"),
+        ]
+        result = []
+        for symbol, name in indices:
+            try:
+                df = ak.stock_hk_index_daily_em(symbol=symbol)
+                if df is not None and not df.empty:
+                    latest = df.iloc[-1]
+                    prev = df.iloc[-2] if len(df) >= 2 else latest
+                    close = self._safe_float(latest.get("close"))
+                    prev_close = self._safe_float(prev.get("close"))
+                    result.append({
+                        "code": symbol,
+                        "name": name,
+                        "close": close,
+                        "change_pct": self._compute_change_pct(close, prev_close),
+                        "date": str(latest.get("date", ""))[:10],
+                    })
+            except Exception as exc:
+                print(f"港股指数 {symbol} 获取失败: {exc}")
+        return result
+
+    def get_hk_repurchase_stats(self, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        港股回购统计（重要信号）
+        """
+        try:
+            df = ak.stock_hk_repurchase_em()
+            if df is None or df.empty:
+                return []
+            df = df.head(days)
+            # 按公司聚合
+            company_stats = {}
+            for _, row in df.iterrows():
+                name = str(row.get("公司名称", ""))
+                if name not in company_stats:
+                    company_stats[name] = {
+                        "name": name,
+                        "code": str(row.get("代码", "")),
+                        "total_amount": 0,
+                        "count": 0,
+                    }
+                company_stats[name]["total_amount"] += self._safe_float(row.get("回购金额")) or 0
+                company_stats[name]["count"] += 1
+
+            result = sorted(company_stats.values(), key=lambda x: x["total_amount"], reverse=True)
+            return result[:30]
+        except Exception as exc:
+            print(f"港股回购数据获取失败: {exc}")
+            return []
 
 
 if __name__ == "__main__":

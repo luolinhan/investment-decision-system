@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-同步南向资金 (港股通) 数据
+同步南向资金 (港股通) 数据 - 修正版
 
-数据源: akshare stock_hsgt_hist_em(symbol="港股通")
+数据源: akshare stock_hsgt_hist_em() 不带 symbol 参数
 """
 import sqlite3
 import sys
@@ -45,20 +45,24 @@ def main():
     cursor = conn.cursor()
 
     try:
-        df = ak.stock_hsgt_hist_em(symbol="港股通")
-        print(f"  Fetched {len(df)} records")
+        # stock_hsgt_hist_em() without symbol param returns all HSGT data
+        df = ak.stock_hsgt_hist_em()
+        print(f"  Fetched {len(df)} records (columns: {list(df.columns)})")
+
         added = 0
         for _, row in df.iterrows():
             try:
                 date = str(row.iloc[0])[:10]
-                net = float(row.iloc[5]) if len(row) > 5 else None
-                if net is not None:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO south_flow
-                        (trade_date, total_net)
-                        VALUES (?, ?)
-                    """, (date, net))
-                    added += 1
+                if len(row) >= 6:
+                    val = row.iloc[5]
+                    if val is not None and not (isinstance(val, float) and val != val):
+                        net = float(val)
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO south_flow
+                            (trade_date, total_net)
+                            VALUES (?, ?)
+                        """, (date, net))
+                        added += 1
             except Exception:
                 continue
         conn.commit()

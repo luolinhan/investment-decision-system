@@ -16,12 +16,6 @@ class Settings(BaseSettings):
 
     # PDF存储
     pdf_storage_path: str = "./data/pdfs"
-    foreign_research_root: str = "./data/foreign_research"
-    foreign_research_raw_path: str = "./data/foreign_research/raw"
-    foreign_research_text_path: str = "./data/foreign_research/text"
-    foreign_research_analysis_path: str = "./data/foreign_research/analysis"
-    foreign_research_manifest_path: str = "./data/foreign_research/manifests"
-    foreign_research_retention_days: int = 180
 
     # 慧博投研
     huibor_username: Optional[str] = None
@@ -29,13 +23,6 @@ class Settings(BaseSettings):
 
     # Claude API
     anthropic_api_key: Optional[str] = None
-    bailian_api_key: Optional[str] = None
-    bailian_base_url: str = "https://coding.dashscope.aliyuncs.com/v1"
-    foreign_research_model: str = "glm-5"
-    foreign_research_timeout_seconds: int = 45
-
-    # Task-06: SSL验证配置（默认开启，Windows证书问题时可显式关闭）
-    http_verify_ssl: bool = True
 
     # 定时任务
     scheduler_hour: int = 6
@@ -54,17 +41,48 @@ def ensure_directories():
     dirs = [
         "data",
         "data/pdfs",
-        "data/foreign_research",
-        "data/foreign_research/raw",
-        "data/foreign_research/text",
-        "data/foreign_research/analysis",
-        "data/foreign_research/manifests",
         "logs",
         "static/css",
         "static/js",
     ]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
+
+
+def get_investment_runtime_profile() -> dict:
+    """
+    Return machine-readable values and human-readable labels describing
+    how the investment node is deployed.
+
+    Defaults reflect the current three-node split:
+      - Windows service (data collector + FastAPI endpoint)
+      - Mac controller (app server)
+      - Aliyun SWAS (index / data collector)
+    """
+    node_role = os.getenv("INVESTMENT_NODE_ROLE", "windows_service")
+    data_source = os.getenv("INVESTMENT_DATA_SOURCE_MODE", "snapshot_first")
+    controller_host = os.getenv("INVESTMENT_CONTROLLER_HOST", "mac-controller")
+    collector_host = os.getenv("INVESTMENT_COLLECTOR_HOST", "aliyun-swas")
+
+    role_labels = {
+        "windows_service": "Windows 服务节点",
+        "mac_controller": "Mac 控制节点",
+        "aliyun_collector": "阿里云采集节点",
+    }
+    mode_labels = {
+        "snapshot_first": "快照优先 (SQLite)",
+        "realtime_only": "纯实时",
+        "hybrid": "混合模式 (快照+实时)",
+    }
+
+    return {
+        "node_role": node_role,
+        "node_role_label": role_labels.get(node_role, node_role),
+        "data_source_mode": data_source,
+        "data_source_mode_label": mode_labels.get(data_source, data_source),
+        "controller_host": controller_host,
+        "collector_host": collector_host,
+    }
 
 
 settings = Settings()

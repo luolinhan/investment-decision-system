@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 
-from app.config import settings, ensure_directories
+from app.config import settings, ensure_directories, get_investment_runtime_profile
 from app.database import init_db
 from app.routers import reports, pages, investment, foreign_research, investment_v2
 
@@ -33,6 +33,10 @@ async def lifespan(app: FastAPI):
 
     # 确保目录存在
     ensure_directories()
+
+    # 记录运行时配置
+    profile = get_investment_runtime_profile()
+    logger.info(f"Investment runtime profile: {profile}")
 
     # 初始化数据库
     await init_db()

@@ -1626,88 +1626,60 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
-
-    /* Global Risk Score Bar */
-    .risk-score-bar {
-        background: var(--bg-card);
+    .runtime-profile-card {
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.75));
         border: 1px solid var(--border-color);
-        border-radius: 0.75rem;
-        padding: 0.75rem 1.25rem;
+        border-radius: 1rem;
+        padding: 1rem 1.25rem;
         margin-bottom: 1.5rem;
     }
-    .risk-score-inner {
+
+    .runtime-profile-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 1rem;
-        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
     }
-    .risk-score-label {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-weight: 600;
-    }
-    .risk-score-value {
-        font-size: 1.5rem;
-        font-weight: 800;
-        font-family: var(--font-mono);
-    }
-    .risk-score-level {
+
+    .runtime-profile-title {
         font-size: 0.85rem;
         font-weight: 600;
-        padding: 0.25rem 0.75rem;
-        border-radius: 1rem;
+        color: var(--accent-cyan);
     }
-    .risk-score-signals {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-left: auto;
+
+    .runtime-profile-badge {
+        font-size: 0.72rem;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--accent-cyan);
     }
-    .risk-signal-chip {
-        font-size: 0.7rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 0.5rem;
-        background: var(--bg-secondary);
-        color: var(--text-secondary);
-        font-family: var(--font-mono);
-    }
-    .risk-signal-chip.positive { color: var(--accent-green); }
-    .risk-signal-chip.negative { color: var(--accent-red); }
-    .risk-radar-grid-v2 {
+
+    .runtime-profile-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.75rem;
     }
-    .risk-mini-card {
-        background: var(--bg-secondary);
-        border-radius: 0.75rem;
-        padding: 1rem;
-        text-align: center;
+
+    .runtime-profile-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 0.35rem 0;
     }
-    .risk-mini-card .mini-label {
-        font-size: 0.75rem;
+
+    .runtime-profile-label {
+        font-size: 0.72rem;
         color: var(--text-muted);
-        margin-bottom: 0.25rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
     }
-    .risk-mini-card .mini-value {
-        font-size: 1.3rem;
-        font-weight: 700;
+
+    .runtime-profile-value {
+        font-size: 0.85rem;
+        font-weight: 600;
         font-family: var(--font-mono);
-        margin-bottom: 0.25rem;
-    }
-    .risk-mini-card .mini-zone {
-        font-size: 0.7rem;
-        padding: 0.15rem 0.5rem;
-        border-radius: 0.5rem;
-        display: inline-block;
-    }
-    .risk-mini-card .mini-note {
-        font-size: 0.7rem;
-        color: var(--text-muted);
-        margin-top: 0.5rem;
-        line-height: 1.3;
+        color: var(--text-primary);
     }
 
 </style>
@@ -1724,6 +1696,36 @@
             <i class="bi bi-arrow-repeat"></i>
             <span>刷新</span>
         </button>
+    </div>
+</div>
+
+<!-- Runtime Profile Card -->
+<div id="runtimeProfileCard" class="runtime-profile-card">
+    <div class="runtime-profile-header">
+        <span class="runtime-profile-title"><i class="bi bi-cpu me-1"></i>运行时配置</span>
+        <span class="runtime-profile-badge" id="runtimeBadge">加载中...</span>
+    </div>
+    <div class="runtime-profile-grid">
+        <div class="runtime-profile-item">
+            <span class="runtime-profile-label">节点角色</span>
+            <span class="runtime-profile-value" id="runtimeNodeRole">-</span>
+        </div>
+        <div class="runtime-profile-item">
+            <span class="runtime-profile-label">数据源模式</span>
+            <span class="runtime-profile-value" id="runtimeDataSource">-</span>
+        </div>
+        <div class="runtime-profile-item">
+            <span class="runtime-profile-label">控制器</span>
+            <span class="runtime-profile-value" id="runtimeController">-</span>
+        </div>
+        <div class="runtime-profile-item">
+            <span class="runtime-profile-label">采集器</span>
+            <span class="runtime-profile-value" id="runtimeCollector">-</span>
+        </div>
+        <div class="runtime-profile-item">
+            <span class="runtime-profile-label">服务端点</span>
+            <span class="runtime-profile-value" id="runtimeServiceEndpoint">-</span>
+        </div>
     </div>
 </div>
 
@@ -1751,16 +1753,6 @@
 
 <!-- Tab 1: 中枢首页 -->
 <div id="tab-dashboard" class="tab-content active">
-    <!-- Global Risk Score Bar -->
-    <div id="riskScoreBar" class="risk-score-bar" style="display:none;">
-        <div class="risk-score-inner">
-            <span class="risk-score-label">Global Risk</span>
-            <span class="risk-score-value" id="riskBarScore">-</span>
-            <span class="risk-score-level" id="riskBarLevel">Loading</span>
-            <div class="risk-score-signals" id="riskBarSignals"></div>
-        </div>
-    </div>
-
     <div class="decision-strip">
         <div class="decision-item">
             <div class="label">风险状态</div>
@@ -2004,38 +1996,7 @@
         </div>
     </div>
 
-
-        <!-- Enhanced Risk Indicators -->
-        <div class="risk-radar-grid-v2" style="margin-top: 1rem;">
-            <div class="risk-mini-card" id="goldCard">
-                <div class="mini-label">Gold</div>
-                <div class="mini-value" id="goldValue">-</div>
-                <div class="mini-zone" id="goldZone">-</div>
-                <div class="mini-note" id="goldNote">-</div>
-            </div>
-            <div class="risk-mini-card" id="oilCard">
-                <div class="mini-label">Oil</div>
-                <div class="mini-value" id="oilValue">-</div>
-                <div class="mini-zone" id="oilZone">-</div>
-                <div class="mini-note" id="oilNote">-</div>
-            </div>
-            <div class="risk-mini-card" id="spreadCard">
-                <div class="mini-label">Yield Spread (10Y-2Y)</div>
-                <div class="mini-value" id="spreadValue">-</div>
-                <div class="mini-zone" id="spreadZone">-</div>
-                <div class="mini-note" id="spreadNote">-</div>
-            </div>
-            <div class="risk-mini-card" id="dxyCard">
-                <div class="mini-label">US Dollar (DXY)</div>
-                <div class="mini-value" id="dxyValue">-</div>
-                <div class="mini-zone" id="dxyZone">-</div>
-                <div class="mini-note" id="dxyNote">-</div>
-            </div>
-        </div>
-
-    </div>
-
-        <!-- 胜率驱动面板 -->
+    <!-- 胜率驱动面板 -->
     <div class="chart-container fade-in" style="margin-bottom: 1.5rem;">
         <div class="chart-header">
             <span class="chart-title"><i class="bi bi-compass me-2"></i>胜率驱动因子</span>
@@ -2237,8 +2198,26 @@
             <canvas id="chartRatesHistory"></canvas>
         </div>
     </div>
-</div>
 
+    <!-- 北向资金详细追踪 -->
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title"><i class="bi bi-arrow-left-right me-2" style="color: var(--accent-cyan);"></i>北向资金详细追踪</span>
+            <button class="btn btn-sm" onclick="loadNorthFlowDetail()" style="font-size: 0.75rem; padding: 0.3rem 0.8rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--bg-secondary); color: var(--text-primary);">刷新</button>
+        </div>
+        <div id="northFlowSummary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem;"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div>
+                <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem;">北向持股 Top 10</div>
+                <div id="northStockHold" style="max-height: 350px; overflow-y: auto;"></div>
+            </div>
+            <div>
+                <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem;">行业资金流向</div>
+                <div id="northSectorFlow" style="max-height: 350px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Tab 3: 机会池 -->
 <div id="tab-fundamentals" class="tab-content">
     <div class="workflow-row">
@@ -2467,6 +2446,23 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <!-- 板块行情看板 -->
+    <div class="chart-container fade-in" style="margin-top: 1.5rem;">
+        <div class="chart-header">
+            <span class="chart-title">板块行情看板</span>
+            <button class="btn btn-sm" onclick="loadSectorHeatmap()" style="font-size: 0.75rem; padding: 0.3rem 0.8rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--bg-secondary); color: var(--text-primary);">刷新</button>
+        </div>
+        <!-- 板块热力图 -->
+        <div id="sectorHeatmap" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 1rem;"></div>
+        <!-- 板块轮动信号 -->
+        <div id="sectorRotation" style="margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 0.75rem;">
+            <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem;">轮动方向</div>
+            <div id="rotationDirection" style="color: var(--text-muted); font-size: 0.8rem;">加载中...</div>
+        </div>
+        <!-- 板块资金流 Top 10 -->
+        <div id="sectorFlowTable" style="margin-top: 1rem;"></div>
     </div>
 </div>
 
@@ -3470,10 +3466,32 @@
 
     // ==================== 全景中枢 ====================
     async function loadDashboardData() {
+        loadRuntimeProfile();
         loadMarketData();
         loadDecisionCenter();
         loadPreopenStrategy();
         loadGlobalRiskRadar(180);
+    }
+
+    async function loadRuntimeProfile() {
+        try {
+            const data = await api('/investment/api/runtime/profile');
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value || '-';
+            };
+            setText('runtimeNodeRole', data.node_role_label);
+            setText('runtimeDataSource', data.data_source_mode_label);
+            setText('runtimeController', data.controller_host);
+            setText('runtimeCollector', data.collector_host);
+            setText('runtimeServiceEndpoint', `${data.service_host}:${data.service_port}`);
+            const badge = document.getElementById('runtimeBadge');
+            if (badge) {
+                badge.textContent = data.node_role_label || '-';
+            }
+        } catch (error) {
+            console.error('加载运行时配置失败:', error);
+        }
     }
 
     async function loadMarketData() {
@@ -3629,71 +3647,6 @@
                 document.getElementById('pizzaCommentary').textContent = pizza.description || '暂无解读';
                 document.getElementById('date-pizza-index').textContent = formatQuoteTime(pizza.as_of);
             }
-
-            // Gold
-            const gold = data.gold || {};
-            if (typeof gold.latest === 'number') {
-                document.getElementById('goldValue').textContent = formatNumber(gold.latest, 1) + (gold.unit ? ' ' + gold.unit : '');
-                const gz = document.getElementById('goldZone');
-                gz.textContent = gold.zone || '-';
-                gz.style.background = gold.zone === 'risk_haven_surge' ? 'var(--accent-red)' : gold.zone === 'elevated' ? 'var(--accent-gold)' : 'var(--bg-card)';
-                gz.style.color = gold.zone === 'risk_haven_surge' || gold.zone === 'elevated' ? '#fff' : 'var(--text-secondary)';
-                document.getElementById('goldNote').textContent = gold.commentary || '-';
-            }
-
-            // Oil
-            const oil = data.oil || {};
-            if (typeof oil.latest === 'number') {
-                document.getElementById('oilValue').textContent = formatNumber(oil.latest, 1) + (oil.unit ? ' ' + oil.unit : '');
-                const oz = document.getElementById('oilZone');
-                oz.textContent = oil.zone || '-';
-                oz.style.background = oil.zone === 'supply_shock' ? 'var(--accent-red)' : oil.zone === 'elevated' ? 'var(--accent-gold)' : 'var(--bg-card)';
-                oz.style.color = oil.zone === 'supply_shock' || oil.zone === 'elevated' ? '#fff' : 'var(--text-secondary)';
-                document.getElementById('oilNote').textContent = oil.commentary || '-';
-            }
-
-            // Yield Spread
-            const spread = data.yield_spread || {};
-            if (typeof spread.latest === 'number') {
-                document.getElementById('spreadValue').textContent = formatNumber(spread.latest, 2) + '%';
-                const sz = document.getElementById('spreadZone');
-                sz.textContent = spread.zone || '-';
-                sz.style.background = spread.zone === 'deep_inversion' ? 'var(--accent-red)' : spread.zone === 'inverted' ? 'var(--accent-gold)' : 'var(--bg-card)';
-                sz.style.color = spread.zone === 'deep_inversion' || spread.zone === 'inverted' ? '#fff' : 'var(--text-secondary)';
-                document.getElementById('spreadNote').textContent = spread.commentary || '-';
-            }
-
-            // DXY
-            const dxy = data.dxy || {};
-            if (typeof dxy.latest === 'number') {
-                document.getElementById('dxyValue').textContent = formatNumber(dxy.latest, 2);
-                const dz = document.getElementById('dxyZone');
-                dz.textContent = dxy.zone || '-';
-                dz.style.background = dxy.zone === 'strong_dollar' ? 'var(--accent-red)' : dxy.zone === 'weak_dollar' ? 'var(--accent-green)' : 'var(--bg-card)';
-                dz.style.color = dxy.zone === 'strong_dollar' || dxy.zone === 'weak_dollar' ? '#fff' : 'var(--text-secondary)';
-                document.getElementById('dxyNote').textContent = dxy.commentary || '-';
-            }
-
-            // Composite Risk Score Bar
-            const cr = data.composite_risk || {};
-            if (typeof cr.score === 'number') {
-                const bar = document.getElementById('riskScoreBar');
-                bar.style.display = 'flex';
-                bar.style.borderColor = cr.color || 'var(--border-color)';
-                document.getElementById('riskBarScore').textContent = cr.score.toFixed(0);
-                document.getElementById('riskBarScore').style.color = cr.color || 'var(--text-primary)';
-                const levelEl = document.getElementById('riskBarLevel');
-                levelEl.textContent = cr.label || '-';
-                levelEl.style.background = cr.color || 'var(--bg-secondary)';
-                levelEl.style.color = '#fff';
-
-                const signalsEl = document.getElementById('riskBarSignals');
-                signalsEl.innerHTML = (cr.signals || []).map(s => {
-                    const cls = s[2] > 0 ? 'negative' : s[2] < 0 ? 'positive' : '';
-                    return `<span class="risk-signal-chip ${cls}">${s[0]} ${s[2] >= 0 ? '+' : ''}${s[2]}</span>`;
-                }).join('');
-            }
-
         } catch (error) {
             console.error('加载全球风险雷达失败:', error);
         }
@@ -3725,6 +3678,7 @@
 
             // 加载北向资金图表
             loadNorthMoneyChart();
+            loadNorthFlowDetail();
 
             // 流动性指标
             const indicators = await api('/investment/api/macro/liquidity-indicators');
@@ -4245,12 +4199,229 @@
 
     // ==================== 行业模型 ====================
     async function loadSectorData() {
-        const overview = await api('/investment/api/sector/overview');
-        document.getElementById('tmtCount').textContent = overview.tmt_count || 0;
-        document.getElementById('biotechCount').textContent = overview.biotech_count || 0;
-        document.getElementById('consumerCount').textContent = overview.consumer_count || 0;
+        loadSectorHeatmap();
+        loadSectorRotation();
+        loadSectorFlow();
+    }
 
-        loadSectorTab('tmt');
+    async function loadSectorHeatmap() {
+        const container = document.getElementById('sectorHeatmap');
+        container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 1rem;">加载中...</div>';
+        try {
+            const data = await api('/investment/api/sector/heatmap');
+            if (!data || !data.sectors || data.sectors.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 1rem;">暂无板块数据</div>';
+                return;
+            }
+            container.innerHTML = data.sectors.map(s => {
+                const pct = s.change_pct || 0;
+                const bg = pct >= 0 ? `rgba(0, 184, 148, ${Math.min(0.15 + Math.abs(pct) / 20, 0.45)})` : `rgba(255, 71, 87, ${Math.min(0.15 + Math.abs(pct) / 20, 0.45)})`;
+                const color = pct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                return `
+                    <div style="background: ${bg}; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 0.6rem; cursor: pointer; transition: transform 0.2s;"
+                         onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'"
+                         onclick="loadSectorStocks('${encodeURIComponent(s.name)}')">
+                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${s.name}">${s.name}</div>
+                        <div style="font-size: 0.85rem; font-weight: 700; font-family: var(--font-mono); color: ${color}; margin-top: 0.2rem;">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</div>
+                        <div style="font-size: 0.65rem; color: var(--text-muted);">成交额: ${(s.turnover / 1e8).toFixed(1)}亿</div>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<div style="color: var(--accent-red); font-size: 0.8rem; padding: 1rem;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    async function loadSectorStocks(sectorName) {
+        try {
+            const data = await api(`/investment/api/sector/${sectorName}/stocks`);
+            if (!data || !data.stocks || data.stocks.length === 0) {
+                alert('暂无成分股数据');
+                return;
+            }
+            const html = `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="stock-table" style="width: 100%; font-size: 0.8rem;">
+                        <thead>
+                            <tr><th>代码</th><th>名称</th><th>最新价</th><th>涨跌幅</th><th>成交额</th><th>资金净流入</th></tr>
+                        </thead>
+                        <tbody>
+                            ${data.stocks.map(s => `
+                                <tr>
+                                    <td>${s.code}</td>
+                                    <td>${s.name}</td>
+                                    <td>${s.price?.toFixed(2) || '-'}</td>
+                                    <td class="${(s.change_pct || 0) >= 0 ? 'positive' : 'negative'}">${(s.change_pct || 0).toFixed(2)}%</td>
+                                    <td>${s.turnover ? (s.turnover / 1e4).toFixed(0) + '万' : '-'}</td>
+                                    <td class="${(s.net_flow || 0) >= 0 ? 'positive' : 'negative'}">${s.net_flow ? (s.net_flow / 1e4).toFixed(0) + '万' : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            showDialog(`${data.sector_name || sectorName} - 成分股一览`, html);
+        } catch (e) {
+            alert('加载成分股失败: ' + e.message);
+        }
+    }
+
+    async function loadSectorRotation() {
+        const container = document.getElementById('rotationDirection');
+        try {
+            const data = await api('/investment/api/sector/rotation');
+            if (!data || data.hot_sectors?.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-muted);">暂无轮动信号</div>';
+                return;
+            }
+            let html = '<div style="display: flex; flex-wrap: wrap; gap: 1rem;">';
+            // 热门板块
+            html += '<div><span style="color: var(--accent-green); font-weight: 600;">热门板块:</span> ';
+            html += (data.hot_sectors || []).slice(0, 5).map(s =>
+                `<span style="display: inline-block; background: rgba(0,184,148,0.15); color: var(--accent-green); padding: 0.15rem 0.5rem; border-radius: 0.3rem; margin: 0.15rem; font-size: 0.75rem;">${s.name} (${s.change_pct?.toFixed(1) || 0}%)</span>`
+            ).join('');
+            html += '</div>';
+            // 冷门板块
+            if (data.cold_sectors?.length > 0) {
+                html += '<div style="margin-top: 0.3rem;"><span style="color: var(--accent-red); font-weight: 600;">冷门板块:</span> ';
+                html += data.cold_sectors.slice(0, 3).map(s =>
+                    `<span style="display: inline-block; background: rgba(255,71,87,0.15); color: var(--accent-red); padding: 0.15rem 0.5rem; border-radius: 0.3rem; margin: 0.15rem; font-size: 0.75rem;">${s.name} (${s.change_pct?.toFixed(1) || 0}%)</span>`
+                ).join('');
+                html += '</div>';
+            }
+            // 资金流向
+            if (data.net_inflow > 0) {
+                html += `<div style="margin-top: 0.3rem; color: var(--accent-green); font-size: 0.75rem;">资金净流入: ${(data.net_inflow / 1e8).toFixed(2)}亿</div>`;
+            } else {
+                html += `<div style="margin-top: 0.3rem; color: var(--accent-red); font-size: 0.75rem;">资金净流出: ${(Math.abs(data.net_inflow) / 1e8).toFixed(2)}亿</div>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = `<div style="color: var(--accent-red);">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    function renderSectorFlowTable(data) {
+        const container = document.getElementById('sectorFlowTable');
+        if (!data || data.length === 0) {
+            container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 0.5rem;">暂无资金流向数据</div>';
+            return;
+        }
+        const top10 = data.slice(0, 10);
+        let html = `
+            <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem;">资金流向 Top 10</div>
+            <div style="max-height: 350px; overflow-y: auto;">
+                <table class="stock-table" style="width: 100%; font-size: 0.8rem;">
+                    <thead><tr><th>板块</th><th>涨跌幅</th><th>主力净流入</th><th>主力净流出</th><th>净流入</th><th>公司家数</th><th>领涨股</th></tr></thead>
+                    <tbody>
+                        ${top10.map(s => `
+                            <tr>
+                                <td style="font-weight: 600;">${s.name}</td>
+                                <td class="${(s.change_pct || 0) >= 0 ? 'positive' : 'negative'}">${(s.change_pct || 0).toFixed(2)}%</td>
+                                <td class="${(s.main_net_inflow || 0) >= 0 ? 'positive' : 'negative'}">${s.main_net_inflow ? (s.main_net_inflow / 1e8).toFixed(2) + '亿' : '-'}</td>
+                                <td>${s.main_outflow ? (s.main_outflow / 1e8).toFixed(2) + '亿' : '-'}</td>
+                                <td class="${(s.net_inflow || 0) >= 0 ? 'positive' : 'negative'}">${s.net_inflow ? (s.net_inflow / 1e8).toFixed(2) + '亿' : '-'}</td>
+                                <td>${s.company_count || '-'}</td>
+                                <td>${s.top_stock || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        container.innerHTML = html;
+    }
+
+    async function loadSectorFlow() {
+        try {
+            const data = await api('/investment/api/sector/flow');
+            renderSectorFlowTable(data?.list || data);
+        } catch (e) {
+            document.getElementById('sectorFlowTable').innerHTML = `<div style="color: var(--accent-red); font-size: 0.8rem;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // ==================== 北向资金详细追踪 ====================
+    async function loadNorthFlowDetail() {
+        loadNorthFlowSummary();
+        loadNorthStockHold();
+        loadNorthSectorFlow();
+    }
+
+    async function loadNorthFlowSummary() {
+        const container = document.getElementById('northFlowSummary');
+        try {
+            const data = await api('/investment/api/north/summary');
+            if (!data) { container.innerHTML = '<div style="color: var(--text-muted);">暂无数据</div>'; return; }
+            const items = [
+                { label: '今日净流入', value: data.today_net, unit: '亿', flag: data.today_net >= 0 ? 'up' : 'down' },
+                { label: '5日净流入', value: data.five_day_net, unit: '亿', flag: data.five_day_net >= 0 ? 'up' : 'down' },
+                { label: '20日净流入', value: data.twenty_day_net, unit: '亿', flag: data.twenty_day_net >= 0 ? 'up' : 'down' },
+                { label: '近5日日均', value: data.avg_5d, unit: '亿', flag: data.avg_5d >= 0 ? 'up' : 'down' },
+            ];
+            container.innerHTML = items.map(it => {
+                const color = it.flag === 'up' ? 'var(--accent-green)' : 'var(--accent-red)';
+                const bg = it.flag === 'up' ? 'rgba(0,184,148,0.1)' : 'rgba(255,71,87,0.1)';
+                return `
+                    <div style="background: ${bg}; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 0.75rem; text-align: center;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${it.label}</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; font-family: var(--font-mono); color: ${color};">
+                            ${(it.value >= 0 ? '+' : '')}${it.value?.toFixed(1) || '-'}${it.unit}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<div style="color: var(--accent-red);">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    async function loadNorthStockHold() {
+        const container = document.getElementById('northStockHold');
+        try {
+            const data = await api('/investment/api/north/stock-hold');
+            const list = data?.holdings || data?.data || data;
+            if (!list || list.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem;">暂无持股数据</div>';
+                return;
+            }
+            const top10 = list.slice(0, 10);
+            let html = '<table class="stock-table" style="width: 100%; font-size: 0.75rem;"><thead><tr><th>代码</th><th>名称</th><th>持股占比%</th><th>持股市值(亿)</th></tr></thead><tbody>';
+            top10.forEach(s => {
+                const pct = s.hold_ratio || s.hold_pct || '-';
+                const mkt = s.hold_value ? (s.hold_value / 1e8).toFixed(1) : '-';
+                html += `<tr><td>${s.code}</td><td>${s.name}</td><td>${typeof pct === 'number' ? pct.toFixed(2) + '%' : pct}</td><td>${mkt}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = `<div style="color: var(--accent-red); font-size: 0.8rem;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    async function loadNorthSectorFlow() {
+        const container = document.getElementById('northSectorFlow');
+        try {
+            const data = await api('/investment/api/north/sector-flow');
+            const list = data?.sectors || data?.data || data;
+            if (!list || list.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem;">暂无行业流向数据</div>';
+                return;
+            }
+            const top15 = list.slice(0, 15);
+            let html = '<table class="stock-table" style="width: 100%; font-size: 0.75rem;"><thead><tr><th>行业</th><th>净流入(亿)</th><th>趋势</th></tr></thead><tbody>';
+            top15.forEach(s => {
+                const net = s.net_inflow || 0;
+                const color = net >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                const bar = Math.abs(net) > 0 ? `<div style="display: inline-block; width: 60px; height: 6px; background: ${color}; border-radius: 3px; opacity: 0.7;"></div>` : '';
+                html += `<tr><td>${s.sector_name || s.name}</td><td style="color: ${color};">${(net / 1e8).toFixed(2)}</td><td>${bar}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = `<div style="color: var(--accent-red); font-size: 0.8rem;">加载失败: ${e.message}</div>`;
+        }
     }
 
     function loadSectorTab(tab) {

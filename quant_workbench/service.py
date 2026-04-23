@@ -12,7 +12,17 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from quant_workbench.config import INVESTMENT_DB_PATH, REPORTS_DB_PATH, STATUS_FILE
-from quant_workbench.factors import analyze_structure, enrich_price_features, score_trend
+from quant_workbench.factors import (
+    analyze_structure,
+    compute_bollinger,
+    compute_kdj,
+    compute_macd,
+    enrich_price_features,
+    score_bollinger,
+    score_kdj,
+    score_macd,
+    score_trend,
+)
 from quant_workbench.storage import available_market_files, parquet_path, read_parquet
 from quant_workbench.strategy import (
     build_strategy_summary,
@@ -21,6 +31,7 @@ from quant_workbench.strategy import (
 )
 from quant_workbench.universe import BENCHMARKS, WATCHLIST, Instrument
 from quant_workbench.universe_dynamic import load_a_share_universe
+from app.db import get_sqlite_connection
 
 POSITIVE_WORDS = [
     "买入", "增持", "推荐", "上调", "超配", "突破", "向上", "改善", "复苏", "拐点",
@@ -37,35 +48,13 @@ ensure_snapshot_table()
 
 class QuantWorkbenchService:
     def get_status(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
         if STATUS_FILE.exists():
-            payload = json.loads(STATUS_FILE.read_text(encoding="utf-8"))
-
-        market_files = list(available_market_files())
-        available_daily_files = sum(1 for path in market_files if path.name.endswith("_1d.parquet"))
-        available_intraday_files = sum(1 for path in market_files if path.name.endswith("_5m.parquet"))
-
-        payload.setdefault("last_sync_at", None)
-        payload.setdefault("daily_files", 0)
-        payload.setdefault("intraday_files", 0)
-        payload.setdefault("benchmark_files", 0)
-        payload.setdefault("backtest_codes", 0)
-        payload.setdefault("signal_labels", 0)
-        payload.setdefault("backtest_stats", 0)
-        payload.setdefault("error_count", 0)
-        payload.setdefault("errors", [])
-        payload.setdefault("reused_daily_files", 0)
-        payload.setdefault("reused_intraday_files", 0)
-        payload.setdefault("skipped_symbols", 0)
-        payload.setdefault("yahoo_blocked", False)
-        payload.setdefault("yahoo_forbidden_count", 0)
-        payload.setdefault("available_daily_files", available_daily_files)
-        payload.setdefault("available_intraday_files", available_intraday_files)
-        payload.setdefault("market_file_count", len(market_files))
-        return payload
+            return json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+        return {"last_sync_at": None, "daily_files": 0, "intraday_files": 0}
 
     def get_market_regime(self) -> Dict[str, Any]:
         hsi = self._load_series("hsi", "1d")
+        hstech = self._load_series("hstech", "1d")
         yinn = self._load_series("yinn", "1d")
         yang = self._load_series("yang", "1d")
         vix = self._load_series("vix", "1d")
@@ -97,6 +86,21 @@ class QuantWorkbenchService:
             elif pd.notna(hsi_ret20) and hsi_ret20 < -5:
                 score -= 4
                 reasons.append("恒生指数近 20 日回撤仍偏大")
+
+        if not hstech.empty:
+            latest = hstech.iloc[-1]
+            hstech_close = latest.get("close")
+            hstech_ma20 = latest.get("ma_20")
+            hstech_ma60 = latest.get("ma_60")
+            if pd.notna(hstech_ma20) and pd.notna(hstech_ma60) and hstech_ma20 > hstech_ma60:
+                score += 8
+                reasons.append("恒生科技中期趋势转强")
+            elif pd.notna(hstech_ma20) and pd.notna(hstech_ma60):
+                score -= 4
+                reasons.append("恒生科技中期均线仍偏弱")
+            if pd.notna(hstech_close) and pd.notna(hstech_ma20) and hstech_close > hstech_ma20:
+                score += 4
+                reasons.append("恒生科技站上 20 日均线")
 
         if not yinn.empty and pd.notna(yinn["ret_5"].iloc[-1]) and float(yinn["ret_5"].iloc[-1]) > 0:
             score += 4
@@ -141,12 +145,16 @@ class QuantWorkbenchService:
                 continue
 
             trend = score_trend(daily)
+            macd_score = score_macd(daily)
+            kdj_score = score_kdj(daily)
+            boll_score = score_bollinger(daily)
             structure = analyze_structure(intraday if not intraday.empty else daily.tail(120))
             fundamentals = self._load_fundamentals(instrument)
             sentiment = self._load_report_sentiment(instrument)
             latest = daily.iloc[-1]
 
-            tech_score = trend["score"] + structure["score"]
+            # 综合技术评分
+            tech_score = trend["score"] + structure["score"] + macd_score["score"] + kdj_score["score"] + boll_score["score"]
             tech_quality = round(((trend.get("confidence", 0.0) + structure.get("confidence", 0.0)) / 2) * 8, 1)
             fundamental_score, fundamental_reasons = self._score_fundamentals(fundamentals)
             sentiment_score, sentiment_reasons = self._score_sentiment(sentiment)
@@ -169,6 +177,9 @@ class QuantWorkbenchService:
             risk_flags.extend(regime.get("reasons", [])[:1] if regime.get("label") == "risk_off" else [])
             risk_flags.extend(trend.get("risk_flags", [])[:2])
             risk_flags.extend(structure.get("risk_flags", [])[:2])
+            risk_flags.extend(macd_score.get("risk_flags", [])[:1])
+            risk_flags.extend(kdj_score.get("risk_flags", [])[:1])
+            risk_flags.extend(boll_score.get("risk_flags", [])[:1])
             if sentiment.get("coverage", 0) < 2:
                 risk_flags.append("研报标题覆盖不足，情绪信号较弱")
             if fundamentals.get("roe") is None:
@@ -193,6 +204,9 @@ class QuantWorkbenchService:
                 strategy_summary.get("factors", [])[:3]
                 + trend["reasons"][:2]
                 + structure["reasons"][:2]
+                + macd_score.get("reasons", [])[:1]
+                + kdj_score.get("reasons", [])[:1]
+                + boll_score.get("reasons", [])[:1]
                 + fundamental_reasons[:1]
                 + sentiment_reasons[:1]
             )
@@ -219,6 +233,12 @@ class QuantWorkbenchService:
                     "ret_5": round(float(latest["ret_5"]) if pd.notna(latest["ret_5"]) else 0, 2),
                     "ret_20": round(float(latest["ret_20"]) if pd.notna(latest["ret_20"]) else 0, 2),
                     "efi_13": round(float(latest["efi_13"]) if pd.notna(latest["efi_13"]) else 0, 2),
+                    "macd_score": macd_score.get("score", 0),
+                    "kdj_score": kdj_score.get("score", 0),
+                    "boll_score": boll_score.get("score", 0),
+                    "macd_dif": round(float(latest.get("macd_dif", 0)), 4) if pd.notna(latest.get("macd_dif")) else None,
+                    "kdj_j": round(float(latest.get("kdj_j", 0)), 2) if pd.notna(latest.get("kdj_j")) else None,
+                    "boll_position": round(float(latest.get("boll_position", 0)), 2) if pd.notna(latest.get("boll_position")) else None,
                     "structure": structure["label"],
                     "pe_ttm": fundamentals.get("pe_ttm"),
                     "pb": fundamentals.get("pb"),
@@ -251,6 +271,19 @@ class QuantWorkbenchService:
         sentiment = self._load_report_sentiment(instrument, include_titles=True)
         structure = analyze_structure(intraday if not intraday.empty else daily.tail(120))
         trend = score_trend(daily)
+        macd_score = score_macd(daily)
+        kdj_score = score_kdj(daily)
+        boll_score = score_bollinger(daily)
+
+        # 构建日线数据列（含新指标）
+        daily_cols = ["date", "close", "ma_20", "ma_60", "efi_13"]
+        if "macd_dif" in daily.columns:
+            daily_cols.extend(["macd_dif", "macd_dea", "macd_hist"])
+        if "kdj_k" in daily.columns:
+            daily_cols.extend(["kdj_k", "kdj_d", "kdj_j"])
+        if "boll_upper" in daily.columns:
+            daily_cols.extend(["boll_upper", "boll_mid", "boll_lower"])
+        available_cols = [c for c in daily_cols if c in daily.columns]
 
         return {
             "instrument": {
@@ -264,7 +297,10 @@ class QuantWorkbenchService:
             "sentiment": sentiment,
             "structure": structure,
             "trend": trend,
-            "daily": daily.tail(120)[["date", "close", "ma_20", "ma_60", "efi_13"]]
+            "macd": macd_score,
+            "kdj": kdj_score,
+            "bollinger": boll_score,
+            "daily": daily.tail(120)[available_cols]
             .fillna(0)
             .to_dict(orient="records"),
         }
@@ -276,7 +312,17 @@ class QuantWorkbenchService:
         df = read_parquet(parquet_path(code, interval))
         if df.empty:
             return df
-        return enrich_price_features(df)
+        df = enrich_price_features(df)
+        # 新增 MACD
+        if len(df) >= 30:
+            df = compute_macd(df)
+        # 新增 KDJ
+        if len(df) >= 15:
+            df = compute_kdj(df)
+        # 新增布林带
+        if len(df) >= 25:
+            df = compute_bollinger(df)
+        return df
 
     def _current_universe(self) -> List[Instrument]:
         files = list(available_market_files())
@@ -307,7 +353,7 @@ class QuantWorkbenchService:
         if not INVESTMENT_DB_PATH.exists():
             return {"pe_ttm": None, "pb": None, "roe": None, "dividend_yield": None}
 
-        conn = sqlite3.connect(INVESTMENT_DB_PATH)
+        conn = get_sqlite_connection(INVESTMENT_DB_PATH)
         try:
             rows = conn.execute(
                 """
@@ -400,7 +446,7 @@ class QuantWorkbenchService:
         if not REPORTS_DB_PATH.exists():
             return {"score": 0.0, "coverage": 0, "titles": []}
 
-        conn = sqlite3.connect(REPORTS_DB_PATH)
+        conn = get_sqlite_connection(REPORTS_DB_PATH)
         conn.row_factory = sqlite3.Row
         titles: List[str] = []
         try:

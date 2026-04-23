@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-同步汇率数据 (USD/CNY, USD/CNH)
+同步汇率数据 (USD/CNY)
 
 数据源: akshare currency_boc_sina
 """
@@ -42,27 +42,28 @@ def main():
 
     conn = sqlite3.connect(DB_PATH)
     ensure_table(conn)
-    cursor = conn.cursor()
 
-    # USD/CNY from Bank of China via akshare
+    # USD/CNY from Bank of China
     try:
-        end_date = datetime.now().strftime("%Y%m%d")
-        df = ak.currency_boc_sina(symbol="美元", start="20260101", end=end_date)
-        print(f"  BOC USD/CNY: {len(df)} records")
+        df = ak.currency_boc_sina(symbol="美元")
+        print(f"  BOC USD/CNY: {len(df)} records, columns: {list(df.columns)}")
         added = 0
-        for _, row in df.iterrows():
-            try:
-                date = str(row.iloc[0])[:10]
-                rate = float(row.iloc[1]) if len(row) > 1 else None
-                if rate and rate > 5:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO currency_rates
-                        (trade_date, usd_cny) VALUES (?, ?)
-                    """, (date, rate))
-                    added += 1
-            except Exception:
-                continue
-        conn.commit()
+        if len(df.columns) >= 2:
+            date_col = df.columns[0]
+            rate_col = df.columns[1]
+            for _, row in df.iterrows():
+                try:
+                    date = str(row[date_col])[:10]
+                    rate = float(row[rate_col]) if row[rate_col] is not None else None
+                    if rate and rate > 5 and rate < 10:
+                        conn.execute("""
+                            INSERT OR REPLACE INTO currency_rates
+                            (trade_date, usd_cny) VALUES (?, ?)
+                        """, (date, rate))
+                        added += 1
+                except Exception:
+                    continue
+            conn.commit()
         print(f"  [OK] Upserted {added} USD/CNY records")
     except Exception as e:
         print(f"  USD/CNY FAIL: {e}")
