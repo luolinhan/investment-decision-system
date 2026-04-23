@@ -3,7 +3,9 @@
 """
 from datetime import datetime
 import os
+import platform
 import sqlite3
+import sys
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -11,12 +13,17 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from app.config import get_investment_runtime_profile, settings
+from app.db import get_sqlite_connection
 from app.services.financial_news import FinancialNewsService
 from app.services.investment_data import InvestmentDataService
 from app.services.investment_db_service import InvestmentDataService as DbService
+from app.utils.regime import compute_regime
 from app.services.public_research import PublicResearchService
 from app.services.coding_plan_service import CodingPlanService
 from app.services.strategy_planning_service import StrategyPlanningService
+from app.services.sector_service import get_sector_service
+from app.services.north_flow_service import get_north_flow_service
 from quant_workbench.service import QuantWorkbenchService
 from quant_workbench.sync import QuantWorkbenchSync
 
@@ -142,7 +149,7 @@ def _load_snapshot_opportunity_summary(db_path: str = DB_PATH) -> Dict[str, Any]
     if not os.path.exists(db_path):
         return summary
 
-    conn = sqlite3.connect(db_path)
+    conn = get_sqlite_connection(db_path)
     c = conn.cursor()
     try:
         c.execute(
@@ -319,6 +326,7 @@ async def get_market_overview():
         "vix": vix,
         "watch_stocks": watch_stocks,
         "storage": overview_storage,
+        "runtime_profile": get_investment_runtime_profile(),
     }
 
 
@@ -441,20 +449,15 @@ async def get_decision_center(with_workbench: bool = False):
         except Exception as exc:
             print(f"量化工作台聚合失败，回退快照摘要: {exc}")
 
-    regime_score = 0
-    regime_score += 1 if breadth_ratio >= 1.1 else -1 if breadth_ratio <= 0.9 else 0
-    regime_score += 1 if limit_ratio >= 1.5 else -1 if limit_ratio <= 0.8 else 0
-    regime_score += 1 if north_flow_impulse >= 50 else -1 if north_flow_impulse <= -50 else 0
-    regime_score += 1 if vix_close <= 18 else -1 if vix_close >= 24 else 0
-    if int(health_summary.get("error_count") or 0) > 0:
-        regime_score -= 1
-
-    if regime_score >= 2:
-        regime_label = "risk_on"
-    elif regime_score <= -2:
-        regime_label = "risk_off"
-    else:
-        regime_label = "neutral"
+    regime = compute_regime(
+        breadth_ratio=breadth_ratio,
+        limit_ratio=limit_ratio,
+        north_flow_impulse=north_flow_impulse,
+        vix_close=vix_close,
+        error_count=int(health_summary.get("error_count") or 0),
+    )
+    regime_label = regime["label"]
+    regime_score = regime["score"]
 
     if int(health_summary.get("error_count") or 0) > 0 or storage_fresh_pct < 60:
         execution_mode = "defensive"
@@ -843,10 +846,122 @@ async def get_interest_rates(days: int = 365):
 
 @router.get("/api/north-money")
 async def get_north_money(days: int = 180):
-    """获取北向资金数据 - 从本地数据库"""
+    """获取北向资金数据 - 增强版，优先走北向资金服务"""
+    service = get_north_flow_service()
+    data = service.get_north_daily(days)
+    if data:
+        return {"data": data, "source": "north_flow_service"}
     db = get_db_service()
     data = db.get_north_money(days)
+    return {"data": data, "source": "db_fallback"}
+
+
+@router.get("/api/north/flow-daily")
+async def get_north_flow_daily(days: int = 180):
+    """北向日度流向"""
+    service = get_north_flow_service()
+    data = service.get_north_daily(days)
     return {"data": data}
+
+
+@router.get("/api/north/stock-hold")
+async def get_north_stock_hold():
+    """北向个股持仓排行 - 前端字段名适配"""
+    service = get_north_flow_service()
+    data = service.get_north_stock_hold()
+    # 字段名适配
+    holdings = []
+    for d in data:
+        holdings.append({
+            "code": d.get("stock_code", ""),
+            "name": d.get("stock_name", ""),
+            "price": d.get("price"),
+            "change_pct": d.get("change_pct"),
+            "hold_ratio": d.get("hold_ratio"),
+            "hold_value": d.get("hold_value"),
+            "change_pct_1d": d.get("change_pct_1d"),
+        })
+    return {"total": len(holdings), "holdings": holdings}
+
+
+@router.get("/api/north/sector-flow")
+async def get_north_sector_flow():
+    """北向板块流向 - 前端字段名适配"""
+    service = get_north_flow_service()
+    data = service.get_north_sector_flow()
+    # 字段名适配
+    sectors = []
+    for d in data:
+        sectors.append({
+            "sector_name": d.get("sector", ""),
+            "name": d.get("sector", ""),
+            "net_inflow": d.get("total_change", 0),
+        })
+    return {"sectors": sectors}
+
+
+@router.get("/api/north/summary")
+async def get_north_summary(days: int = 30):
+    """北向资金总结 - 前端字段名适配"""
+    service = get_north_flow_service()
+    data = service.get_north_summary(days)
+    summary = data.get("summary", {})
+    # 字段名适配：前端期望 five_day_net, twenty_day_net, today_net, avg_5d
+    daily = data.get("daily_trend", [])
+    today_net = (daily[-1].get("total_net") or 0) if daily else 0
+    last_5 = daily[-5:] if len(daily) >= 5 else daily
+    avg_5d = sum(d.get("total_net") or 0 for d in last_5) / max(len(last_5), 1)
+
+    return {
+        "today_net": round(today_net, 1),
+        "five_day_net": summary.get("total_net_5d", 0),
+        "twenty_day_net": summary.get("total_net_20d", 0),
+        "avg_5d": round(avg_5d, 1),
+        "inflow_ratio_pct": summary.get("inflow_ratio_pct", 0),
+        "inflow_days": summary.get("inflow_days", 0),
+    }
+
+
+# ==================== 港股数据增强模块 ====================
+
+@router.get("/api/hk/hot-rank")
+async def get_hk_hot_rank(limit: int = 50):
+    """港股热门排行"""
+    service = get_investment_service()
+    data = service.get_hk_stock_hot_rank(limit)
+    return {"total": len(data), "data": data}
+
+
+@router.get("/api/hk/indices")
+async def get_hk_indices():
+    """港股主要指数行情"""
+    service = get_investment_service()
+    data = service.get_hk_index_list()
+    return {"data": data}
+
+
+@router.get("/api/hk/repurchase")
+async def get_hk_repurchase(days: int = 30):
+    """港股回购统计"""
+    service = get_investment_service()
+    data = service.get_hk_repurchase_stats(days)
+    return {"total": len(data), "data": data}
+
+
+@router.get("/api/hk/history/{symbol}")
+async def get_hk_history(symbol: str, days: int = 365):
+    """港股历史行情"""
+    service = get_investment_service()
+    data = service.get_hk_stock_history(symbol, days)
+    return {"symbol": symbol, "total": len(data), "data": data}
+
+
+@router.get("/api/hk/financial/{symbol}")
+async def get_hk_financial(symbol: str):
+    """港股财务数据"""
+    service = get_investment_service()
+    data = service.get_hk_stock_financial(symbol)
+    return {"symbol": symbol, "data": data}
 
 
 @router.get("/api/vix-history")
@@ -891,7 +1006,7 @@ async def import_index_data(data: Dict):
         return {"status": "error", "message": "缺少数据"}
 
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_sqlite_connection(DB_PATH)
         c = conn.cursor()
 
         added = 0
@@ -997,12 +1112,14 @@ async def get_macro_overview(force_realtime: bool = False):
     vix_close = _to_float((vix or {}).get("close"), 0.0)
     vix_band = "high" if vix_close >= 24 else "low" if vix_close <= 16 else "normal"
 
-    regime_score = 0
-    regime_score += 1 if breadth_ratio >= 1.1 else -1 if breadth_ratio <= 0.9 else 0
-    regime_score += 1 if limit_ratio >= 1.5 else -1 if limit_ratio <= 0.8 else 0
-    regime_score += 1 if north_flow_impulse >= 50 else -1 if north_flow_impulse <= -50 else 0
-    regime_score += 1 if vix_band == "low" else -1 if vix_band == "high" else 0
-    regime_label = "risk_on" if regime_score >= 2 else "risk_off" if regime_score <= -2 else "neutral"
+    regime = compute_regime(
+        breadth_ratio=breadth_ratio,
+        limit_ratio=limit_ratio,
+        north_flow_impulse=north_flow_impulse,
+        vix_close=vix_close,
+    )
+    regime_label = regime["label"]
+    regime_score = regime["score"]
 
     dimensions = [
         {
@@ -1218,6 +1335,153 @@ async def get_sector_overview():
     }
 
 
+# ==================== 板块/行业模块 ====================
+
+@router.get("/api/sector/overview")
+async def get_sector_overview():
+    """获取行业板块总览 — 涨跌幅排行"""
+    service = get_sector_service()
+    sectors = service.get_sector_list()
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "total": len(sectors),
+        "sectors": sectors,
+    }
+
+
+@router.get("/api/sector/list")
+async def get_sector_list():
+    """获取行业板块列表（别名，同 overview）"""
+    return await get_sector_overview()
+
+
+@router.get("/api/sector/flow")
+async def get_sector_fund_flow(indicator: str = "今日"):
+    """获取行业板块资金流向 - 前端字段名适配"""
+    service = get_sector_service()
+    flow = service.get_sector_fund_flow(indicator=indicator)
+    # 如果资金流数据为空，使用板块列表作为降级（用涨跌幅代替资金流方向）
+    if not flow:
+        sector_list = service.get_sector_list()
+        for s in sector_list:
+            flow.append({
+                "sector_name": s.get("sector_name", ""),
+                "change_pct": s.get("change_pct", 0),
+                "main_net_inflow": None,
+                "main_outflow": None,
+                "net_inflow": None,
+                "company_count": s.get("rise_count", 0) + (s.get("fall_count", 0) or 0),
+                "top_stock": s.get("lead_stock", ""),
+                "top_stock_pct": s.get("lead_stock_pct"),
+            })
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "list": flow,
+    }
+
+
+@router.get("/api/sector/rotation")
+async def get_sector_rotation():
+    """获取板块轮动信号 - 前端字段名适配"""
+    service = get_sector_service()
+    signal = service.get_sector_rotation_signal()
+    # 字段名适配：前端期望 hot_sectors, cold_sectors, net_inflow
+    top_gainers = signal.get("top_gainers", []) or []
+    top_inflow = signal.get("top_inflow", []) or []
+
+    # 计算冷门板块 (涨跌幅最低的)
+    all_sectors = service.get_sector_list()
+    by_change_asc = sorted(all_sectors, key=lambda x: x.get("change_pct") or 0)[:5]
+
+    # 计算净流入
+    net_inflow = 0
+    for s in top_gainers:
+        net_inflow += (s.get("turnover") or 0) * 0.01  # 粗略估算
+
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "hot_sectors": [
+            {"name": s.get("sector_name", ""), "change_pct": s.get("change_pct", 0)}
+            for s in top_gainers[:5]
+        ],
+        "cold_sectors": [
+            {"name": s.get("sector_name", ""), "change_pct": s.get("change_pct", 0)}
+            for s in by_change_asc[:3]
+        ],
+        "net_inflow": net_inflow,
+    }
+
+
+@router.get("/api/sector/heatmap")
+async def get_sector_heatmap():
+    """获取板块热力图数据 - 前端字段名适配"""
+    service = get_sector_service()
+    heatmap = service.get_sector_heatmap()
+    # 字段名适配：前端期望 name 而非 sector_name
+    sectors = []
+    for s in heatmap:
+        sectors.append({
+            "name": s.get("sector_name", ""),
+            "change_pct": s.get("change_pct", 0),
+            "turnover": s.get("turnover") or 0,
+            "volume": s.get("volume") or 0,
+            "rise_count": s.get("rise_count", 0),
+            "fall_count": s.get("fall_count", 0),
+            "lead_stock": s.get("lead_stock", ""),
+        })
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "sectors": sectors,
+    }
+
+
+@router.get("/api/sector/{sector_name}/stocks")
+async def get_sector_stocks(sector_name: str):
+    """获取某行业板块下的成分股 - 前端字段名适配"""
+    service = get_sector_service()
+    stocks = service.get_sector_stocks(sector_name)
+    # 字段名适配：前端期望 code, name, price, change_pct, turnover, net_flow
+    adapted = []
+    for s in stocks:
+        adapted.append({
+            "code": s.get("stock_code", ""),
+            "name": s.get("stock_name", ""),
+            "price": s.get("price"),
+            "change_pct": s.get("change_pct", 0),
+            "turnover": s.get("turnover") or 0,
+            "net_flow": 0,  # 板块内个股资金流需单独查询，暂设为0
+        })
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "sector_name": sector_name,
+        "total": len(adapted),
+        "stocks": adapted,
+    }
+
+
+@router.get("/api/sector/{sector_name}/leader")
+async def get_sector_leader(sector_name: str):
+    """获取板块龙头股"""
+    service = get_sector_service()
+    leader = service.get_sector_leader(sector_name)
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "sector": sector_name,
+        "leader": leader,
+    }
+
+
+@router.post("/api/sector/refresh")
+async def refresh_sector_data():
+    """强制刷新板块数据并保存到本地"""
+    service = get_sector_service()
+    service.save_sector_data()
+    return {
+        "ok": True,
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+    }
+
+
 # ==================== 量化技术模块 ====================
 
 @router.get("/api/quant/valuation")
@@ -1329,7 +1593,7 @@ async def import_csv(data: Dict):
 @router.get("/api/etl/tables")
 async def get_db_tables():
     """获取数据库表列表"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_sqlite_connection(DB_PATH)
     c = conn.cursor()
 
     c.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -1479,3 +1743,21 @@ async def workbench_refresh():
         "result": result,
         "status": status,
     }
+
+
+@router.get("/api/runtime/profile")
+async def get_runtime_profile(request: Request):
+    """获取当前 Investment Hub 运行时配置."""
+    profile = get_investment_runtime_profile()
+    host = request.url.hostname or settings.host
+    port = request.url.port or settings.port
+    profile.update({
+        "service_host": host,
+        "service_port": port,
+        "db_path": DB_PATH,
+        "db_exists": os.path.exists(DB_PATH),
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+    })
+    return profile

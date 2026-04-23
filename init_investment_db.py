@@ -388,6 +388,64 @@ def init_database():
     c.execute('CREATE INDEX IF NOT EXISTS idx_etl_job ON etl_logs(job_name)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_etl_time ON etl_logs(start_time)')
 
+    # 18. 融资融券余额
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS margin_balance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT UNIQUE NOT NULL,
+            sh_rzye REAL,
+            sz_rzye REAL,
+            total_rzye REAL,
+            sh_rqyl REAL,
+            sz_rqyl REAL,
+            total_rqyl REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_margin_date ON margin_balance(trade_date)')
+
+    # 19. 南向资金 (港股通)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS south_flow (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT UNIQUE NOT NULL,
+            hk_sz_net REAL,
+            hk_hgt_net REAL,
+            total_net REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_south_date ON south_flow(trade_date)')
+
+    # 20. 汇率数据
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS currency_rates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT UNIQUE NOT NULL,
+            usd_cny REAL,
+            usd_cnh REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_currency_date ON currency_rates(trade_date)')
+
+    # 21. 商品与宏观指标 (LME铜、铜金比、PMI等)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS macro_indicators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            indicator_type TEXT NOT NULL,
+            indicator_name TEXT NOT NULL,
+            value REAL,
+            unit TEXT,
+            source TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(trade_date, indicator_name)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_macro_type ON macro_indicators(indicator_type)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_macro_date ON macro_indicators(trade_date)')
+
     conn.commit()
     conn.close()
     print("投资数据库初始化完成")

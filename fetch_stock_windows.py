@@ -156,6 +156,7 @@ def update_database(a_stocks, hk_stocks):
     c = conn.cursor()
     today = datetime.now().strftime("%Y-%m-%d")
     updated = 0
+    daily_count = 0
 
     for code, info in STOCKS.items():
         data = a_stocks.get(code) or hk_stocks.get(code)
@@ -164,6 +165,8 @@ def update_database(a_stocks, hk_stocks):
             continue
 
         name = info["name"]
+        price = data.get("price")
+        change_pct = data.get("change_pct")
         pe = data.get("pe_ttm")
         pb = data.get("pb")
 
@@ -178,12 +181,21 @@ def update_database(a_stocks, hk_stocks):
             pb_str = f"{pb:.2f}" if pb else "-"
             print(f"  {name}: PE={pe_str} PB={pb_str}")
             updated += 1
+
+            if price is not None:
+                c.execute('''
+                    INSERT OR REPLACE INTO stock_daily
+                    (code, trade_date, close, change_pct)
+                    VALUES (?, ?, ?, ?)
+                ''', (code, today, price, change_pct))
+                daily_count += 1
         except Exception as e:
             print(f"  {name}: 保存失败 - {e}")
 
     conn.commit()
     conn.close()
-    return updated
+    print(f"  stock_financial: {updated} 条, stock_daily: {daily_count} 条")
+    return updated, daily_count
 
 
 def main():
@@ -199,8 +211,8 @@ def main():
     hk_stocks = fetch_hk_stocks()
     print(f"  获取到 {len(hk_stocks)} 条港股数据")
 
-    updated = update_database(a_stocks, hk_stocks)
-    print(f"\n数据库更新: {updated} 条")
+    updated, daily_count = update_database(a_stocks, hk_stocks)
+    print(f"\n数据库更新: stock_financial={updated} 条, stock_daily={daily_count} 条")
 
     print("\n" + "=" * 60)
     print("更新完成!")

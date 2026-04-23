@@ -1,59 +1,132 @@
-"""
-每日数据更新 - 综合脚本
-运行所有数据采集任务
-"""
+"""每日数据更新 - 综合脚本"""
+from __future__ import annotations
+
+import os
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
-def run_script(script_name, description):
-    """运行脚本"""
-    print(f"\n{'='*60}")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {description}")
-    print('='*60)
+DB_PATH = "data/investment.db"
 
-    result = subprocess.run([sys.executable, script_name], capture_output=True, text=True)
-    print(result.stdout)
-    if result.stderr:
-        print("Errors:", result.stderr)
+BASE_DIR = Path(__file__).resolve().parent
+TASKS = [
+    ("fetch_stock_windows.py", "股票财务数据采集"),
+    ("fetch_market_data.py", "市场指数数据采集"),
+    ("sync_market_reference_data.py", "市场参考数据同步（VIX / 利率 / 情绪 / 当前指数）"),
+    ("scripts/sync_global_risk.py", "全球风险雷达同步"),
+    ("scripts/sync_north_money.py", "北向资金数据同步"),
+    ("scripts/sync_south_flow.py", "南向资金(港股通)同步"),
+    ("scripts/sync_margin_balance.py", "融资融券余额同步"),
+    ("scripts/sync_currency_rates.py", "汇率数据同步"),
+    ("scripts/sync_macro_indicators.py", "宏观指标同步(LME铜/铜金比/PMI)"),
+]
 
-    return result.returncode == 0
+
+def build_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
 
 
-def main():
+def write_etl_log(job_name: str, start_time: str, end_time: str, status: str,
+                  records: int = 0, error: str = "") -> None:
+    """写入 ETL 日志到数据库。"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """INSERT INTO etl_logs
+               (job_name, job_type, start_time, end_time, status,
+                records_processed, records_failed, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_name, "daily_update", start_time, end_time, status,
+             records if status == "success" else 0,
+             records if status == "failed" else 0, error)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"  ETL日志写入失败: {e}")
+
+
+def run_script(script_name: str, description: str) -> dict[str, object]:
+    script_path = BASE_DIR / script_name
+    start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    job_name = Path(script_name).stem
+
+    print(f"\n{'=' * 60}")
+    print(f"[{start_time.split()[-1]}] {description}")
     print("=" * 60)
-    print(f"Daily Update - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 60)
 
-    results = {}
+    if not script_path.exists():
+        print(f"跳过: {script_name} 不存在")
+        write_etl_log(job_name, start_time, start_time, "skipped")
+        return {"ok": True, "status": "skipped", "returncode": None}
 
-    # 1. 股票财务数据
-    results['stocks'] = run_script('fetch_stock_windows.py', 'Stock Financial Data')
-
-    # 2. 市场指数数据
-    results['market'] = run_script('fetch_market_data.py', 'Market Index Data')
-
-    # 3. 实时参考数据落库
-    results['reference'] = run_script(
-        'sync_market_reference_data.py',
-        'Market Reference Sync (VIX / Rates / Sentiment / Indices)'
+    result = subprocess.run(
+        [sys.executable, str(script_path)],
+        capture_output=True,
+        text=True, encoding="utf-8", cwd=BASE_DIR,
+        env=build_env(),
     )
 
-    # 汇总结果
-    print("\n" + "="*60)
-    print("Summary")
-    print("="*60)
-    for task, success in results.items():
-        status = "[OK]" if success else "[FAIL]"
+    end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.stderr:
+        print("Errors:", result.stderr, end="" if result.stderr.endswith("\n") else "\n")
+
+    ok = result.returncode == 0
+    status = "success" if ok else "failed"
+    print(f"结果: {'OK' if ok else 'FAIL'} (returncode={result.returncode})")
+
+    write_etl_log(
+        job_name=job_name, start_time=start_time, end_time=end_time,
+        status=status, error=result.stderr.strip()[:500] if not ok else ""
+    )
+
+    return {"ok": ok, "status": status, "returncode": result.returncode}
+
+
+def main() -> int:
+    print("=" * 60)
+    print(f"每日数据更新 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+
+    available_tasks = [item for item in TASKS if (BASE_DIR / item[0]).exists()]
+    skipped_tasks = [script_name for script_name, _ in TASKS if script_name not in {item[0] for item in available_tasks}]
+
+    if skipped_tasks:
+        print(f"跳过未找到的任务: {', '.join(skipped_tasks)}")
+
+    results = {}
+    for script_name, description in available_tasks:
+        results[script_name] = run_script(script_name, description)
+
+    print("\n" + "=" * 60)
+    print("更新汇总")
+    print("=" * 60)
+    for task, result in results.items():
+        status = "成功" if result["ok"] else "失败"
+        if result["status"] == "skipped":
+            status = "已跳过（文件不存在）"
         print(f"  {task}: {status}")
 
-    failed = [k for k, v in results.items() if not v]
+    failed = [task for task, result in results.items() if not result["ok"]]
     if failed:
-        print(f"\nFailed tasks: {', '.join(failed)}")
-        sys.exit(1)
+        print(f"\n存在失败任务: {', '.join(failed)}")
+        return 1
 
-    print("\nAll tasks completed successfully!")
+    if not available_tasks:
+        print("\n未找到任何可执行任务")
+        return 1
+
+    print("\n数据更新完成!")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

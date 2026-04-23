@@ -7,6 +7,7 @@ echo 每日数据更新 - %date% %time%
 echo ============================================
 
 python daily_update_all.py
+if errorlevel 1 exit /b %errorlevel%
 
 echo.
 echo ============================================
