@@ -20,7 +20,12 @@ TASKS = [
     ("scripts/sync_south_flow.py", "南向资金(港股通)同步"),
     ("scripts/sync_margin_balance.py", "融资融券余额同步"),
     ("scripts/sync_currency_rates.py", "汇率数据同步"),
-    ("scripts/sync_macro_indicators.py", "宏观指标同步(LME铜/铜金比/PMI)"),
+    ("scripts/sync_macro_indicators.py", "宏观指标同步(中国PMI)"),
+    ("scripts/sync_hk_stocks.py", "港股数据同步(热榜/指数/回购)"),
+    ("scripts/sync_sector_data.py", "板块数据同步(列表/资金流/成分股)"),
+    ("scripts/sync_global_risk_extended.py", "全球风险扩展同步(国债收益率/DXY)"),
+    ("scripts/sync_news.py", "新闻数据同步(Bloomberg RSS)"),
+    ("scripts/sync_valuation_percentile.py", "估值百分位计算"),
 ]
 
 

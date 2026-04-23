@@ -446,6 +446,138 @@ def init_database():
     c.execute('CREATE INDEX IF NOT EXISTS idx_macro_type ON macro_indicators(indicator_type)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_macro_date ON macro_indicators(trade_date)')
 
+    # 22. 港股热榜
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS hk_hot_rank (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            rank INTEGER,
+            code TEXT,
+            name TEXT,
+            price REAL,
+            change_pct REAL,
+            volume REAL,
+            turnover REAL,
+            UNIQUE(trade_date, rank)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_hk_rank_date ON hk_hot_rank(trade_date)')
+
+    # 23. 港股指数日线
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS hk_indices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            code TEXT NOT NULL,
+            name TEXT,
+            close REAL,
+            change_pct REAL,
+            UNIQUE(trade_date, code)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_hk_idx_date ON hk_indices(trade_date)')
+
+    # 24. 港股回购
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS hk_repurchase (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            code TEXT,
+            name TEXT,
+            repurchase_amount REAL,
+            UNIQUE(trade_date, code)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_hk_repo_date ON hk_repurchase(trade_date)')
+
+    # 25. 商品价格历史
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS commodity_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            commodity_type TEXT NOT NULL,
+            price REAL,
+            currency TEXT,
+            source TEXT,
+            UNIQUE(trade_date, commodity_type)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_commodity_date ON commodity_prices(trade_date)')
+
+    # 26. 美国国债收益率历史
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS us_treasury_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL UNIQUE,
+            us_10y REAL,
+            us_2y REAL,
+            us_10y_2y_spread REAL,
+            dxy REAL,
+            source TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_treasury_date ON us_treasury_history(trade_date)')
+
+    # 27. 新闻文章
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS news_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            title TEXT,
+            link TEXT UNIQUE,
+            published TEXT,
+            summary TEXT,
+            fetched_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_news_source ON news_articles(source)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_news_fetched ON news_articles(fetched_at)')
+
+    # 28. 板块表现
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS sector_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            sector_name TEXT NOT NULL,
+            close REAL,
+            change_pct REAL,
+            turnover REAL,
+            leader_stock TEXT,
+            UNIQUE(trade_date, sector_name)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_sector_date ON sector_performance(trade_date)')
+
+    # 29. 板块资金流
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS sector_fund_flow (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL,
+            sector_name TEXT NOT NULL,
+            net_inflow REAL,
+            net_inflow_pct REAL,
+            rank INTEGER,
+            UNIQUE(trade_date, sector_name)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_flow_date ON sector_fund_flow(trade_date)')
+
+    # 30. 板块成分股映射
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS sector_stock_map (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sector_name TEXT NOT NULL,
+            code TEXT NOT NULL,
+            name TEXT,
+            close REAL,
+            change_pct REAL,
+            turnover REAL,
+            UNIQUE(sector_name, code)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_sector_stock ON sector_stock_map(sector_name)')
+
     conn.commit()
     conn.close()
     print("投资数据库初始化完成")
