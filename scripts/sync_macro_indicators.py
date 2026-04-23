@@ -78,7 +78,8 @@ def main():
             row = df.iloc[-1]
             date = parse_chinese_date(str(row.iloc[0]))
 
-            # Use column name indexing when possible, fallback to iloc
+            # Column structure: [月份, 制造业-指数, 制造业-同比增减, 非制造业-指数, 非制造业-同比增减]
+            # PMI = col[1], NMI = col[3]
             pmi_val = None
             nmi_val = None
             if len(df.columns) > 1:
@@ -87,10 +88,10 @@ def main():
                     pmi_val = float(row[col1]) if row[col1] is not None else None
                 except (ValueError, TypeError):
                     pass
-            if len(df.columns) > 2:
-                col2 = df.columns[2]
+            if len(df.columns) > 3:
+                col3 = df.columns[3]
                 try:
-                    nmi_val = float(row[col2]) if row[col2] is not None else None
+                    nmi_val = float(row[col3]) if row[col3] is not None else None
                 except (ValueError, TypeError):
                     pass
 
