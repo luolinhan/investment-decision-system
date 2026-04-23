@@ -1222,6 +1222,69 @@ class InvestmentDataService:
         finally:
             conn.close()
 
+    def get_hk_hot_rank_latest(self, limit: int = 50) -> List[Dict]:
+        """获取最新港股热榜"""
+        conn = self._get_db()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                SELECT rank, code, name, price, change_pct, volume, turnover
+                FROM hk_hot_rank
+                WHERE trade_date = (SELECT MAX(trade_date) FROM hk_hot_rank)
+                ORDER BY rank ASC LIMIT ?
+            """, (limit,))
+            result = []
+            for r in c.fetchall():
+                result.append({
+                    "rank": r[0], "code": r[1], "name": r[2],
+                    "price": r[3], "change_pct": r[4],
+                    "volume": r[5], "turnover": r[6],
+                })
+            return result
+        finally:
+            conn.close()
+
+    def get_hk_indices_latest(self) -> List[Dict]:
+        """获取最新港股指数日线"""
+        conn = self._get_db()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                SELECT code, name, close, change_pct, trade_date
+                FROM hk_indices
+                WHERE trade_date = (SELECT MAX(trade_date) FROM hk_indices)
+                ORDER BY code
+            """)
+            result = []
+            for r in c.fetchall():
+                result.append({
+                    "code": r[0], "name": r[1], "close": r[2],
+                    "change_pct": r[3], "date": r[4],
+                })
+            return result
+        finally:
+            conn.close()
+
+    def get_hk_repurchase_latest(self, days: int = 30) -> List[Dict]:
+        """获取最新港股回购数据"""
+        conn = self._get_db()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                SELECT code, name, repurchase_amount, trade_date
+                FROM hk_repurchase
+                ORDER BY trade_date DESC LIMIT 500
+            """)
+            result = []
+            for r in c.fetchall():
+                result.append({
+                    "code": r[0], "name": r[1],
+                    "repurchase_amount": r[2], "date": r[3],
+                })
+            return result
+        finally:
+            conn.close()
+
 
 # 测试
 if __name__ == "__main__":

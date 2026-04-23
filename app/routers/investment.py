@@ -926,25 +926,34 @@ async def get_north_summary(days: int = 30):
 
 @router.get("/api/hk/hot-rank")
 async def get_hk_hot_rank(limit: int = 50):
-    """港股热门排行"""
-    service = get_investment_service()
-    data = service.get_hk_stock_hot_rank(limit)
+    """港股热门排行 (DB优先 + API降级)"""
+    db = get_db_service()
+    data = db.get_hk_hot_rank_latest(limit)
+    if not data:
+        service = get_investment_service()
+        data = service.get_hk_stock_hot_rank(limit)
     return {"total": len(data), "data": data}
 
 
 @router.get("/api/hk/indices")
 async def get_hk_indices():
-    """港股主要指数行情"""
-    service = get_investment_service()
-    data = service.get_hk_index_list()
+    """港股主要指数行情 (DB优先 + API降级)"""
+    db = get_db_service()
+    data = db.get_hk_indices_latest()
+    if not data:
+        service = get_investment_service()
+        data = service.get_hk_index_list()
     return {"data": data}
 
 
 @router.get("/api/hk/repurchase")
 async def get_hk_repurchase(days: int = 30):
-    """港股回购统计"""
-    service = get_investment_service()
-    data = service.get_hk_repurchase_stats(days)
+    """港股回购统计 (DB优先 + API降级)"""
+    db = get_db_service()
+    data = db.get_hk_repurchase_latest(days)
+    if not data:
+        service = get_investment_service()
+        data = service.get_hk_repurchase_stats(days)
     return {"total": len(data), "data": data}
 
 

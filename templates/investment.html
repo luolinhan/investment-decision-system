@@ -1855,6 +1855,27 @@
         </div>
     </div>
 
+    <!-- 港股热榜 -->
+    <div class="index-section-title">港股热榜</div>
+    <div style="overflow-x: auto; margin-bottom: 1rem;">
+        <table class="stock-table" id="hk-hot-rank-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>最新价</th>
+                    <th>涨跌幅</th>
+                    <th>成交量</th>
+                    <th>成交额</th>
+                </tr>
+            </thead>
+            <tbody id="hk-hot-rank-body">
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <!-- 美股指数 -->
     <div class="index-section-title">美股指数</div>
     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
@@ -3544,6 +3565,47 @@
         } catch (error) {
             console.error('加载市场数据失败:', error);
         }
+        loadHkHotRank();
+    }
+
+    async function loadHkHotRank() {
+        try {
+            const data = await api('/investment/api/hk/hot-rank?limit=20');
+            const tbody = document.getElementById('hk-hot-rank-body');
+            if (!tbody) return;
+            const items = data.data || [];
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">暂无数据</td></tr>';
+                return;
+            }
+            const esc = s => s ? String(s).replace(/</g, '&lt;') : '-';
+            tbody.innerHTML = items.map(item => {
+                const pct = item.change_pct || 0;
+                const cls = pct >= 0 ? 'positive' : 'negative';
+                const sign = pct >= 0 ? '+' : '';
+                const vol = item.volume ? formatVolume(item.volume) : '-';
+                const amt = item.turnover ? formatVolume(item.turnover) : '-';
+                return '<tr>' +
+                    '<td>' + esc(item.rank) + '</td>' +
+                    '<td>' + esc(item.code) + '</td>' +
+                    '<td>' + esc(item.name) + '</td>' +
+                    '<td>' + (item.price != null ? item.price.toFixed(2) : '-') + '</td>' +
+                    '<td class="' + cls + '">' + sign + pct.toFixed(2) + '%</td>' +
+                    '<td>' + esc(vol) + '</td>' +
+                    '<td>' + esc(amt) + '</td>' +
+                    '</tr>';
+            }).join('');
+        } catch (error) {
+            const tbody = document.getElementById('hk-hot-rank-body');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>';
+        }
+    }
+
+    function formatVolume(v) {
+        if (!v) return '-';
+        if (v >= 1e8) return (v / 1e8).toFixed(1) + '亿';
+        if (v >= 1e4) return (v / 1e4).toFixed(0) + '万';
+        return v.toFixed(0);
     }
 
     async function loadPreopenStrategy() {
