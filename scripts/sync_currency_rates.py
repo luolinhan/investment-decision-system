@@ -52,13 +52,13 @@ def main():
         for _, row in df.iterrows():
             try:
                 date = str(row.iloc[0])[:10]
-                # Column index 3 or 4 is typically the middle/spot rate for USD
+                # BOC rates are per 100 units (e.g., 689.51 = 6.8951 per 1 USD)
                 rate = None
                 for ci in range(1, min(ncols, 6)):
                     try:
                         val = float(row.iloc[ci])
-                        if 5 < val < 10:
-                            rate = val
+                        if 500 < val < 800:  # per-100 range
+                            rate = val / 100
                             break
                     except (ValueError, TypeError):
                         pass
