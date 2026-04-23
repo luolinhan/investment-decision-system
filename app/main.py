@@ -10,7 +10,9 @@ import logging
 
 from app.config import settings, ensure_directories, get_investment_runtime_profile
 from app.database import init_db
-from app.routers import reports, pages, investment, foreign_research, investment_v2
+from app.routers import reports, pages, investment, investment_v2
+# foreign_research disabled: models not yet implemented
+# from app.routers import foreign_research
 
 
 # 配置日志
@@ -80,7 +82,7 @@ app.include_router(pages.router)
 app.include_router(reports.router)
 app.include_router(investment.router)
 app.include_router(investment_v2.router_v2)
-app.include_router(foreign_research.router)
+# app.include_router(foreign_research.router)  # disabled: models not yet implemented
 
 
 # 健康检查
