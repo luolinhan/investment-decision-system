@@ -1629,7 +1629,7 @@ async def get_etl_status():
     for log in logs:
         if log["status"] == "success" and not last_success:
             last_success = log
-        if log["status"] == "error" and not last_error:
+        if log["status"] in {"error", "failed"} and not last_error:
             last_error = log
 
     return {

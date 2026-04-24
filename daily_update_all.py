@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -37,7 +39,8 @@ def build_env() -> dict[str, str]:
 
 
 def write_etl_log(job_name: str, start_time: str, end_time: str, status: str,
-                  records: int = 0, error: str = "") -> None:
+                  records_processed: int = 0, records_failed: int = 0,
+                  error: str = "") -> None:
     """写入 ETL 日志到数据库。"""
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -47,13 +50,37 @@ def write_etl_log(job_name: str, start_time: str, end_time: str, status: str,
                 records_processed, records_failed, error_message)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (job_name, "daily_update", start_time, end_time, status,
-             records if status == "success" else 0,
-             records if status == "failed" else 0, error)
+             records_processed, records_failed, error)
         )
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"  ETL日志写入失败: {e}")
+
+
+def parse_etl_metrics(stdout: str) -> dict[str, int]:
+    """从子任务输出解析标准化ETL统计。"""
+    metrics = {
+        "records_processed": 0,
+        "records_failed": 0,
+        "records_skipped": 0,
+    }
+    for line in stdout.splitlines():
+        if not line.startswith("ETL_METRICS_JSON="):
+            continue
+        try:
+            payload = json.loads(line.split("=", 1)[1])
+            for key in metrics:
+                metrics[key] = int(payload.get(key) or 0)
+            return metrics
+        except Exception:
+            break
+
+    # 临时兼容未标准化脚本的常见输出，后续脚本逐步改成 ETL_METRICS_JSON。
+    processed_matches = re.findall(r"(\d+)\s*(?:new articles|records|rows|条|total)", stdout, re.IGNORECASE)
+    if processed_matches:
+        metrics["records_processed"] = sum(int(item) for item in processed_matches)
+    return metrics
 
 
 def run_script(script_name: str, description: str) -> dict[str, object]:
@@ -86,14 +113,18 @@ def run_script(script_name: str, description: str) -> dict[str, object]:
 
     ok = result.returncode == 0
     status = "success" if ok else "failed"
+    metrics = parse_etl_metrics(result.stdout or "")
     print(f"结果: {'OK' if ok else 'FAIL'} (returncode={result.returncode})")
 
     write_etl_log(
         job_name=job_name, start_time=start_time, end_time=end_time,
-        status=status, error=result.stderr.strip()[:500] if not ok else ""
+        status=status,
+        records_processed=metrics["records_processed"] if ok else 0,
+        records_failed=metrics["records_failed"] if ok else max(1, metrics["records_failed"]),
+        error=result.stderr.strip()[:500] if not ok else ""
     )
 
-    return {"ok": ok, "status": status, "returncode": result.returncode}
+    return {"ok": ok, "status": status, "returncode": result.returncode, **metrics}
 
 
 def main() -> int:

@@ -21,93 +21,192 @@ class InvestmentDataService:
     def _get_db(self):
         return get_sqlite_connection(self.db_path)
 
+    @staticmethod
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            text = str(value).strip().replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(text)
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            return parsed
+        except Exception:
+            return None
+
+    @staticmethod
+    def _safe_json_loads(value: Any) -> Optional[Dict[str, Any]]:
+        if not value:
+            return None
+        try:
+            loaded = json.loads(value)
+            return loaded if isinstance(loaded, dict) else {"value": loaded}
+        except Exception:
+            return None
+
+    def _get_table_columns(self, conn: sqlite3.Connection, table_name: str) -> List[str]:
+        c = conn.cursor()
+        c.execute(f"PRAGMA table_info({table_name})")
+        return [row[1] for row in c.fetchall()]
+
     def _ensure_snapshot_table(self):
         conn = self._get_db()
         c = conn.cursor()
         c.execute("""
             CREATE TABLE IF NOT EXISTS market_snapshots (
                 snapshot_key TEXT PRIMARY KEY,
-                payload TEXT,
-                source TEXT,
-                updated_at TEXT,
+                payload_json TEXT,
+                updated_at TEXT NOT NULL,
                 expires_at TEXT,
-                age_seconds REAL,
-                is_fresh INTEGER,
+                source TEXT,
                 fetch_latency_ms INTEGER,
                 notes TEXT
             )
         """)
+        columns = set(self._get_table_columns(conn, "market_snapshots"))
+        optional_columns = {
+            "payload_json": "TEXT",
+            "source": "TEXT",
+            "updated_at": "TEXT",
+            "expires_at": "TEXT",
+            "age_seconds": "REAL",
+            "is_fresh": "INTEGER",
+            "fetch_latency_ms": "INTEGER",
+            "notes": "TEXT",
+        }
+        for column, ddl_type in optional_columns.items():
+            if column not in columns:
+                c.execute(f"ALTER TABLE market_snapshots ADD COLUMN {column} {ddl_type}")
         conn.commit()
         conn.close()
 
-    def get_market_snapshot(self, snapshot_key: str, ttl_seconds: int = 3600) -> Optional[Dict[str, Any]]:
+    def get_market_snapshot(
+        self,
+        snapshot_key: str,
+        ttl_seconds: int = 3600,
+        max_age_seconds: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
         """读取市场快照缓存"""
+        conn = None
         try:
             self._ensure_snapshot_table()
             conn = self._get_db()
             c = conn.cursor()
-            c.execute("""
-                SELECT snapshot_key, payload, source, updated_at, expires_at,
-                       age_seconds, is_fresh, fetch_latency_ms, notes
+            columns = self._get_table_columns(conn, "market_snapshots")
+            select_columns = [
+                "snapshot_key",
+                "payload_json" if "payload_json" in columns else None,
+                "payload" if "payload" in columns else None,
+                "source" if "source" in columns else None,
+                "updated_at" if "updated_at" in columns else None,
+                "expires_at" if "expires_at" in columns else None,
+                "age_seconds" if "age_seconds" in columns else None,
+                "is_fresh" if "is_fresh" in columns else None,
+                "fetch_latency_ms" if "fetch_latency_ms" in columns else None,
+                "notes" if "notes" in columns else None,
+            ]
+            c.execute(
+                f"""
+                SELECT {', '.join(col for col in select_columns if col)}
                 FROM market_snapshots
                 WHERE snapshot_key = ?
-            """, (snapshot_key,))
+                """,
+                (snapshot_key,),
+            )
             row = c.fetchone()
-            conn.close()
             if not row:
                 return None
-            payload = json.loads(row[1]) if row[1] else None
-            is_fresh = bool(row[6])
-            now = datetime.now().isoformat()
-            if row[4] and row[4] < now:
+
+            values = dict(zip([col for col in select_columns if col], row))
+            payload = self._safe_json_loads(values.get("payload_json")) or self._safe_json_loads(values.get("payload"))
+            updated_at = values.get("updated_at")
+            expires_at = values.get("expires_at")
+            updated_dt = self._parse_datetime(updated_at)
+            expires_dt = self._parse_datetime(expires_at)
+            now = datetime.now()
+
+            age_seconds = values.get("age_seconds")
+            if updated_dt is not None:
+                age_seconds = int(max(0, (now - updated_dt).total_seconds()))
+
+            freshness_ttl = max_age_seconds if max_age_seconds is not None else ttl_seconds
+            is_fresh = True
+            if values.get("is_fresh") is not None:
+                is_fresh = bool(values.get("is_fresh"))
+            if expires_dt is not None and expires_dt <= now:
                 is_fresh = False
+            if freshness_ttl is not None and age_seconds is not None and age_seconds > freshness_ttl:
+                is_fresh = False
+
+            if max_age_seconds is not None and age_seconds is not None and age_seconds > max_age_seconds:
+                return None
+
             return {
                 "payload": payload,
-                "source": row[2],
-                "updated_at": row[3],
-                "expires_at": row[4],
-                "age_seconds": row[5],
+                "source": values.get("source"),
+                "updated_at": updated_at,
+                "expires_at": expires_at,
+                "age_seconds": age_seconds,
                 "is_fresh": is_fresh,
-                "fetch_latency_ms": row[7],
-                "notes": row[8],
+                "fetch_latency_ms": values.get("fetch_latency_ms"),
+                "notes": values.get("notes"),
             }
-        except Exception:
+        except Exception as exc:
+            print(f"market snapshot read failed ({snapshot_key}): {exc}")
             return None
+        finally:
+            if conn:
+                conn.close()
 
     def save_market_snapshot(self, snapshot_key: str, payload: Dict[str, Any], ttl_seconds: int = 3600,
-                              source: str = "realtime", fetch_latency_ms: int = 0) -> Dict[str, Any]:
+                              source: str = "realtime", fetch_latency_ms: int = 0,
+                              notes: str = "") -> Dict[str, Any]:
         """保存市场快照"""
+        conn = None
         try:
             self._ensure_snapshot_table()
             now = datetime.now()
             expires = now + timedelta(seconds=ttl_seconds)
             conn = self._get_db()
             c = conn.cursor()
-            c.execute("""
+            columns = set(self._get_table_columns(conn, "market_snapshots"))
+            payload_text = json.dumps(payload, ensure_ascii=False)
+            row_values = {
+                "snapshot_key": snapshot_key,
+                "payload_json": payload_text,
+                "payload": payload_text,
+                "updated_at": now.isoformat(),
+                "expires_at": expires.isoformat(),
+                "source": source,
+                "age_seconds": 0,
+                "is_fresh": 1,
+                "fetch_latency_ms": fetch_latency_ms,
+                "notes": notes or "",
+            }
+            write_columns = [col for col in row_values if col in columns]
+            placeholders = ", ".join(["?"] * len(write_columns))
+            c.execute(
+                f"""
                 INSERT OR REPLACE INTO market_snapshots
-                (snapshot_key, payload, source, updated_at, expires_at,
-                 age_seconds, is_fresh, fetch_latency_ms, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                snapshot_key,
-                json.dumps(payload, ensure_ascii=False),
-                source,
-                now.isoformat(),
-                expires.isoformat(),
-                0,
-                1,
-                fetch_latency_ms,
-                "",
-            ))
+                ({', '.join(write_columns)})
+                VALUES ({placeholders})
+                """,
+                [row_values[col] for col in write_columns],
+            )
             conn.commit()
-            conn.close()
             return {
                 "updated_at": now.isoformat(),
                 "expires_at": expires.isoformat(),
                 "is_fresh": True,
             }
-        except Exception:
+        except Exception as exc:
+            print(f"market snapshot save failed ({snapshot_key}): {exc}")
             return {"updated_at": datetime.now().isoformat(), "is_fresh": False}
+        finally:
+            if conn:
+                conn.close()
 
     def get_index_list(self) -> List[Dict]:
         """获取指数列表"""
@@ -435,22 +534,24 @@ class InvestmentDataService:
         """获取股票基本面数据"""
         conn = self._get_db()
         c = conn.cursor()
+        columns = set(self._get_table_columns(conn, "stock_financial"))
+        revenue_col = "total_revenue" if "total_revenue" in columns else "revenue"
 
         if codes:
             placeholders = ','.join(['?' for _ in codes])
             c.execute(f'''
                 SELECT code, name, market, report_date, pe_ttm, pb, ps_ttm,
                        roe, roa, gross_margin, net_margin, debt_ratio, current_ratio,
-                       eps, bvps, revenue, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
+                       eps, bvps, {revenue_col}, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
                 FROM stock_financial
                 WHERE code IN ({placeholders})
                 ORDER BY code
             ''', codes)
         else:
-            c.execute('''
+            c.execute(f'''
                 SELECT code, name, market, report_date, pe_ttm, pb, ps_ttm,
                        roe, roa, gross_margin, net_margin, debt_ratio, current_ratio,
-                       eps, bvps, revenue, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
+                       eps, bvps, {revenue_col}, revenue_yoy, net_profit, net_profit_yoy, dividend_yield
                 FROM stock_financial
                 ORDER BY code
             ''')
@@ -529,6 +630,239 @@ class InvestmentDataService:
 
         conn.close()
         return result
+
+    # ==================== 机会池模块 ====================
+
+    @staticmethod
+    def _normalize_stock_code(code: str) -> str:
+        return (code or "").strip()
+
+    @staticmethod
+    def _code_without_prefix(code: str) -> str:
+        text = (code or "").strip()
+        if len(text) > 2 and text[:2].lower() in {"sh", "sz", "hk", "us"}:
+            return text[2:]
+        return text
+
+    def _pool_filter_sql(self, pool_code: str, alias: str = "s", code_column: str = "symbol") -> tuple[str, List[Any]]:
+        pool = (pool_code or "all").lower()
+        ref = f"{alias}.{code_column}"
+        if pool in {"all", "*"}:
+            return "", []
+        if pool in {"a", "ashare", "cn"}:
+            return f" AND ({ref} GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]' OR lower({ref}) LIKE 'sh%' OR lower({ref}) LIKE 'sz%')", []
+        if pool in {"hk", "hshare"}:
+            return f" AND lower({ref}) LIKE 'hk%'", []
+        if pool in {"us", "adr"}:
+            return f" AND lower({ref}) LIKE 'us%'", []
+        if pool in {"watch", "watchlist"}:
+            return " AND EXISTS (SELECT 1 FROM watch_list w WHERE w.enabled = 1 AND (w.code = {0} OR substr(w.code, 3) = {0}))".format(ref), []
+        return "", []
+
+    def get_opportunity_pool_overview(self, pool_code: str = "all", limit: int = 180) -> Dict[str, Any]:
+        """核心股票池总览与评分榜。
+
+        这是一个只读聚合视图，优先使用 strategy_signals_v2；如果该表没有数据，
+        降级到 stock_factor_snapshot。它不会创建新信号，也不会把半成品表写入主流程。
+        """
+        conn = self._get_db()
+        c = conn.cursor()
+        limit = max(1, min(int(limit or 180), 500))
+        pool_sql, params = self._pool_filter_sql(pool_code, "s")
+
+        try:
+            latest = c.execute("SELECT MAX(as_of_date) FROM strategy_signals_v2").fetchone()[0]
+        except Exception:
+            latest = None
+
+        leaderboard: List[Dict[str, Any]] = []
+        if latest:
+            c.execute(
+                f"""
+                SELECT
+                    s.symbol,
+                    COALESCE(NULLIF(s.symbol_name, ''), wf.name, wp.name, f.name, s.symbol) AS name,
+                    COALESCE(wf.market, wp.market, f.market, '') AS market,
+                    COALESCE(wf.category, wp.category, '') AS category,
+                    s.as_of_date,
+                    s.setup_type,
+                    s.setup_subtype,
+                    s.grade,
+                    s.action,
+                    s.action_reason,
+                    s.score_total,
+                    s.score_quality,
+                    s.score_growth,
+                    s.score_valuation,
+                    s.score_technical,
+                    s.score_flow,
+                    s.risk_penalty,
+                    s.risk_flags,
+                    s.data_coverage_pct,
+                    s.source_confidence
+                FROM strategy_signals_v2 s
+                LEFT JOIN watch_list wf
+                    ON wf.enabled = 1 AND wf.code = s.symbol
+                LEFT JOIN watch_list wp
+                    ON wp.enabled = 1 AND substr(wp.code, 3) = s.symbol
+                LEFT JOIN stock_financial f
+                    ON f.code = s.symbol
+                    AND f.report_date = (SELECT MAX(report_date) FROM stock_financial WHERE code = s.symbol)
+                WHERE s.as_of_date = ?
+                  AND COALESCE(s.eligibility_pass, 1) = 1
+                  {pool_sql}
+                ORDER BY COALESCE(s.score_total, 0) DESC, s.grade ASC, s.symbol ASC
+                LIMIT ?
+                """,
+                [latest, *params, limit],
+            )
+            for row in c.fetchall():
+                action = row[8] or "WATCH"
+                setup_label = "/".join(str(item) for item in row[5:7] if item)
+                leaderboard.append({
+                    "code": row[0],
+                    "display_code": row[0],
+                    "name": row[1],
+                    "market": row[2],
+                    "category": row[3],
+                    "as_of_date": row[4],
+                    "setup_name": row[5],
+                    "setup_label": setup_label or row[5],
+                    "grade": row[7] or "C",
+                    "action": action,
+                    "action_label": action,
+                    "action_reason": row[9],
+                    "total_score": row[10],
+                    "quality_score": row[11],
+                    "growth_score": row[12],
+                    "valuation_score": row[13],
+                    "technical_score": row[14],
+                    "flow_score": row[15],
+                    "risk_score": row[16],
+                    "risk_flags": row[17],
+                    "data_coverage_pct": row[18],
+                    "source_confidence": row[19],
+                    "source_table": "strategy_signals_v2",
+                })
+
+        if not leaderboard:
+            pool_sql, params = self._pool_filter_sql(pool_code, "s", "code")
+            latest = c.execute("SELECT MAX(trade_date) FROM stock_factor_snapshot").fetchone()[0]
+            c.execute(
+                f"""
+                SELECT
+                    s.code,
+                    COALESCE(w.name, f.name, s.code) AS name,
+                    COALESCE(w.market, f.market, '') AS market,
+                    COALESCE(w.category, '') AS category,
+                    s.trade_date,
+                    s.model,
+                    s.quality,
+                    s.growth,
+                    s.valuation,
+                    s.flow,
+                    s.technical,
+                    s.risk,
+                    s.total
+                FROM stock_factor_snapshot s
+                LEFT JOIN watch_list w
+                    ON w.enabled = 1 AND w.code = s.code
+                LEFT JOIN stock_financial f
+                    ON f.code = s.code
+                    AND f.report_date = (SELECT MAX(report_date) FROM stock_financial WHERE code = s.code)
+                WHERE s.trade_date = ?
+                  {pool_sql}
+                ORDER BY COALESCE(s.total, 0) DESC, s.code ASC
+                LIMIT ?
+                """,
+                [latest, *params, limit],
+            )
+            for row in c.fetchall():
+                total_score = row[12] or 0
+                action = "WATCH" if total_score >= 55 else "SKIP"
+                leaderboard.append({
+                    "code": row[0],
+                    "display_code": row[0],
+                    "name": row[1],
+                    "market": row[2],
+                    "category": row[3],
+                    "as_of_date": row[4],
+                    "setup_name": row[5],
+                    "setup_label": row[5],
+                    "grade": "B" if total_score >= 65 else ("C" if total_score >= 45 else "D"),
+                    "action": action,
+                    "action_label": action,
+                    "total_score": total_score,
+                    "quality_score": row[6],
+                    "growth_score": row[7],
+                    "valuation_score": row[8],
+                    "flow_score": row[9],
+                    "technical_score": row[10],
+                    "risk_score": row[11],
+                    "source_table": "stock_factor_snapshot",
+                })
+
+        conn.close()
+        total = len(leaderboard)
+        buy_count = sum(
+            1
+            for item in leaderboard
+            if str(item.get("action") or "").upper() in {"BUY", "ADD", "STRONG_BUY", "BUY_NOW"}
+            or str(item.get("action") or "").upper().startswith("BUY")
+        )
+        watch_count = sum(1 for item in leaderboard if str(item.get("action") or "").upper() == "WATCH")
+        avg_score = sum(float(item.get("total_score") or 0) for item in leaderboard) / max(1, total)
+        summary = {
+            "pool_code": pool_code,
+            "as_of_date": leaderboard[0].get("as_of_date") if leaderboard else latest,
+            "total_candidates": total,
+            "buy_count": buy_count,
+            "watch_count": watch_count,
+            "average_score": round(avg_score, 1),
+            "source_table": leaderboard[0].get("source_table") if leaderboard else None,
+        }
+        return {
+            "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+            "summary": summary,
+            "leaderboard": leaderboard,
+            "opportunities": leaderboard,
+        }
+
+    def get_opportunity_stock_detail(self, code: str, pool_code: str = "all") -> Dict[str, Any]:
+        """单只股票机会池下钻。"""
+        target = self._normalize_stock_code(code)
+        target_raw = self._code_without_prefix(target)
+        overview = self.get_opportunity_pool_overview(pool_code=pool_code, limit=500)
+        match = None
+        for item in overview.get("leaderboard") or []:
+            item_code = self._normalize_stock_code(item.get("code"))
+            if item_code == target or self._code_without_prefix(item_code) == target_raw:
+                match = item
+                break
+        if not match:
+            raise KeyError(code)
+
+        return {
+            "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+            "pool_code": pool_code,
+            "signal": match,
+            "fundamentals": self.get_stock_fundamentals([match["code"]]),
+            "valuation": self.get_valuation_latest(match["code"]),
+            "technical": self.get_technical_latest(match["code"]),
+        }
+
+    def sync_stock_pools(self, pool_code: str = "all") -> Dict[str, Any]:
+        """机会池同步占位。
+
+        当前机会池由 strategy_signals_v2 / stock_factor_snapshot 派生，不再伪装成
+        独立采集任务。这个接口保留给前端按钮，返回只读状态。
+        """
+        overview = self.get_opportunity_pool_overview(pool_code=pool_code, limit=20)
+        return {
+            "status": "noop",
+            "message": "机会池当前由本地评分表派生，无需单独同步。",
+            "summary": overview.get("summary", {}),
+        }
 
     def import_fundamentals_csv(self, csv_path: str) -> Dict:
         """从CSV导入财务数据"""
@@ -1017,37 +1351,71 @@ class InvestmentDataService:
             conn.close()
             return {"status": "error", "message": str(e)}
 
-    def get_data_health_overview(self, cache_keys: Dict[str, int] = None) -> Dict[str, Any]:
+    def get_data_health_overview(
+        self,
+        cache_keys: Dict[str, int] = None,
+        snapshot_ttls: Dict[str, int] = None,
+    ) -> Dict[str, Any]:
         """数据健康概览"""
+        conn = None
         try:
             self._ensure_snapshot_table()
             conn = self._get_db()
-            c = conn.cursor()
             storage = []
-            if cache_keys:
-                for key, ttl in cache_keys.items():
-                    c.execute("""
-                        SELECT snapshot_key, updated_at, expires_at, is_fresh, source
-                        FROM market_snapshots WHERE snapshot_key = ?
-                    """, (key,))
-                    row = c.fetchone()
-                    if row:
+            tracked_keys = cache_keys or snapshot_ttls or {}
+            if tracked_keys:
+                for key, ttl in tracked_keys.items():
+                    snapshot = self.get_market_snapshot(key, ttl_seconds=ttl)
+                    if snapshot:
                         storage.append({
-                            "key": row[0],
-                            "updated_at": row[1],
-                            "expires_at": row[2],
-                            "is_fresh": bool(row[3]),
-                            "source": row[4],
+                            "key": key,
+                            "updated_at": snapshot.get("updated_at"),
+                            "expires_at": snapshot.get("expires_at"),
+                            "age_seconds": snapshot.get("age_seconds"),
+                            "is_fresh": bool(snapshot.get("is_fresh")),
+                            "source": snapshot.get("source"),
+                            "fetch_latency_ms": snapshot.get("fetch_latency_ms"),
+                            "notes": snapshot.get("notes"),
                         })
                     else:
                         storage.append({"key": key, "is_fresh": False, "source": "none"})
-            conn.close()
+            else:
+                c = conn.cursor()
+                c.execute("SELECT snapshot_key FROM market_snapshots ORDER BY updated_at DESC")
+                for (key,) in c.fetchall():
+                    snapshot = self.get_market_snapshot(key)
+                    if snapshot:
+                        storage.append({
+                            "key": key,
+                            "updated_at": snapshot.get("updated_at"),
+                            "expires_at": snapshot.get("expires_at"),
+                            "age_seconds": snapshot.get("age_seconds"),
+                            "is_fresh": bool(snapshot.get("is_fresh")),
+                            "source": snapshot.get("source"),
+                            "fetch_latency_ms": snapshot.get("fetch_latency_ms"),
+                            "notes": snapshot.get("notes"),
+                        })
+
+            fresh_count = sum(1 for s in storage if s.get("is_fresh"))
+            stale_count = len(storage) - fresh_count
             return {
-                "summary": {"total": len(storage), "fresh": sum(1 for s in storage if s.get("is_fresh"))},
+                "summary": {
+                    "total": len(storage),
+                    "fresh": fresh_count,
+                    "stale": stale_count,
+                    "fresh_pct": round(fresh_count * 100.0 / max(1, len(storage)), 1),
+                },
                 "storage": storage,
             }
-        except Exception:
-            return {"summary": {"total": 0, "fresh": 0}, "storage": []}
+        except Exception as exc:
+            return {
+                "summary": {"total": 0, "fresh": 0, "stale": 0, "fresh_pct": 0.0},
+                "storage": [],
+                "error": str(exc)[:300],
+            }
+        finally:
+            if conn:
+                conn.close()
 
     # ==================== 策略回测与性能 ====================
 
