@@ -123,9 +123,9 @@ def collect_cn_money_supply(store: RadarStore) -> Dict[str, Any]:
         cols = list(df.columns)
         logger.info("macro_china_money_supply columns: %s", cols)
 
-        # Find M1/M2 columns by name pattern
-        m1_col = next((c for c in cols if "M1" in str(c)), None)
-        m2_col = next((c for c in cols if "M2" in str(c)), None)
+        # Prefer YoY growth columns instead of quantity columns.
+        m1_col = next((c for c in cols if "M1" in str(c) and "同比" in str(c)), None)
+        m2_col = next((c for c in cols if "M2" in str(c) and "同比" in str(c)), None)
 
         if m1_col and m2_col:
             for _, row in df.iterrows():
@@ -172,7 +172,7 @@ def collect_cn_money_supply(store: RadarStore) -> Dict[str, Any]:
                     val = _safe_float(row[c])
                     if val is None:
                         continue
-                    if "M1" in str(c):
+                    if "M1" in str(c) and "同比" in str(c):
                         obs_rows.append({
                             "indicator_code": "CN_M1_YOY",
                             "obs_date": date_str,
@@ -181,7 +181,7 @@ def collect_cn_money_supply(store: RadarStore) -> Dict[str, Any]:
                             "source": "akshare:macro_china_money_supply",
                             "quality_flag": "good",
                         })
-                    elif "M2" in str(c):
+                    elif "M2" in str(c) and "同比" in str(c):
                         obs_rows.append({
                             "indicator_code": "CN_M2_YOY",
                             "obs_date": date_str,
@@ -235,15 +235,18 @@ def collect_cn_cpi_ppi(store: RadarStore) -> Dict[str, Any]:
         if cpi_df is not None:
             cols = list(cpi_df.columns)
             logger.info("macro_china_cpi columns: %s", cols)
-            # CPI often has a '全国当月' or similar column for national YoY
+            yoy_col = next((c for c in cols if "全国" in str(c) and "同比" in str(c)), None) or next(
+                (c for c in cols if "同比" in str(c)),
+                None,
+            )
             for _, row in cpi_df.iterrows():
                 date_str = _clean_date(row.iloc[0]) if len(row) > 0 else None
                 if date_str is None:
                     continue
                 rows_read += 1
-                for c in cols[1:]:
-                    val = _safe_float(row[c])
-                    if val is not None and "当月" in str(c):
+                if yoy_col:
+                    val = _safe_float(row[yoy_col])
+                    if val is not None:
                         obs_rows.append({
                             "indicator_code": "CN_CPI_YOY",
                             "obs_date": date_str,
@@ -252,21 +255,21 @@ def collect_cn_cpi_ppi(store: RadarStore) -> Dict[str, Any]:
                             "source": "akshare:macro_china_cpi",
                             "quality_flag": "good",
                         })
-                        break
 
         # PPI
         ppi_df = _fetch_akshare("macro_china_ppi")
         if ppi_df is not None:
             cols = list(ppi_df.columns)
             logger.info("macro_china_ppi columns: %s", cols)
+            yoy_col = next((c for c in cols if "同比" in str(c)), None)
             for _, row in ppi_df.iterrows():
                 date_str = _clean_date(row.iloc[0]) if len(row) > 0 else None
                 if date_str is None:
                     continue
                 rows_read += 1
-                for c in cols[1:]:
-                    val = _safe_float(row[c])
-                    if val is not None and "当月" in str(c):
+                if yoy_col:
+                    val = _safe_float(row[yoy_col])
+                    if val is not None:
                         obs_rows.append({
                             "indicator_code": "CN_PPI_YOY",
                             "obs_date": date_str,
@@ -275,7 +278,6 @@ def collect_cn_cpi_ppi(store: RadarStore) -> Dict[str, Any]:
                             "source": "akshare:macro_china_ppi",
                             "quality_flag": "good",
                         })
-                        break
 
         # Derive CPI-PPI spread
         if obs_rows:
@@ -339,21 +341,22 @@ def collect_cn_industrial_va(store: RadarStore) -> Dict[str, Any]:
         logger.info("macro_china_industrial_production_yoy columns: %s", cols)
 
         for _, row in df.iterrows():
-            date_str = _clean_date(row.iloc[0]) if len(row) > 0 else None
+            date_str = _clean_date(row["日期"]) if "日期" in cols else (_clean_date(row.iloc[1]) if len(row) > 1 else None)
             if date_str is None:
                 continue
             rows_read += 1
             # akshare format: 商品, 日期, 今值, 预测值, 前值
             if "今值" in cols:
                 val = _safe_float(row["今值"])
-                obs_rows.append({
-                    "indicator_code": "CN_INDUSTRIAL_VA_YOY",
-                    "obs_date": date_str,
-                    "value": val,
-                    "unit": "pct",
-                    "source": "akshare:macro_china_industrial_production_yoy",
-                    "quality_flag": "good" if val is not None else "missing",
-                })
+                if val is not None:
+                    obs_rows.append({
+                        "indicator_code": "CN_INDUSTRIAL_VA_YOY",
+                        "obs_date": date_str,
+                        "value": val,
+                        "unit": "pct",
+                        "source": "akshare:macro_china_industrial_production_yoy",
+                        "quality_flag": "good",
+                    })
 
         rows_upserted = store.upsert_indicator_observations(obs_rows) if obs_rows else 0
         _update_catalog_ts(store, ["CN_INDUSTRIAL_VA_YOY"])

@@ -83,6 +83,12 @@ DDL_STATEMENTS: List[str] = [
     """,
 ]
 
+EXPECTED_COLUMNS = {
+    "indicator_catalog": {"indicator_code", "category", "indicator_type", "frequency", "direction"},
+    "indicator_observations": {"indicator_code", "obs_date", "source", "value"},
+    "source_runs": {"id", "source_name", "target_table", "started_at", "status"},
+}
+
 
 class RadarStore:
     """Thin wrapper around DuckDB for the radar subsystem."""
@@ -111,11 +117,109 @@ class RadarStore:
         """Create all radar tables and indexes if they don't exist."""
         conn = self.get_connection()
         try:
+            legacy_tables = self._prepare_legacy_tables(conn)
             for ddl in DDL_STATEMENTS:
                 conn.execute(ddl.strip())
+            self._migrate_legacy_tables(conn, legacy_tables)
             logger.info("Schema ensured at %s", self.db_path)
         finally:
             conn.close()
+
+    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_schema = 'main' AND table_name = ?
+            """,
+            [table_name],
+        ).fetchone()
+        return bool(row and row[0])
+
+    def _table_columns(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+        if not self._table_exists(conn, table_name):
+            return set()
+        rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        return {row[1] for row in rows}
+
+    def _prepare_legacy_tables(self, conn: duckdb.DuckDBPyConnection) -> Dict[str, str]:
+        legacy_tables: Dict[str, str] = {}
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        for table_name, expected in EXPECTED_COLUMNS.items():
+            columns = self._table_columns(conn, table_name)
+            if not columns:
+                continue
+            if expected.issubset(columns):
+                continue
+            backup_name = f"{table_name}_legacy_{timestamp}"
+            conn.execute(f"ALTER TABLE {table_name} RENAME TO {backup_name}")
+            legacy_tables[table_name] = backup_name
+            logger.warning("Renamed legacy table %s -> %s for schema repair", table_name, backup_name)
+        return legacy_tables
+
+    def _migrate_legacy_tables(self, conn: duckdb.DuckDBPyConnection, legacy_tables: Dict[str, str]) -> None:
+        legacy_catalog = legacy_tables.get("indicator_catalog")
+        if legacy_catalog:
+            cols = self._table_columns(conn, legacy_catalog)
+            key_col = "indicator_key" if "indicator_key" in cols else "indicator_code"
+            type_col = "type" if "type" in cols else "indicator_type"
+            conn.execute(
+                f"""
+                INSERT OR REPLACE INTO indicator_catalog
+                (indicator_code, category, indicator_type, frequency, direction,
+                 half_life_days, affected_assets, affected_sectors, source, confidence,
+                 last_update, status, notes)
+                SELECT {key_col}, category, {type_col}, frequency, direction,
+                       half_life_days, affected_assets, affected_sectors, source, confidence,
+                       COALESCE(last_update, ?), COALESCE(status, 'planned'), notes
+                FROM {legacy_catalog}
+                WHERE {key_col} IS NOT NULL
+                """,
+                [datetime.now(timezone.utc).isoformat()],
+            )
+            logger.info("Migrated legacy indicator_catalog from %s", legacy_catalog)
+
+        legacy_obs = legacy_tables.get("indicator_observations")
+        if legacy_obs:
+            cols = self._table_columns(conn, legacy_obs)
+            key_col = "indicator_key" if "indicator_key" in cols else "indicator_code"
+            date_col = "observation_date" if "observation_date" in cols else "obs_date"
+            notes_expr = "notes" if "notes" in cols else "value_text" if "value_text" in cols else "metadata" if "metadata" in cols else "NULL"
+            fetch_expr = "fetch_ts" if "fetch_ts" in cols else "updated_at" if "updated_at" in cols else "CURRENT_TIMESTAMP"
+            quality_expr = "quality_flag" if "quality_flag" in cols else "'estimated'"
+            conn.execute(
+                f"""
+                INSERT OR REPLACE INTO indicator_observations
+                (indicator_code, obs_date, source, value, unit, fetch_ts, quality_flag, notes)
+                SELECT {key_col}, {date_col}, COALESCE(source, ''), value, unit,
+                       {fetch_expr}, {quality_expr}, {notes_expr}
+                FROM {legacy_obs}
+                WHERE {key_col} IS NOT NULL AND {date_col} IS NOT NULL
+                """
+            )
+            logger.info("Migrated legacy indicator_observations from %s", legacy_obs)
+
+        legacy_runs = legacy_tables.get("source_runs")
+        if legacy_runs:
+            cols = self._table_columns(conn, legacy_runs)
+            run_at_col = "run_at" if "run_at" in cols else "started_at"
+            source_name_col = "source_name" if "source_name" in cols else "source_key"
+            notes_col = "notes" if "notes" in cols else "error_message"
+            rows_read_col = "records_found" if "records_found" in cols else "rows_read"
+            rows_upserted_col = "records_added" if "records_added" in cols else "rows_upserted"
+            target_col = "target_table" if "target_table" in cols else "'unknown'"
+            conn.execute(
+                f"""
+                INSERT INTO source_runs
+                (id, source_name, target_table, started_at, finished_at, status,
+                 rows_read, rows_upserted, error_message, notes)
+                SELECT NEXTVAL('source_run_seq'), {source_name_col}, {target_col},
+                       {run_at_col}, {run_at_col}, COALESCE(status, 'success'),
+                       {rows_read_col}, {rows_upserted_col}, NULL, {notes_col}
+                FROM {legacy_runs}
+                """
+            )
+            logger.info("Migrated legacy source_runs from %s", legacy_runs)
 
     # ------------------------------------------------------------------
     # Upsert helpers

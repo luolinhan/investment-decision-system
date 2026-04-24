@@ -7,13 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import os
 
 from app.config import settings, ensure_directories, get_investment_runtime_profile
 from app.database import init_db
-from app.routers import reports, pages, investment, investment_v2
+from app.routers import reports, pages, investment, investment_v2, radar
 
 
 # 配置日志
+os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -80,6 +82,7 @@ app.include_router(pages.router)
 app.include_router(reports.router)
 app.include_router(investment.router)
 app.include_router(investment_v2.router_v2)
+app.include_router(radar.router)
 
 
 # 健康检查

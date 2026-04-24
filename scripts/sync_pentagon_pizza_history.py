@@ -64,11 +64,9 @@ def ensure_radar_db():
 
 def scrape_pizzint_watch() -> Optional[pd.DataFrame]:
     """
-    抓取 pizzint.watch 历史数据
-
-    网站结构: 每个日期有一个条目，包含 level (1-5)、headline、status、description
+    抓取 pizzint.watch 当前状态作为每日快照
     """
-    print("[1] Scraping pizzint.watch history...")
+    print("[1] Scraping pizzint.watch current status...")
 
     try:
         session = requests.Session()
@@ -77,64 +75,43 @@ def scrape_pizzint_watch() -> Optional[pd.DataFrame]:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         })
 
-        # 主页面包含所有历史记录
         resp = session.get("https://pizzint.watch", timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         html = resp.text
 
-        # 解析历史记录 (假设结构: 每个 .entry 或 .day 包含 date, level, content)
-        # 由于网站可能变化，使用灵活的正则匹配
-        records: List[dict] = []
+        status_match = re.search(r"STATUS:\s*([A-Z]+)", html)
+        status = status_match.group(1).strip() if status_match else "UNKNOWN"
+        doughcon_match = re.search(r"DOUGHCON\s+(\d)", html)
+        doughcon_level = int(doughcon_match.group(1)) if doughcon_match else None
+        has_alert = bool(re.search(r"INCREASED\s+INTELLIGENCE\s+WATCH", html))
 
-        # 匹配日期和内容块
-        # 假设 HTML 结构: <div class="day"> <h3>2024-01-15</h3> ... <div class="level">3</div> ...
-        date_pattern = r'<h[2-4][^>]*>(\d{4}-\d{2}-\d{2})</h[2-4]>'
-        level_pattern = r'<div[^>]*class="[^"]*level[^"]*"[^>]*>([1-5])</div>'
-        headline_pattern = r'<h[2-4][^>]*>([^<]+)</h[2-4]>'
-        desc_pattern = r'<p[^>]*>([^<]+(?:<br\s*/?>)?[^<]*)</p>'
+        if doughcon_level is not None:
+            level = max(1, min(5, 6 - doughcon_level))
+        elif status == "OPERATIONAL" and has_alert:
+            level = 4
+        elif status == "OPERATIONAL":
+            level = 3
+        else:
+            level = 2
 
-        # 简化策略: 提取所有日期，然后逐个匹配相关内容
-        dates = re.findall(r'<h[2-4][^>]*>(\d{4}-\d{2}-\d{2})', html)
-        print(f"    Found {len(dates)} date entries in HTML")
-
-        if not dates:
-            # 降级: 尝试其他结构
-            dates = re.findall(r'(\d{4}-\d{2}-\d{2})', html)
-            dates = list(dict.fromkeys(dates))  # 去重
-
-        if len(dates) > 0:
-            # 提取所有 level
-            levels = re.findall(r'level["\s>]+([1-5])', html, re.IGNORECASE)
-            levels = levels + ([3] * (len(dates) - len(levels)))  # 填充默认值
-
-            # 构建记录
-            for i, date_str in enumerate(dates[:100]):  # 限制100条
-                try:
-                    level = int(levels[i]) if i < len(levels) else 3
-                    records.append({
-                        "date": date_str,
-                        "level": level,
-                        "headline": f"Pentagon Pizza Level {level}",
-                        "status": "observed",
-                        "description": "Historical pizza order level",
-                        "temperature_band": level_to_band(level),
-                    })
-                except Exception:
-                    continue
-
-            if records:
-                df = pd.DataFrame(records)
-                df["date"] = pd.to_datetime(df["date"])
-                df = df.sort_values("date", ascending=False)
-                print(f"    Parsed {len(df)} records, latest: {df.iloc[0]['date'].date()}")
-                return df
+        records = [{
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "level": level,
+            "headline": f"DOUGHCON {doughcon_level if doughcon_level else 'N/A'} - {status}",
+            "status": status.lower(),
+            "description": f"Current operational status. Alert: {has_alert}",
+            "temperature_band": level_to_band(level),
+        }]
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"])
+        print(f"    [OK] Captured today's snapshot: Level {level} ({level_to_band(level)}), Status: {status}")
+        return df
 
     except Exception as e:
-        print(f"    FAIL: {e}")
-
-    # 降级: 返回示例数据 (catalog-ready)
-    print("    [WARN] Using sample data for catalog")
-    return generate_sample_data()
+        print(f"    [FAIL] Error scraping pizzint.watch: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def level_to_band(level: int) -> str:
@@ -170,7 +147,7 @@ def generate_sample_data() -> pd.DataFrame:
 
 
 def upsert_history(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> Tuple[int, int]:
-    """插入历史数据，返回 (新增, 更新)"""
+    """插入历史数据（每日快照），返回 (新增, 更新)"""
     if df is None or df.empty:
         return 0, 0
 
@@ -183,6 +160,8 @@ def upsert_history(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> Tuple[in
     existing_set = set(existing_dates)
     df_new = df[~df["date"].isin(existing_set)]
 
+    added = 0
+    updated = 0
     if len(df_new) > 0:
         con.execute("""
             INSERT INTO pentagon_pizza_history
@@ -190,11 +169,12 @@ def upsert_history(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> Tuple[in
             SELECT date, level, headline, status, description, temperature_band
             FROM df_new
         """)
-        print(f"[OK] Inserted {len(df_new)} new records")
+        added = len(df_new)
+        print(f"[OK] Inserted {added} new snapshot records")
     else:
-        print("[OK] No new records")
+        print("[OK] No new records (today's snapshot may already exist)")
 
-    return len(df_new), len(df) - len(df_new)
+    return added, updated
 
 
 def show_latest(con: duckdb.DuckDBPyConnection, limit: int = 10):

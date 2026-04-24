@@ -1,0 +1,804 @@
+{% extends "base.html" %}
+
+{% block title %}中国资产领先指标雷达{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 1.75rem;
+    }
+
+    .hero-main {
+        padding: 1.5rem 1.6rem;
+        border: 1px solid var(--border-color);
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(17, 24, 39, 0.85));
+        border-radius: 0.9rem;
+    }
+
+    .eyebrow {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+    }
+
+    .hero-title {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.15;
+    }
+
+    .hero-subtitle {
+        margin-top: 0.8rem;
+        color: var(--text-secondary);
+        line-height: 1.7;
+        font-size: 0.92rem;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .summary-card {
+        padding: 1rem 1.1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        background: rgba(15, 23, 42, 0.82);
+    }
+
+    .summary-label {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .summary-value {
+        margin-top: 0.45rem;
+        font-size: 1.7rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+    }
+
+    .summary-note {
+        margin-top: 0.45rem;
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+
+    .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .panel {
+        padding: 1.25rem 1.3rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.9rem;
+        background: rgba(15, 23, 42, 0.86);
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .panel-title {
+        font-size: 1.05rem;
+        font-weight: 600;
+    }
+
+    .panel-subtitle {
+        margin-top: 0.25rem;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+    }
+
+    .score-pill {
+        min-width: 86px;
+        padding: 0.45rem 0.6rem;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.14);
+        color: var(--accent-cyan);
+        text-align: center;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 0.88rem;
+    }
+
+    .driver-list {
+        display: grid;
+        gap: 0.7rem;
+        margin-bottom: 1rem;
+    }
+
+    .driver-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 1rem;
+        padding-bottom: 0.7rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .driver-label {
+        font-size: 0.88rem;
+        font-weight: 500;
+    }
+
+    .driver-hint {
+        margin-top: 0.25rem;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        line-height: 1.55;
+    }
+
+    .signal-positive { color: var(--accent-green); }
+    .signal-negative { color: var(--accent-red); }
+    .signal-neutral { color: var(--accent-gold); }
+    .signal-missing { color: var(--text-muted); }
+
+    .chart-card {
+        margin-top: 0.75rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .chart-title {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        margin-bottom: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .chart-wrap {
+        height: 220px;
+    }
+
+    .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.8rem;
+    }
+
+    .chip {
+        padding: 0.28rem 0.52rem;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+    }
+
+    .thesis-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .thesis-card {
+        padding: 1rem 1.05rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.85rem;
+        background: rgba(15, 23, 42, 0.8);
+    }
+
+    .thesis-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        align-items: flex-start;
+        margin-bottom: 0.9rem;
+    }
+
+    .thesis-name {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .thesis-meta {
+        margin-top: 0.25rem;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+    }
+
+    .thesis-score {
+        text-align: right;
+        font-family: var(--font-mono);
+    }
+
+    .thesis-score strong {
+        display: block;
+        font-size: 1.45rem;
+        color: var(--accent-cyan);
+    }
+
+    .thesis-section {
+        margin-top: 0.75rem;
+    }
+
+    .thesis-section-label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.35rem;
+    }
+
+    .thesis-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .thesis-tag {
+        padding: 0.22rem 0.45rem;
+        border-radius: 0.45rem;
+        background: rgba(148, 163, 184, 0.12);
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+    }
+
+    .triple-grid {
+        display: grid;
+        grid-template-columns: 1.05fr 1.05fr 0.9fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .double-grid {
+        display: grid;
+        grid-template-columns: 1.25fr 0.95fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .list-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+
+    .list-table th {
+        text-align: left;
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .list-table td {
+        padding: 0.6rem 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        vertical-align: top;
+    }
+
+    .muted {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+    }
+
+    .empty {
+        color: var(--text-muted);
+        font-size: 0.84rem;
+        padding: 0.75rem 0;
+    }
+
+    @media (max-width: 1180px) {
+        .hero, .panel-grid, .triple-grid, .double-grid {
+            grid-template-columns: 1fr;
+        }
+        .summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 820px) {
+        .summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">中国资产领先指标雷达</div>
+        <div class="page-subtitle">先看宏观与外部约束，再看港股流动性，再看 thesis card 与失效条件。</div>
+    </div>
+    <button class="btn btn-secondary" onclick="loadRadar(true)">
+        <i class="bi bi-arrow-clockwise"></i>
+        刷新
+    </button>
+</div>
+
+<section class="hero">
+    <div class="hero-main">
+        <div class="eyebrow">Radar Control Plane</div>
+        <div class="hero-title" id="heroRegime">加载中...</div>
+        <div class="hero-subtitle" id="heroSummary">
+            正在读取 DuckDB 雷达库、情报库和 Obsidian 研究记忆。
+        </div>
+        <div class="chips" id="heroFlags"></div>
+    </div>
+    <div class="summary-grid" id="summaryGrid"></div>
+</section>
+
+<section class="panel-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Macro Regime</div>
+                <div class="panel-subtitle" id="macroSubtitle">-</div>
+            </div>
+            <div class="score-pill" id="macroScore">-</div>
+        </div>
+        <div class="driver-list" id="macroDrivers"></div>
+        <div class="chips" id="macroFlags"></div>
+        <div class="chart-card">
+            <div class="chart-title">货币 / 价格趋势</div>
+            <div class="chart-wrap"><canvas id="macroChart"></canvas></div>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">External Risk</div>
+                <div class="panel-subtitle" id="externalSubtitle">-</div>
+            </div>
+            <div class="score-pill" id="externalScore">-</div>
+        </div>
+        <div class="driver-list" id="externalDrivers"></div>
+        <div class="chips" id="externalFlags"></div>
+        <div class="chart-card">
+            <div class="chart-title">美元 / 利率 / 波动 / CNH</div>
+            <div class="chart-wrap"><canvas id="externalChart"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<section class="panel-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Hong Kong Liquidity</div>
+                <div class="panel-subtitle" id="hkSubtitle">-</div>
+            </div>
+            <div class="score-pill" id="hkScore">-</div>
+        </div>
+        <div class="driver-list" id="hkDrivers"></div>
+        <div class="chips" id="hkFlags"></div>
+        <div class="chart-card">
+            <div class="chart-title">南向 / 恒生科技 / A-H / 香港活动</div>
+            <div class="chart-wrap"><canvas id="hkChart"></canvas></div>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Pentagon Pizza</div>
+                <div class="panel-subtitle" id="pizzaSubtitle">另类外部紧张度仪表盘</div>
+            </div>
+            <div class="score-pill" id="pizzaBand">-</div>
+        </div>
+        <div class="driver-list" id="pizzaMetrics"></div>
+        <div class="chart-card">
+            <div class="chart-title">PizzINT 历史轨迹</div>
+            <div class="chart-wrap"><canvas id="pizzaChart"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<section class="panel" style="margin-bottom: 1.5rem;">
+    <div class="panel-header">
+        <div>
+            <div class="panel-title">Thesis Board</div>
+            <div class="panel-subtitle" id="thesisSubtitle">-</div>
+        </div>
+        <div class="score-pill" id="thesisScore">-</div>
+    </div>
+    <div class="thesis-grid" id="thesisGrid"></div>
+</section>
+
+<section class="triple-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Policy / Politics / Events</div>
+                <div class="panel-subtitle">改变定价框架的事件，而不是普通新闻。</div>
+            </div>
+        </div>
+        <table class="list-table">
+            <thead>
+                <tr><th>事件</th><th>分类</th><th>偏向</th></tr>
+            </thead>
+            <tbody id="policyTable"></tbody>
+        </table>
+    </div>
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Research Memory / Obsidian</div>
+                <div class="panel-subtitle" id="memorySubtitle">-</div>
+            </div>
+        </div>
+        <div class="chips" id="memoryTags"></div>
+        <table class="list-table" style="margin-top: 0.9rem;">
+            <thead>
+                <tr><th>笔记</th><th>更新时间</th></tr>
+            </thead>
+            <tbody id="memoryTable"></tbody>
+        </table>
+    </div>
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Data Gaps</div>
+                <div class="panel-subtitle" id="gapSubtitle">-</div>
+            </div>
+        </div>
+        <table class="list-table">
+            <thead>
+                <tr><th>指标</th><th>状态</th></tr>
+            </thead>
+            <tbody id="gapTable"></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="double-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Pipeline Health</div>
+                <div class="panel-subtitle" id="pipelineSubtitle">-</div>
+            </div>
+        </div>
+        <div class="chips" id="pipelineFlags"></div>
+        <table class="list-table" style="margin-top: 0.9rem;">
+            <thead>
+                <tr><th>任务</th><th>状态</th><th>新增</th></tr>
+            </thead>
+            <tbody id="pipelineTable"></tbody>
+        </table>
+    </div>
+    <div class="panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Radar Notes</div>
+                <div class="panel-subtitle">分数要和覆盖率、更新时间、缺口一起读。</div>
+            </div>
+        </div>
+        <div class="driver-list">
+            <div class="driver-row">
+                <div>
+                    <div class="driver-label">覆盖率优先</div>
+                    <div class="driver-hint">低覆盖率下的高分只算预警，不算确认。</div>
+                </div>
+                <div class="signal-neutral">Coverage</div>
+            </div>
+            <div class="driver-row">
+                <div>
+                    <div class="driver-label">更新时间优先</div>
+                    <div class="driver-hint">宏观多为月频，外部和港股偏日频；超过阈值自动视为 stale。</div>
+                </div>
+                <div class="signal-neutral">Freshness</div>
+            </div>
+            <div class="driver-row">
+                <div>
+                    <div class="driver-label">另类指标降权</div>
+                    <div class="driver-hint">五角大楼披萨指数只辅助观察外部紧张度，不能单独驱动仓位。</div>
+                </div>
+                <div class="signal-neutral">Context</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="/static/chart.min.js"></script>
+<script>
+    const charts = {};
+
+    function escapeHtml(text) {
+        return String(text || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function renderSummary(summary) {
+        const items = [
+            ['宏观状态', summary.macro_regime || '-', 'macro'],
+            ['外部风险分', summary.external_risk_score ?? '-', 'score'],
+            ['港股流动性分', summary.hk_liquidity_score ?? '-', 'score'],
+            ['赛道预埋分', summary.sector_preposition_score ?? '-', 'score'],
+            ['thesis 置信度', summary.thesis_confidence ?? '-', 'score'],
+            ['核心覆盖率', summary.data_coverage != null ? `${summary.data_coverage}%` : '-', 'score'],
+        ];
+        document.getElementById('summaryGrid').innerHTML = items.map(([label, value]) => `
+            <div class="summary-card">
+                <div class="summary-label">${escapeHtml(label)}</div>
+                <div class="summary-value">${escapeHtml(value)}</div>
+                <div class="summary-note">${label === '宏观状态' ? '货币 × 信用象限' : '分数越高越偏正向'}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderSignals(elId, signals) {
+        const root = document.getElementById(elId);
+        if (!signals || !signals.length) {
+            root.innerHTML = '<div class="empty">暂无可用驱动。</div>';
+            return;
+        }
+        root.innerHTML = signals.map(item => `
+            <div class="driver-row">
+                <div>
+                    <div class="driver-label">${escapeHtml(item.label || '-')}</div>
+                    <div class="driver-hint">${escapeHtml(item.hint || '')}</div>
+                </div>
+                <div class="signal-${item.signal || 'neutral'}">${escapeHtml(item.display || '-')}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderChips(elId, items) {
+        const root = document.getElementById(elId);
+        if (!items || !items.length) {
+            root.innerHTML = '<span class="chip">暂无补充提示</span>';
+            return;
+        }
+        root.innerHTML = items.map(item => `<span class="chip">${escapeHtml(item)}</span>`).join('');
+    }
+
+    function upsertChart(canvasId, seriesList) {
+        const root = document.getElementById(canvasId);
+        if (!root) return;
+        const filtered = (seriesList || []).filter(item => item.points && item.points.length);
+        if (!filtered.length) {
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+                delete charts[canvasId];
+            }
+            return;
+        }
+        const labels = filtered[0].points.map(point => point.date);
+        const colors = ['#38bdf8', '#22c55e', '#fbbf24', '#ef4444'];
+        const datasets = filtered.map((item, index) => ({
+            label: item.label,
+            data: item.points.map(point => point.value),
+            borderColor: colors[index % colors.length],
+            backgroundColor: colors[index % colors.length],
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.25,
+        }));
+        if (charts[canvasId]) charts[canvasId].destroy();
+        charts[canvasId] = new Chart(root, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', boxWidth: 10 } },
+                },
+                scales: {
+                    x: { ticks: { color: '#64748b', maxTicksLimit: 6 }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                    y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                },
+            },
+        });
+    }
+
+    function renderThesis(panel) {
+        const evidence = panel.evidence_totals || {};
+        document.getElementById('thesisSubtitle').textContent = `综合置信度 ${panel.thesis_confidence || '-'} | 事件匹配 ${evidence.event_matches || 0} | 研报匹配 ${evidence.research_matches || 0}`;
+        document.getElementById('thesisScore').textContent = panel.sector_preposition_score ?? '-';
+        const root = document.getElementById('thesisGrid');
+        const cards = panel.cards || [];
+        if (!cards.length) {
+            root.innerHTML = '<div class="empty">暂无 thesis card。</div>';
+            return;
+        }
+        root.innerHTML = cards.map(card => `
+            <article class="thesis-card">
+                <div class="thesis-top">
+                    <div>
+                        <div class="thesis-name">${escapeHtml(card.name)}</div>
+                        <div class="thesis-meta">观察周期 ${escapeHtml(card.review_cycle || '-')} | 置信度 ${escapeHtml(card.confidence)}</div>
+                    </div>
+                    <div class="thesis-score"><strong>${escapeHtml(card.score)}</strong>score</div>
+                </div>
+                <div class="thesis-section">
+                    <div class="thesis-section-label">领先变量</div>
+                    <div class="thesis-list">${(card.leading_variables || []).map(item => `<span class="thesis-tag">${escapeHtml(item)}</span>`).join('')}</div>
+                </div>
+                <div class="thesis-section">
+                    <div class="thesis-section-label">已验证 / 未验证</div>
+                    <div class="thesis-list">${(card.confirmed_variables || []).map(item => `<span class="thesis-tag">${escapeHtml(item)}</span>`).join('')}${(card.unverified_variables || []).map(item => `<span class="thesis-tag">${escapeHtml(item)}</span>`).join('')}</div>
+                </div>
+                <div class="thesis-section">
+                    <div class="thesis-section-label">失效条件</div>
+                    <div class="muted">${escapeHtml((card.invalid_conditions || []).join('；'))}</div>
+                </div>
+                <div class="thesis-section">
+                    <div class="thesis-section-label">观察池</div>
+                    <div class="thesis-list">${(card.watchlist || []).map(item => `<span class="thesis-tag">${escapeHtml(item)}</span>`).join('')}</div>
+                </div>
+            </article>
+        `).join('');
+    }
+
+    function renderPolicy(panel) {
+        const rows = panel.events || [];
+        const root = document.getElementById('policyTable');
+        if (!rows.length) {
+            root.innerHTML = '<tr><td colspan="3" class="empty">暂无政策事件。</td></tr>';
+            return;
+        }
+        root.innerHTML = rows.map(item => `
+            <tr>
+                <td>
+                    <div>${escapeHtml(item.title || '-')}</div>
+                    <div class="muted">${escapeHtml(formatDate(item.event_time))}</div>
+                </td>
+                <td>${escapeHtml(item.bucket || '-')}</td>
+                <td>${escapeHtml(item.bias || '-')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderMemory(panel) {
+        document.getElementById('memorySubtitle').textContent = panel.status === 'ready'
+            ? `${panel.note_count || 0} 篇已索引`
+            : '未发现可用 Obsidian vault';
+        const tagRoot = document.getElementById('memoryTags');
+        const tagCounts = panel.tag_counts || {};
+        const tags = Object.keys(tagCounts).map(tag => `${tag}: ${tagCounts[tag]}`);
+        renderChips('memoryTags', tags);
+        const root = document.getElementById('memoryTable');
+        const rows = panel.theme_matches && panel.theme_matches.length ? panel.theme_matches : panel.recent_notes || [];
+        if (!rows.length) {
+            root.innerHTML = '<tr><td colspan="2" class="empty">暂无相关研究笔记。</td></tr>';
+            return;
+        }
+        root.innerHTML = rows.slice(0, 8).map(item => `
+            <tr>
+                <td>
+                    <div>${escapeHtml(item.title || '-')}</div>
+                    <div class="muted">${escapeHtml((item.tracked_tags || item.tags || []).slice(0, 4).join(', '))}</div>
+                </td>
+                <td>${escapeHtml(formatDate(item.modified_at))}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderGaps(panel) {
+        const summary = panel.summary || {};
+        document.getElementById('gapSubtitle').textContent = `${summary.missing_total || 0} 项待补齐 / ${summary.required_total || 0} 项核心跟踪`;
+        const root = document.getElementById('gapTable');
+        const rows = panel.items || [];
+        if (!rows.length) {
+            root.innerHTML = '<tr><td colspan="2" class="empty">暂无缺口。</td></tr>';
+            return;
+        }
+        root.innerHTML = rows.slice(0, 12).map(item => `
+            <tr>
+                <td>
+                    <div>${escapeHtml(item.name || '-')}</div>
+                    <div class="muted">${escapeHtml(item.source || '')}</div>
+                </td>
+                <td>${escapeHtml(item.status || '-')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderPipeline(panel) {
+        document.getElementById('pipelineSubtitle').textContent = panel.last_sync_at
+            ? `最近同步 ${formatDate(panel.last_sync_at)} | 24h 失败 ${panel.failure_24h ?? 0}`
+            : '尚无同步记录';
+        renderChips('pipelineFlags', (panel.status_counts || []).map(item => `${item.status}: ${item.count}`));
+        const root = document.getElementById('pipelineTable');
+        const runs = panel.recent_runs || [];
+        if (!runs.length) {
+            root.innerHTML = '<tr><td colspan="3" class="empty">暂无运行记录。</td></tr>';
+            return;
+        }
+        root.innerHTML = runs.map(item => `
+            <tr>
+                <td>
+                    <div>${escapeHtml(item.source_name || item.source_key || '-')}</div>
+                    <div class="muted">${escapeHtml(item.notes || '')}</div>
+                </td>
+                <td>${escapeHtml(item.status || '-')}</td>
+                <td>
+                    <div>${escapeHtml(item.records_added ?? 0)}</div>
+                    <div class="muted">${escapeHtml(formatDate(item.run_at))}</div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderPizza(panel) {
+        const latest = panel.latest || {};
+        document.getElementById('pizzaBand').textContent = panel.band || '-';
+        const metrics = [
+            { label: '最新等级', display: latest.level ?? '-', hint: latest.headline || '暂无历史快照' },
+            { label: '90日分位', display: panel.percentile_90d ?? '-', hint: '越高表示越接近近期过热区域' },
+            { label: '7日变化', display: panel.trend_7d ?? '-', hint: '短期升温/降温斜率' },
+            { label: '解释', display: panel.interpretation || '-', hint: latest.description || '' },
+        ];
+        document.getElementById('pizzaMetrics').innerHTML = metrics.map(item => `
+            <div class="driver-row">
+                <div>
+                    <div class="driver-label">${escapeHtml(item.label)}</div>
+                    <div class="driver-hint">${escapeHtml(item.hint || '')}</div>
+                </div>
+                <div>${escapeHtml(item.display)}</div>
+            </div>
+        `).join('');
+        upsertChart('pizzaChart', [{ label: 'Pizza Level', points: (panel.points || []).map(item => ({ date: item.date, value: item.level })) }]);
+    }
+
+    async function loadRadar(forceRefresh = false) {
+        const suffix = forceRefresh ? `?force_refresh=1&t=${Date.now()}` : '';
+        const data = await api(`/investment/api/radar/overview${suffix}`);
+        document.getElementById('heroRegime').textContent = `${data.summary.macro_regime || '-'} | External ${data.summary.external_risk_score ?? '-'} | HK ${data.summary.hk_liquidity_score ?? '-'}`;
+        document.getElementById('heroSummary').textContent = `DuckDB: ${data.db_path || '-'}；整体 thesis_confidence ${data.summary.thesis_confidence ?? '-'}；覆盖率 ${data.summary.data_coverage ?? '-'}%；待补齐核心指标 ${data.summary.missing_indicators ?? 0} 项；最近同步 ${formatDate(data.summary.last_data_sync)}。`;
+        renderChips('heroFlags', [
+            `macro_regime: ${data.summary.macro_regime || '-'}`,
+            `external_risk_score: ${data.summary.external_risk_score ?? '-'}`,
+            `hk_liquidity_score: ${data.summary.hk_liquidity_score ?? '-'}`,
+            `sector_preposition_score: ${data.summary.sector_preposition_score ?? '-'}`,
+            `pipeline_failures_24h: ${data.summary.pipeline_failures_24h ?? 0}`,
+        ]);
+        renderSummary(data.summary || {});
+
+        document.getElementById('macroSubtitle').textContent = `${data.macro.inflation_state || '-'} | ${data.macro.quadrant?.money || '-'} × ${data.macro.quadrant?.credit || '-'} | 覆盖率 ${data.macro.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.macro.freshness?.last_update)}`;
+        document.getElementById('macroScore').textContent = data.macro.score ?? '-';
+        renderSignals('macroDrivers', data.macro.signals || []);
+        renderChips('macroFlags', [...(data.macro.beneficiaries || []), ...(data.macro.policy_divergence || []), ...(data.macro.missing_keys || [])]);
+        upsertChart('macroChart', data.macro.charts || []);
+
+        document.getElementById('externalSubtitle').textContent = `${data.external.risk_state || '-'} | 覆盖率 ${data.external.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.external.freshness?.last_update)}`;
+        document.getElementById('externalScore').textContent = data.external.external_risk_score ?? '-';
+        renderSignals('externalDrivers', data.external.signals || []);
+        renderChips('externalFlags', Object.values(data.external.asset_map || {}));
+        upsertChart('externalChart', data.external.charts || []);
+
+        document.getElementById('hkSubtitle').textContent = `${data.hk.risk_appetite || '-'} | 覆盖率 ${data.hk.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.hk.freshness?.last_update)}`;
+        document.getElementById('hkScore').textContent = data.hk.hk_liquidity_score ?? '-';
+        renderSignals('hkDrivers', data.hk.signals || []);
+        renderChips('hkFlags', [...(data.hk.flags || []), ...(data.hk.missing_keys || [])]);
+        upsertChart('hkChart', data.hk.charts || []);
+
+        renderPizza(data.pizza || {});
+        renderThesis(data.sectors || {});
+        renderPolicy(data.policy || {});
+        renderMemory(data.memory || {});
+        renderGaps(data.gaps || {});
+        renderPipeline(data.pipeline || {});
+    }
+
+    loadRadar();
+</script>
+{% endblock %}

@@ -90,18 +90,21 @@ def ensure_radar_db():
             )
         """)
 
-        # 访客流量表
+        visitor_cols = {row[1] for row in con.execute("PRAGMA table_info('hk_visitor_arrivals')").fetchall()}
+        if visitor_cols and "date" not in visitor_cols:
+            con.execute("ALTER TABLE hk_visitor_arrivals RENAME TO hk_visitor_arrivals_legacy")
+
         con.execute("""
             CREATE TABLE IF NOT EXISTS hk_visitor_arrivals (
-                month DATE PRIMARY KEY,
+                date DATE PRIMARY KEY,
                 arrivals_total INTEGER,
-                arrivals_air INTEGER,
-                arrivals_land INTEGER,
-                arrivals_sea INTEGER,
+                arrivals_hk_residents INTEGER,
+                arrivals_mainland_visitors INTEGER,
+                arrivals_other_visitors INTEGER,
                 departures_total INTEGER,
-                departures_air INTEGER,
-                departures_land INTEGER,
-                departures_sea INTEGER,
+                departures_hk_residents INTEGER,
+                departures_mainland_visitors INTEGER,
+                departures_other_visitors INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -122,63 +125,75 @@ def backfill_from_investment_db(con: duckdb.DuckDBPyConnection) -> Tuple[int, in
 
     sqlite_conn = sqlite3.connect(INVESTMENT_DB_PATH)
     try:
+        existing_tables = {
+            row[0]
+            for row in sqlite_conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         # 回填南向资金
-        cursor = sqlite_conn.execute("""
-            SELECT trade_date, hk_sz_net, hk_hgt_net, total_net
-            FROM south_flow
-            WHERE trade_date IS NOT NULL
-        """)
+        if "south_flow" in existing_tables:
+            cursor = sqlite_conn.execute("""
+                SELECT trade_date, hk_sz_net, hk_hgt_net, total_net
+                FROM south_flow
+                WHERE trade_date IS NOT NULL
+            """)
 
-        rows = cursor.fetchall()
-        if rows:
-            df = pd.DataFrame(rows, columns=["trade_date", "hk_sz_net", "hk_hgt_net", "total_net"])
-            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            rows = cursor.fetchall()
+            if rows:
+                df = pd.DataFrame(rows, columns=["trade_date", "hk_sz_net", "hk_hgt_net", "total_net"])
+                df["trade_date"] = pd.to_datetime(df["trade_date"])
 
-            existing = con.execute("""
-                SELECT COUNT(*) FROM hk_south_flow
-                WHERE trade_date IN (SELECT trade_date FROM df)
-            """).fetchone()[0]
+                existing = con.execute("""
+                    SELECT COUNT(*) FROM hk_south_flow
+                    WHERE trade_date IN (SELECT trade_date FROM df)
+                """).fetchone()[0]
 
-            if len(df) > existing:
-                con.execute("""
-                    INSERT OR REPLACE INTO hk_south_flow
-                    (trade_date, hk_sz_net, hk_hgt_net, total_net)
-                    SELECT trade_date, hk_sz_net, hk_hgt_net, total_net FROM df
-                """)
-                added_south = len(df) - existing
-                print(f"[OK] Backfilled {added_south} south flow records from investment.db")
+                if len(df) > existing:
+                    con.execute("""
+                        INSERT OR REPLACE INTO hk_south_flow
+                        (trade_date, hk_sz_net, hk_hgt_net, total_net)
+                        SELECT trade_date, hk_sz_net, hk_hgt_net, total_net FROM df
+                    """)
+                    added_south = len(df) - existing
+                    print(f"[OK] Backfilled {added_south} south flow records from investment.db")
+        else:
+            print("[WARN] south_flow table not found in investment.db, skipping southbound backfill")
 
         # 回填北向资金
-        cursor = sqlite_conn.execute("""
-            SELECT trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
-                   sh_accumulated, sz_accumulated, total_accumulated
-            FROM north_money
-            WHERE trade_date IS NOT NULL
-        """)
+        if "north_money" in existing_tables:
+            cursor = sqlite_conn.execute("""
+                SELECT trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
+                       sh_accumulated, sz_accumulated, total_accumulated
+                FROM north_money
+                WHERE trade_date IS NOT NULL
+            """)
 
-        rows = cursor.fetchall()
-        if rows:
-            df = pd.DataFrame(rows, columns=[
-                "trade_date", "sh_net_inflow", "sz_net_inflow", "total_net_inflow",
-                "sh_accumulated", "sz_accumulated", "total_accumulated"
-            ])
-            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            rows = cursor.fetchall()
+            if rows:
+                df = pd.DataFrame(rows, columns=[
+                    "trade_date", "sh_net_inflow", "sz_net_inflow", "total_net_inflow",
+                    "sh_accumulated", "sz_accumulated", "total_accumulated"
+                ])
+                df["trade_date"] = pd.to_datetime(df["trade_date"])
 
-            existing = con.execute("""
-                SELECT COUNT(*) FROM hk_north_money
-                WHERE trade_date IN (SELECT trade_date FROM df)
-            """).fetchone()[0]
+                existing = con.execute("""
+                    SELECT COUNT(*) FROM hk_north_money
+                    WHERE trade_date IN (SELECT trade_date FROM df)
+                """).fetchone()[0]
 
-            if len(df) > existing:
-                con.execute("""
-                    INSERT OR REPLACE INTO hk_north_money
-                    (trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
-                     sh_accumulated, sz_accumulated, total_accumulated)
-                    SELECT trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
-                           sh_accumulated, sz_accumulated, total_accumulated FROM df
-                """)
-                added_north = len(df) - existing
-                print(f"[OK] Backfilled {added_north} north money records from investment.db")
+                if len(df) > existing:
+                    con.execute("""
+                        INSERT OR REPLACE INTO hk_north_money
+                        (trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
+                         sh_accumulated, sz_accumulated, total_accumulated)
+                        SELECT trade_date, sh_net_inflow, sz_net_inflow, total_net_inflow,
+                               sh_accumulated, sz_accumulated, total_accumulated FROM df
+                    """)
+                    added_north = len(df) - existing
+                    print(f"[OK] Backfilled {added_north} north money records from investment.db")
+        else:
+            print("[WARN] north_money table not found in investment.db, skipping northbound backfill")
     finally:
         sqlite_conn.close()
 
@@ -189,29 +204,65 @@ def fetch_hk_indices() -> Optional[pd.DataFrame]:
     """获取恒指、国指、恒生科技指数历史数据"""
     print("[1] Fetching HK indices (HSI, HSCC, HSTECH)...")
 
-    try:
-        # 恒生指数
-        df_hsi = ak.index_hk_hist(symbol="恒生指数", period="daily",
-                                   start_date="20000101", end_date="22220101")
-        # 国企指数
-        df_hsc = ak.index_hk_hist(symbol="国企指数", period="daily",
-                                   start_date="20000101", end_date="22220101")
-        # 恒生科技指数
-        df_hst = ak.index_hk_hist(symbol="恒生科技指数", period="daily",
-                                   start_date="20200101", end_date="22220101")
+    def _normalize(df: pd.DataFrame, code: str, name: str) -> Optional[pd.DataFrame]:
+        if df is None or df.empty:
+            return None
+        work = df.copy()
+        lower_map = {str(col).lower(): col for col in work.columns}
+        if "date" not in work.columns:
+            for candidate in ("date", "日期", "trade_date"):
+                if candidate in work.columns:
+                    work["date"] = pd.to_datetime(work[candidate])
+                    break
+                raw = lower_map.get(candidate.lower())
+                if raw:
+                    work["date"] = pd.to_datetime(work[raw])
+                    break
+        rename_map = {}
+        for target, options in {
+            "open": ["open", "开盘", "open_price"],
+            "high": ["high", "最高", "high_price"],
+            "low": ["low", "最低", "low_price"],
+            "close": ["close", "收盘", "close_price", "最新价"],
+            "volume": ["volume", "成交量"],
+        }.items():
+            for option in options:
+                if option in work.columns:
+                    rename_map[option] = target
+                    break
+                raw = lower_map.get(option.lower())
+                if raw:
+                    rename_map[raw] = target
+                    break
+        work = work.rename(columns=rename_map)
+        work["index_code"] = code
+        work["index_name"] = name
+        return work
 
+    try:
         all_dfs = []
-        for df, code, name in [
-            (df_hsi, "HSI", "恒生指数"),
-            (df_hsc, "HSCC", "国企指数"),
-            (df_hst, "HSTECH", "恒生科技指数")
-        ]:
-            if df is not None and not df.empty:
-                df = df.copy()
-                df["index_code"] = code
-                df["index_name"] = name
-                all_dfs.append(df)
-                print(f"    {name}: {len(df)} records, latest {df.iloc[-1]['date'] if 'date' in df.columns else 'N/A'}")
+        fetchers = [
+            ("HSI", "恒生指数", [("index_hk_hist", {"symbol": "恒生指数", "period": "daily", "start_date": "20000101", "end_date": "22220101"}), ("stock_hk_index_daily_sina", {"symbol": "HSI"})]),
+            ("HSCC", "国企指数", [("index_hk_hist", {"symbol": "国企指数", "period": "daily", "start_date": "20000101", "end_date": "22220101"}), ("stock_hk_index_daily_sina", {"symbol": "HSCEI"})]),
+            ("HSTECH", "恒生科技指数", [("index_hk_hist", {"symbol": "恒生科技指数", "period": "daily", "start_date": "20200101", "end_date": "22220101"}), ("stock_hk_index_daily_sina", {"symbol": "HSTECH"})]),
+        ]
+        for code, name, methods in fetchers:
+            data = None
+            for func_name, kwargs in methods:
+                func = getattr(ak, func_name, None)
+                if not func:
+                    continue
+                try:
+                    data = func(**kwargs)
+                    if data is not None and not data.empty:
+                        break
+                except Exception:
+                    continue
+            data = _normalize(data, code, name)
+            if data is not None and not data.empty:
+                all_dfs.append(data)
+                latest = data.iloc[-1]["date"] if "date" in data.columns else "N/A"
+                print(f"    {name}: {len(data)} records, latest {latest}")
 
         if all_dfs:
             combined = pd.concat(all_dfs, ignore_index=True)
@@ -246,12 +297,79 @@ def fetch_ah_premium() -> Optional[pd.DataFrame]:
 
 
 def fetch_visitor_arrivals() -> Optional[pd.DataFrame]:
-    """获取香港访客流量数据 (可选)"""
-    print("[3] Fetching HK visitor arrivals (optional)...")
+    """
+    获取香港出入境旅客流量数据
 
-    # 暂时不做实时抓取，保留 catalog 结构
-    print("    [SKIP] Visitor arrivals - manual collection recommended")
-    return None
+    数据源: 入境事务处官方 CSV
+    """
+    print("[3] Fetching HK visitor arrivals from immd.gov.hk...")
+
+    try:
+        csv_url = "https://www.immd.gov.hk/opendata/eng/transport/immigration_clearance/statistics_on_daily_passenger_traffic.csv"
+        df = pd.read_csv(csv_url, encoding="utf-8")
+        if df.empty:
+            print("    [WARN] CSV is empty")
+            return None
+
+        df.columns = df.columns.str.strip()
+        df["date"] = pd.to_datetime(df["Date"], format="%d-%m-%Y", errors="coerce")
+        grouped = df.groupby(["date", "Arrival / Departure"]).agg({
+            "Hong Kong Residents": "sum",
+            "Mainland Visitors": "sum",
+            "Other Visitors": "sum",
+            "Total": "sum",
+        }).reset_index()
+        pivoted = grouped.pivot(
+            index="date",
+            columns="Arrival / Departure",
+            values=["Hong Kong Residents", "Mainland Visitors", "Other Visitors", "Total"],
+        ).reset_index()
+        pivoted.columns = [
+            "date",
+            "arrivals_hk_residents", "departures_hk_residents",
+            "arrivals_mainland_visitors", "departures_mainland_visitors",
+            "arrivals_other_visitors", "departures_other_visitors",
+            "arrivals_total", "departures_total",
+        ]
+        latest_date = pivoted["date"].max().date() if not pivoted.empty else "N/A"
+        print(f"    [OK] Loaded {len(pivoted)} daily records, latest: {latest_date}")
+        return pivoted
+    except Exception as e:
+        print(f"    [FAIL] Error fetching visitor arrivals: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def upsert_visitor_arrivals(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
+    """插入访客流量数据"""
+    if df is None or df.empty:
+        return 0
+
+    existing = con.execute("""
+        SELECT COUNT(*) FROM hk_visitor_arrivals
+        WHERE date IN (SELECT date FROM df)
+    """).fetchone()[0]
+
+    con.execute("""
+        INSERT OR REPLACE INTO hk_visitor_arrivals
+        (date, arrivals_total, arrivals_hk_residents, arrivals_mainland_visitors,
+         arrivals_other_visitors, departures_total, departures_hk_residents,
+         departures_mainland_visitors, departures_other_visitors)
+        SELECT date,
+               arrivals_total,
+               arrivals_hk_residents, arrivals_mainland_visitors, arrivals_other_visitors,
+               departures_total,
+               departures_hk_residents, departures_mainland_visitors, departures_other_visitors
+        FROM df
+    """)
+
+    added = len(df) - existing
+    if added > 0:
+        print(f"[OK] Upserted {added} visitor arrival records")
+    else:
+        print("[OK] No new visitor arrival records")
+    return added
 
 
 def upsert_indices(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
@@ -338,7 +456,7 @@ def show_summary(con: duckdb.DuckDBPyConnection):
         ("hk_north_money", "北向资金", "trade_date"),
         ("hk_indices", "恒指/国指/科技", "trade_date"),
         ("ah_premium", "A/H溢价", "trade_date"),
-        ("hk_visitor_arrivals", "访客流量", "month"),
+        ("hk_visitor_arrivals", "访客流量", "date"),
     ]
 
     for table, label, date_col in tables:
@@ -378,7 +496,12 @@ def main():
         if df_ah is not None:
             upsert_ah_premium(con, df_ah)
 
-        # Step 4: 显示摘要
+        # Step 4: 获取访客流量
+        df_visitor = fetch_visitor_arrivals()
+        if df_visitor is not None:
+            upsert_visitor_arrivals(con, df_visitor)
+
+        # Step 5: 显示摘要
         show_summary(con)
 
     except Exception as e:

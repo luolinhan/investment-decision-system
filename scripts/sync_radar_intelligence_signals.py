@@ -45,6 +45,7 @@ import sqlite3
 import sys
 import traceback
 from datetime import datetime, timedelta, timezone
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -637,6 +638,19 @@ def main() -> None:
     for r in results:
         print(f"  {r['notes']}")
     print("=" * 60)
+    print(
+        "ETL_METRICS_JSON="
+        + json.dumps(
+            {
+                "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+                "indicator_count": len(INDICATORS),
+                "success_count": total_ok,
+                "partial_count": total_partial,
+                "rows_upserted": total_obs,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":

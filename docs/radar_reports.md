@@ -2,21 +2,29 @@
 
 ## 概述
 
-`export_radar_reports.py` 用于将 Investment Radar 的智能概览导出为 Obsidian 笔记或本地 Markdown 报告。
+`export_radar_reports.py` 用于将 Investment Radar 的统一概览导出为 Obsidian 笔记或本地 Markdown 报告。
+
+数据源：
+- `app.services.radar_service.RadarService`
+- DuckDB `data/radar/radar.duckdb`
+- SQLite Intelligence 库（通过 RadarService 间接读取）
+- Obsidian Memory 索引（通过 RadarService 间接读取）
 
 支持的报告类型：
-- **日报** (`--report daily`)：最近 1 天的事件和研究
-- **周报** (`--report weekly`)：最近 7 天的事件和研究
-- **月报** (`--report monthly`)：最近 30 天的事件和研究
-- **主题追踪** (`--report thesis`)：按研究主题拆分的追踪卡片
+- **日报** (`--report daily`)
+- **周报** (`--report weekly`)
+- **月报** (`--report monthly`)
+- **主题追踪** (`--report thesis`)
+- **到期报告集** (`--report due`)：始终导出日报和 thesis，周一额外导出周报，每月 1 日额外导出月报
+- **全量报告集** (`--report all`)
 
 ## 使用方法
 
 ### 导出到 Obsidian Vault
 
 ```bash
-# 使用环境变量配置的 Obsidian 路径（默认：~/Documents/Obsidian/投资决策系统）
-python3 scripts/export_radar_reports.py --report daily
+# 使用环境变量配置的 Obsidian 路径（默认自动探测知识库路径）
+python3 scripts/export_radar_reports.py --report due
 
 # 指定自定义 Vault 路径
 python3 scripts/export_radar_reports.py --report daily --vault-path /path/to/your/vault
@@ -37,41 +45,44 @@ python3 scripts/export_radar_reports.py --report thesis --output-dir ./reports/t
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `OBSIDIAN_VAULT_PATH` | Obsidian 仓库路径 | `~/Documents/Obsidian/投资决策系统` |
-| `INVESTMENT_DB_PATH` | SQLite 数据库路径 | `./data/investment.db` |
+| `INVESTMENT_OBSIDIAN_VAULT` | Obsidian 仓库路径（优先） | 自动探测 |
+| `OBSIDIAN_VAULT_PATH` | Obsidian 仓库路径（兼容） | 自动探测 |
+| `INVESTMENT_DB_PATH` | DuckDB 路径覆盖（传给 RadarService） | `./data/radar/radar.duckdb` |
 
 ## 报告内容
 
 每份报告包含：
-- **Summary**：活跃事件数、P0/P1 事件数、研究报数、启用源数
-- **Gaps / Issues**：采集缺口和问题检测
-- **分类事件**：AI 模型、生物医药、港股市场、外部事件
-- **近期研究**：研究摘要和论点
-- **源健康状态**：失败的源及其错误
-- **最近采集运行**：采集时间、状态、记录数
+- **Summary**：`macro_regime`、外部风险分、港股流动性分、赛道预埋分、置信度、覆盖率
+- **Macro / External / HK**：驱动项、覆盖率、更新时间、趋势窗口
+- **Thesis Board**：赛道卡、已验证/未验证变量、失效条件、观察池
+- **Pentagon Pizza**：当前温度带、分位、短期变化
+- **Data Gaps**：核心缺口与来源
+- **Pipeline Health**：最近 source runs、失败数、最近同步时间
+- **Research Memory**：Obsidian 关联笔记
 
 ## 主题追踪报告
 
-`--report thesis` 会为每个研究主题生成独立的追踪卡片，包含：
-- 研究来源和摘要
-- 相关事件
-- 待办事项（验证、检查、更新）
+`--report thesis` 会为每个 thesis card 生成独立追踪卡片，包含：
+- 领先变量 / 已验证变量 / 未验证变量
+- 风险变量 / 失效条件 / 观察池
+- 相关政策事件
+- 相关 Obsidian 研究记忆
 
 这些卡片保存在 `Investment-Radar-Reports/Thesis-Tracking/` 子目录。
 
 ## 自动化运行（Windows）
 
-可创建批处理脚本 `radar_report_task.bat`：
+当前仓库已提供：
 
 ```batch
-@echo off
-cd /d "%~dp0"
-python scripts\export_radar_reports.py --report daily
-python scripts\export_radar_reports.py --report thesis
-echo Radar reports exported at %date% %time%
+radar_report_task.bat
 ```
 
-然后通过 Windows 任务计划程序设置定时任务。
+默认执行：
+
+```batch
+python scripts\export_radar_reports.py --report due --force-refresh
+```
 
 ## 验证
 
@@ -80,4 +91,5 @@ echo Radar reports exported at %date% %time%
 ```bash
 python3 -m py_compile scripts/export_radar_reports.py
 python3 scripts/export_radar_reports.py --report daily --output-dir /tmp/test
+python3 scripts/export_radar_reports.py --report thesis --output-dir /tmp/test
 ```
