@@ -670,14 +670,21 @@
                     <i class="bi bi-radar"></i>
                     <span>情报雷达</span>
                 </a>
-                <a class="nav-link {% if '/reports' in request.url.path %}active{% endif %}" href="/reports">
-                    <i class="bi bi-journal-text"></i>
-                    <span>研究证据</span>
-                    <span class="nav-badge" id="reportCount">-</span>
+                <a class="nav-link {% if request.url.path == '/investment/research' or '/reports' in request.url.path or request.url.path == '/' %}active{% endif %}" href="/investment/research">
+                    <i class="bi bi-layout-text-window-reverse"></i>
+                    <span>研究工作台</span>
                 </a>
                 <a class="nav-link {% if request.url.path == '/stocks' %}active{% endif %}" href="/stocks">
                     <i class="bi bi-star"></i>
                     <span>自选标的</span>
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">归档</div>
+                <a class="nav-link {% if '/reports' in request.url.path %}active{% endif %}" href="/reports">
+                    <i class="bi bi-journal-text"></i>
+                    <span>研究证据</span>
+                    <span class="nav-badge" id="reportCount">-</span>
                 </a>
                 <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
                     <i class="bi bi-grid-1x2"></i>

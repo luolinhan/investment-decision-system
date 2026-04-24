@@ -1,0 +1,966 @@
+{% extends "base.html" %}
+
+{% block title %}研究工作台 - 研报中心{% endblock %}
+
+{% block content %}
+<div class="workbench-header">
+    <div>
+        <h1 class="page-title">研究工作台</h1>
+        <p class="page-subtitle">整合研究证据与内容仪表盘</p>
+    </div>
+    <div class="workbench-actions">
+        <button class="btn btn-icon" onclick="toggleFilters()">
+            <i class="bi bi-sliders"></i>
+        </button>
+        <button class="btn btn-primary" onclick="refreshData()">
+            <i class="bi bi-arrow-clockwise"></i>
+            <span>刷新</span>
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar fade-in" id="filterBar" style="display: none;">
+    <div class="filter-section">
+        <label class="filter-label">重点领域</label>
+        <div class="filter-tags">
+            <button class="filter-tag active" data-key="all">
+                <i class="bi bi-filter-circle-fill"></i> 全部
+            </button>
+            <button class="filter-tag" data-key="chip">
+                <i class="bi bi-microchip"></i> 芯片/半导体
+            </button>
+            <button class="filter-tag" data-key="ai">
+                <i class="bi bi-brain"></i> AI
+            </button>
+            <button class="filter-tag" data-key="robot">
+                <i class="bi bi-robot"></i> 机器人
+            </button>
+            <button class="filter-tag" data-key="biopharma">
+                <i class="bi bi-capsule"></i> 创新药
+            </button>
+            <button class="filter-tag" data-key="solar">
+                <i class="bi bi-brightness-high"></i> 光伏
+            </button>
+            <button class="filter-tag" data-key="nuclear">
+                <i class="bi bi-radioactive"></i> 核电
+            </button>
+            <button class="filter-tag" data-key="agri">
+                <i class="bi bi-piggy-bank"></i> 养猪
+            </button>
+        </div>
+    </div>
+    <div class="filter-section">
+        <label class="filter-label">属性</label>
+        <div class="filter-toggles">
+            <label class="toggle-switch">
+                <input type="checkbox" id="filterDomestic">
+                <span class="toggle-slider">
+                    <span class="toggle-labels">国内/海外</span>
+                </span>
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="filterSector">
+                <span class="toggle-slider">
+                    <span class="toggle-labels">行业/个股</span>
+                </span>
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="filterBilingual">
+                <span class="toggle-slider">
+                    <span class="toggle-labels">双语/原文</span>
+                </span>
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="filterArchived">
+                <span class="toggle-slider">
+                    <span class="toggle-labels">已归档/未归档</span>
+                </span>
+            </label>
+        </div>
+    </div>
+</div>
+
+<!-- Overview -->
+<div class="workbench-overview fade-in">
+    <div class="overview-grid">
+        <div class="overview-card cyan">
+            <i class="bi bi-file-text"></i>
+            <div>
+                <div class="overview-value" id="totalReports">-</div>
+                <div class="overview-label">研究总数</div>
+            </div>
+        </div>
+        <div class="overview-card green">
+            <i class="bi bi-stars"></i>
+            <div>
+                <div class="overview-value" id="topRated">-</div>
+                <div class="overview-label">买入评级</div>
+            </div>
+        </div>
+        <div class="overview-card gold">
+            <i class="bi bi-clock-history"></i>
+            <div>
+                <div class="overview-value" id="lastUpdate">-</div>
+                <div class="overview-label">最近更新</div>
+            </div>
+        </div>
+        <div class="overview-card purple">
+            <i class="bi bi-archive"></i>
+            <div>
+                <div class="overview-value" id="archivedCount">-</div>
+                <div class="overview-label">已归档</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Workbench Layout -->
+<div class="workbench-layout fade-in">
+    <!-- List Panel -->
+    <div class="list-panel" id="listPanel">
+        <div class="list-header">
+            <h2><i class="bi bi-list-ul"></i> 研究列表</h2>
+            <div class="list-sort">
+                <select class="form-select sort-select" id="sortSelect" onchange="applySort()">
+                    <option value="date_desc">按时间降序</option>
+                    <option value="date_asc">按时间升序</option>
+                    <option value="title">按标题排序</option>
+                </select>
+            </div>
+        </div>
+        <div class="list-content" id="researchList">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+            <h2><i class="bi bi-file-earmark-text"></i> 详情</h2>
+            <button class="btn btn-icon detail-close" onclick="closeDetail()">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="detail-content" id="researchDetail">
+            <div class="empty-detail">
+                <i class="bi bi-layout-text-window-reverse"></i>
+                <p>点击左侧列表查看研究报告详情</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .workbench-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1.5rem;
+    }
+
+    .workbench-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .filter-section {
+        margin-bottom: 1rem;
+    }
+
+    .filter-section:last-child {
+        margin-bottom: 0;
+    }
+
+    .filter-label {
+        display: block;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 0.75rem;
+    }
+
+    .filter-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .filter-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 0.875rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.625rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .filter-tag:hover {
+        border-color: var(--border-glow);
+        color: var(--text-primary);
+    }
+
+    .filter-tag.active {
+        background: var(--accent-cyan-dim);
+        border-color: var(--border-glow);
+        color: var(--accent-cyan);
+        font-weight: 500;
+    }
+
+    .filter-toggles {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 100px;
+        height: 32px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        transition: var(--transition-fast);
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 48px;
+        left: 3px;
+        bottom: 2px;
+        background: var(--accent-cyan);
+        border-radius: 0.375rem;
+        transition: var(--transition-fast);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+        transform: translateX(36px);
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+        background: var(--accent-cyan-dim);
+        border-color: var(--border-glow);
+    }
+
+    .toggle-labels {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    /* Overview */
+    .workbench-overview {
+        margin-bottom: 2rem;
+    }
+
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.25rem;
+    }
+
+    .overview-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: var(--transition-smooth);
+    }
+
+    .overview-card:hover {
+        border-color: var(--border-glow);
+        transform: translateY(-2px);
+    }
+
+    .overview-card i {
+        font-size: 1.75rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.75rem;
+    }
+
+    .overview-card.cyan { background: var(--accent-cyan-dim); color: var(--accent-cyan); }
+    .overview-card.green { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); }
+    .overview-card.gold { background: rgba(251, 191, 36, 0.15); color: var(--accent-gold); }
+    .overview-card.purple { background: rgba(167, 139, 250, 0.15); color: var(--accent-purple); }
+
+    .overview-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        line-height: 1;
+    }
+
+    .overview-label {
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+    }
+
+    /* Workbench Layout */
+    .workbench-layout {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+        height: calc(100vh - 350px);
+    }
+
+    .list-panel, .detail-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .list-header, .detail-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .list-header h2, .detail-header h2 {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .list-sort {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .sort-select {
+        font-size: 0.875rem;
+        padding: 0.5rem 1.5rem 0.5rem 0.75rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 0.5rem;
+    }
+
+    .list-content, .detail-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem;
+    }
+
+    /* Research Item */
+    .research-item {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .research-item:hover {
+        background: var(--bg-card-hover);
+    }
+
+    .research-item.active {
+        background: var(--accent-cyan-dim);
+        border-left: 3px solid var(--accent-cyan);
+    }
+
+    .research-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 0.5rem;
+    }
+
+    .research-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        flex: 1;
+    }
+
+    .research-meta {
+        display: flex;
+        gap: 0.75rem;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-top: 0.5rem;
+    }
+
+    .research-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .research-meta i {
+        font-size: 0.9em;
+        opacity: 0.7;
+    }
+
+    /* Detail View */
+    .detail-content .empty-detail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-muted);
+    }
+
+    .detail-content .empty-detail i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .detail-content .empty-detail p {
+        font-size: 1rem;
+    }
+
+    .detail-header .detail-close {
+        padding: 0.5rem;
+        margin-left: 0.75rem;
+    }
+
+    .research-detail-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        line-height: 1.4;
+    }
+
+    .detail-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: var(--bg-secondary);
+        border-radius: 0.75rem;
+    }
+
+    .detail-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .detail-meta-item i {
+        color: var(--accent-cyan);
+        font-size: 1rem;
+    }
+
+    .detail-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .detail-section-title i {
+        color: var(--accent-cyan);
+    }
+
+    .detail-text {
+        line-height: 1.6;
+        color: var(--text-secondary);
+        white-space: pre-wrap;
+    }
+
+    .detail-links {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .detail-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.625rem;
+        color: var(--accent-cyan);
+        text-decoration: none;
+        transition: var(--transition-fast);
+    }
+
+    .detail-link:hover {
+        background: var(--accent-cyan-dim);
+        border-color: var(--border-glow);
+    }
+
+    .detail-link i {
+        font-size: 1rem;
+    }
+
+    /* Empty States */
+    .empty-list {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: var(--text-muted);
+    }
+
+    .empty-list i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .empty-list p {
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+        .workbench-layout {
+            grid-template-columns: 1fr;
+        }
+        .overview-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .workbench-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .workbench-actions {
+            width: 100%;
+            justify-content: flex-end;
+        }
+        .overview-grid {
+            grid-template-columns: 1fr;
+        }
+        .filter-tags {
+            flex-wrap: wrap;
+        }
+        .filter-toggles {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .toggle-switch {
+            width: 90px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let researchData = [];
+    let currentFilters = {
+        focus: 'all',
+        domestic: false,
+        sector: false,
+        bilingual: false,
+        archived: false,
+        sort: 'date_desc'
+    };
+    let currentReportKey = null;
+
+    function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function toggleFilters() {
+        const panel = document.getElementById('filterBar');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function applyFilters() {
+        let filtered = [...researchData];
+
+        // Focus area filter
+        if (currentFilters.focus !== 'all') {
+            const focusMap = {
+                chip: '芯片半导体',
+                ai: 'AI',
+                robot: '机器人',
+                biopharma: '创新药',
+                solar: '光伏',
+                nuclear: '核电',
+                agri: '养猪'
+            };
+            const focusName = focusMap[currentFilters.focus];
+            filtered = filtered.filter(r =>
+                (r.title && r.title.includes(focusName)) ||
+                (r.tags && r.tags.includes(focusName)) ||
+                (r.summary && r.summary.includes(focusName))
+            );
+        }
+
+        // Attribute filters
+        if (currentFilters.domestic) {
+            filtered = filtered.filter(r => r.source_region === 'domestic');
+        }
+        if (currentFilters.sector) {
+            filtered = filtered.filter(r => r.type === 'sector');
+        }
+        if (currentFilters.bilingual) {
+            filtered = filtered.filter(r => r.has_translation);
+        }
+        if (currentFilters.archived) {
+            filtered = filtered.filter(r => r.archived);
+        }
+
+        // Sort
+        filtered.sort((a, b) => {
+            if (currentFilters.sort === 'date_desc') {
+                return new Date(b.publish_date || 0) - new Date(a.publish_date || 0);
+            } else if (currentFilters.sort === 'date_asc') {
+                return new Date(a.publish_date || 0) - new Date(b.publish_date || 0);
+            } else {
+                return (a.title || '').localeCompare(b.title || '');
+            }
+        });
+
+        renderResearchList(filtered);
+    }
+
+    function applySort() {
+        currentFilters.sort = document.getElementById('sortSelect').value;
+        applyFilters();
+    }
+
+    function setFocus(key) {
+        document.querySelectorAll('.filter-tag').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        event.target.closest('.filter-tag').classList.add('active');
+        currentFilters.focus = key;
+        applyFilters();
+    }
+
+    function toggleAttribute(id, attr) {
+        currentFilters[attr] = document.getElementById(id).checked;
+        applyFilters();
+    }
+
+    function refreshData() {
+        const btn = event.target.closest('.btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>';
+
+        Promise.all([
+            loadWorkbenchOverview(),
+            loadResearchList()
+        ]).then(() => {
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i><span>刷新</span>';
+                showToast('数据已刷新');
+            }, 500);
+        }).catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i><span>刷新</span>';
+            showToast('刷新失败: ' + err.message, 'error');
+        });
+    }
+
+    async function loadWorkbenchOverview() {
+        try {
+            const data = await api('/investment/api/research/workbench');
+
+            if (data.total !== undefined) {
+                document.getElementById('totalReports').textContent = data.total.toLocaleString();
+            }
+            if (data.top_rated !== undefined) {
+                document.getElementById('topRated').textContent = data.top_rated.toLocaleString();
+            }
+            if (data.last_update) {
+                const date = new Date(data.last_update);
+                document.getElementById('lastUpdate').textContent = date.toLocaleDateString('zh-CN');
+            }
+            if (data.archived !== undefined) {
+                document.getElementById('archivedCount').textContent = data.archived.toLocaleString();
+            }
+        } catch (error) {
+            console.error('Load workbench overview failed:', error);
+        }
+    }
+
+    async function loadResearchList() {
+        try {
+            const data = await api('/investment/api/research/list');
+            researchData = data.reports || [];
+            applyFilters();
+        } catch (error) {
+            console.error('Load research list failed:', error);
+            const container = document.getElementById('researchList');
+            container.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'empty-list';
+            div.innerHTML = `
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>加载失败: ${escapeHtml(error.message)}</p>
+                <button class="btn btn-primary">重试</button>
+            `;
+            div.querySelector('button').onclick = loadResearchList;
+            container.appendChild(div);
+        }
+    }
+
+    function renderResearchList(reports) {
+        const container = document.getElementById('researchList');
+        container.innerHTML = '';
+
+        if (reports.length === 0) {
+            const div = document.createElement('div');
+            div.className = 'empty-list';
+            div.innerHTML = `
+                <i class="bi bi-inbox"></i>
+                <p>暂无研究报告</p>
+            `;
+            container.appendChild(div);
+            return;
+        }
+
+        reports.forEach((report, index) => {
+            const div = document.createElement('div');
+            div.className = `research-item fade-in ${currentReportKey === report.key ? 'active' : ''}`;
+            div.style.animationDelay = `${index * 0.03}s`;
+            div.onclick = () => loadResearchDetail(report.key);
+
+            const hasRating = report.rating && report.rating.trim();
+            const hasPdf = report.local_pdf_path;
+
+            div.innerHTML = `
+                <div class="research-item-header">
+                    <div class="research-title">${escapeHtml(report.title || '')}</div>
+                    <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                        ${hasRating ? `<span class="badge-rating ${getRatingClass(report.rating)}">${escapeHtml(report.rating)}</span>` : ''}
+                        ${hasPdf ? '<i class="bi bi-file-pdf-fill" style="color: var(--accent-red); font-size: 1rem;"></i>' : ''}
+                    </div>
+                </div>
+                <div class="research-meta">
+                    ${report.stock_name ? `<span><i class="bi bi-graph-up"></i>${escapeHtml(report.stock_name)}</span>` : ''}
+                    ${report.institution ? `<span><i class="bi bi-building"></i>${escapeHtml(report.institution)}</span>` : ''}
+                    ${report.publish_date ? `<span><i class="bi bi-calendar"></i>${formatFullDate(report.publish_date)}</span>` : ''}
+                    ${report.source_region === 'domestic' ? '<span><i class="bi bi-flag"></i>国内</span>' : '<span><i class="bi bi-globe"></i>海外</span>'}
+                    ${report.type === 'sector' ? '<span><i class="bi bi-diagram-3"></i>行业</span>' : '<span><i class="bi bi-star"></i>个股</span>'}
+                </div>
+            `;
+
+            container.appendChild(div);
+        });
+    }
+
+    async function loadResearchDetail(key) {
+        if (currentReportKey === key) {
+            return;
+        }
+
+        currentReportKey = key;
+
+        // Update list item active state
+        document.querySelectorAll('.research-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        event.target.closest('.research-item').classList.add('active');
+
+        const container = document.getElementById('researchDetail');
+        container.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        `;
+
+        try {
+            const report = await api(`/investment/api/research/${key}`);
+
+            let html = `
+                <h3 class="research-detail-title">${escapeHtml(report.title || '')}</h3>
+
+                <div class="detail-meta-grid">
+                    ${report.stock_name ? `<div class="detail-meta-item"><i class="bi bi-graph-up"></i><span>${escapeHtml(report.stock_name)}</span></div>` : ''}
+                    ${report.stock_code ? `<div class="detail-meta-item"><i class="bi bi-hash"></i><span>${escapeHtml(report.stock_code)}</span></div>` : ''}
+                    ${report.institution ? `<div class="detail-meta-item"><i class="bi bi-building"></i><span>${escapeHtml(report.institution)}</span></div>` : ''}
+                    ${report.author ? `<div class="detail-meta-item"><i class="bi bi-person"></i><span>${escapeHtml(report.author)}</span></div>` : ''}
+                    ${report.publish_date ? `<div class="detail-meta-item"><i class="bi bi-calendar"></i><span>${formatFullDate(report.publish_date)}</span></div>` : ''}
+                    ${report.pages ? `<div class="detail-meta-item"><i class="bi bi-file-earmark"></i><span>${escapeHtml(report.pages)} 页</span></div>` : ''}
+                </div>
+            `;
+
+            // Rating
+            if (report.rating) {
+                html += `
+                    <div class="detail-section">
+                        <h4 class="detail-section-title"><i class="bi bi-star-fill"></i> 评级</h4>
+                        <span class="badge-rating ${getRatingClass(report.rating)}" style="display: inline-block;">
+                            ${escapeHtml(report.rating)}
+                        </span>
+                    </div>
+                `;
+            }
+
+            // Summary
+            if (report.summary) {
+                html += `
+                    <div class="detail-section">
+                        <h4 class="detail-section-title"><i class="bi bi-chat-square-text"></i> 摘要</h4>
+                        <div class="detail-text">${escapeHtml(report.summary)}</div>
+                    </div>
+                `;
+            }
+
+            // Highlights
+            if (report.highlights && report.highlights.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <h4 class="detail-section-title"><i class="bi bi-lightning"></i> 重点提炼</h4>
+                        <ul style="padding-left: 1.5rem; color: var(--text-secondary); line-height: 1.6;">
+                            ${report.highlights.map(h => `<li>${escapeHtml(h)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            // Evidence
+            if (report.evidence && report.evidence.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <h4 class="detail-section-title"><i class="bi bi-check-circle"></i> 证据项</h4>
+                        <ul style="padding-left: 1.5rem; color: var(--text-secondary); line-height: 1.6;">
+                            ${report.evidence.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            // Links
+            html += `
+                <div class="detail-section">
+                    <h4 class="detail-section-title"><i class="bi bi-link-45deg"></i> 链接</h4>
+                    <div class="detail-links">
+            `;
+
+            if (report.original_url) {
+                html += `<a href="${escapeHtml(report.original_url)}" target="_blank" class="detail-link"><i class="bi bi-globe"></i> 原文链接</a>`;
+            }
+
+            if (report.local_pdf_path) {
+                const winPath = report.local_pdf_path.replace('/Volumes/DataDisk', 'D:');
+                html += `<a href="file:///${escapeHtml(winPath)}" class="detail-link"><i class="bi bi-file-pdf"></i> Windows 归档文件</a>`;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Load research detail failed:', error);
+            container.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'empty-list';
+            div.innerHTML = `
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>加载详情失败</p>
+                <button class="btn btn-primary">重试</button>
+            `;
+            div.querySelector('button').onclick = () => loadResearchDetail(key);
+            container.appendChild(div);
+        }
+    }
+
+    function closeDetail() {
+        currentReportKey = null;
+        document.querySelectorAll('.research-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        document.getElementById('researchDetail').innerHTML = `
+            <div class="empty-detail">
+                <i class="bi bi-layout-text-window-reverse"></i>
+                <p>点击左侧列表查看研究报告详情</p>
+            </div>
+        `;
+    }
+
+    // Initialize filters
+    document.querySelectorAll('.filter-tag').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setFocus(btn.dataset.key);
+        });
+    });
+
+    document.getElementById('filterDomestic').addEventListener('change', () => toggleAttribute('filterDomestic', 'domestic'));
+    document.getElementById('filterSector').addEventListener('change', () => toggleAttribute('filterSector', 'sector'));
+    document.getElementById('filterBilingual').addEventListener('change', () => toggleAttribute('filterBilingual', 'bilingual'));
+    document.getElementById('filterArchived').addEventListener('change', () => toggleAttribute('filterArchived', 'archived'));
+
+    // Initialize
+    loadWorkbenchOverview();
+    loadResearchList();
+</script>
+{% endblock %}
