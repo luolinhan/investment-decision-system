@@ -279,6 +279,102 @@ SOURCES: List[Dict[str, Any]] = [
         "notes": "Recent AI/ML papers; P2 research signal only.",
     },
     {
+        "source_key": "stanford_hai_ai_index",
+        "name": "Stanford HAI AI Index",
+        "source_type": "research_search",
+        "url": "search://site:hai.stanford.edu/ai-index/2026-ai-index-report (\"AI Index\" OR \"Research and Development\" OR \"Technical Performance\" OR \"Policy and Governance\")",
+        "query": "site:hai.stanford.edu/ai-index/2026-ai-index-report (\"AI Index\" OR \"Research and Development\" OR \"Technical Performance\" OR \"Policy and Governance\")",
+        "category": "ai_research",
+        "priority": 1,
+        "credibility": "research_institute",
+        "collection_method": "search_proxy",
+        "collector": "aliyun",
+        "cadence_minutes": 240,
+        "result_limit": 4,
+        "expand_fetch": 1,
+        "fetch_max_length": 9000,
+        "include_terms": ["ai index", "artificial intelligence", "research and development", "technical performance", "policy and governance"],
+        "exclude_terms": ["privacy", "cookies", "newsletter", "careers"],
+        "report_type": "research_report",
+        "investment_relevance": "Use as a baseline for model capability, compute intensity, policy, adoption and capex assumptions across AI infrastructure and applications.",
+        "investment_relevance_zh": "作为 AI 基础设施与应用链条的底层基准材料，用于校准模型能力、算力强度、政策、采用率和资本开支假设。",
+        "thesis_template": "Stanford AI Index provides benchmark-grade evidence for model progress, compute demand, policy and adoption; use it to anchor medium-term AI cycle assumptions.",
+        "thesis_template_zh": "Stanford AI Index 提供模型进展、算力需求、政策与采用率的基准证据，可作为中期 AI 周期判断的底层锚点。",
+        "notes": "Curated US institutional research source for AI cycle baseline evidence.",
+    },
+    {
+        "source_key": "brookings_ai_research",
+        "name": "Brookings AI Research",
+        "source_type": "research_search",
+        "url": "search://site:brookings.edu/articles (AI OR \"artificial intelligence\") (research OR report OR analysis) Brookings",
+        "query": "site:brookings.edu/articles (AI OR \"artificial intelligence\") (research OR report OR analysis) Brookings",
+        "category": "ai_research",
+        "priority": 1,
+        "credibility": "think_tank",
+        "collection_method": "search_proxy",
+        "collector": "aliyun",
+        "cadence_minutes": 240,
+        "result_limit": 4,
+        "expand_fetch": 1,
+        "fetch_max_length": 8000,
+        "include_terms": ["ai", "artificial intelligence", "labor", "data center", "regulatory", "adoption"],
+        "exclude_terms": ["newsletter", "event", "podcast", "donate"],
+        "report_type": "policy_analysis",
+        "investment_relevance": "Brookings research helps frame AI adoption, labor market effects, regulation and energy/data-center externalities that matter for medium-term sector allocation.",
+        "investment_relevance_zh": "Brookings 研究适合校准 AI 采用、劳动力影响、监管和能源/数据中心外部性，对中期行业配置有参考价值。",
+        "thesis_template": "Brookings analysis is useful for validating medium-term AI adoption, labor and regulation narratives before mapping them to cloud, software and power-demand exposures.",
+        "thesis_template_zh": "Brookings 分析适合验证 AI 采用、劳动力与监管叙事，再映射到云、软件和电力需求等资产链条。",
+        "notes": "US think-tank analysis for AI adoption, labor and policy.",
+    },
+    {
+        "source_key": "cset_ai_publications",
+        "name": "CSET AI Publications",
+        "source_type": "research_search",
+        "url": "search://site:cset.georgetown.edu/publication (AI OR \"artificial intelligence\") (report OR paper OR publication)",
+        "query": "site:cset.georgetown.edu/publication (AI OR \"artificial intelligence\") (report OR paper OR publication)",
+        "category": "ai_research",
+        "priority": 1,
+        "credibility": "research_institute",
+        "collection_method": "search_proxy",
+        "collector": "aliyun",
+        "cadence_minutes": 240,
+        "result_limit": 4,
+        "expand_fetch": 1,
+        "fetch_max_length": 8000,
+        "include_terms": ["ai", "artificial intelligence", "compute", "governance", "robotics", "frontier"],
+        "exclude_terms": ["events", "newsletter", "jobs", "team"],
+        "report_type": "policy_research",
+        "investment_relevance": "CSET publications help validate frontier governance, physical AI, compute and China-US competition narratives relevant to semis, robotics and cyber-AI chains.",
+        "investment_relevance_zh": "CSET 材料适合验证前沿治理、物理 AI、算力和中美竞争叙事，可映射到半导体、机器人和网络安全链条。",
+        "thesis_template": "CSET publications are useful for tracking frontier AI governance, physical AI and compute competition; use them as validation inputs rather than standalone trade signals.",
+        "thesis_template_zh": "CSET 研究适合跟踪前沿 AI 治理、物理 AI 和算力竞争，更多作为验证输入而非独立交易信号。",
+        "notes": "Georgetown CSET research and policy publications.",
+    },
+    {
+        "source_key": "rand_ai_research",
+        "name": "RAND AI Research",
+        "source_type": "research_search",
+        "url": "search://site:rand.org/pubs/research_reports (AI OR \"artificial intelligence\") RAND",
+        "query": "site:rand.org/pubs/research_reports (AI OR \"artificial intelligence\") RAND",
+        "category": "ai_research",
+        "priority": 1,
+        "credibility": "think_tank",
+        "collection_method": "search_proxy",
+        "collector": "aliyun",
+        "cadence_minutes": 360,
+        "result_limit": 4,
+        "expand_fetch": 1,
+        "fetch_max_length": 7000,
+        "include_terms": ["ai", "artificial intelligence", "r&d", "compute", "security", "scenario"],
+        "exclude_terms": ["jobs", "career", "newsletter", "podcast"],
+        "report_type": "strategic_research",
+        "investment_relevance": "RAND research is useful for stress-testing AI R&D, defense demand, national strategy and downside scenarios around compute, safety and deployment.",
+        "investment_relevance_zh": "RAND 研究适合做 AI 研发、国防需求、国家战略以及算力/安全/部署风险情景的压力测试。",
+        "thesis_template": "RAND work is best used to stress-test AI infrastructure and policy path assumptions rather than as a short-term catalyst feed.",
+        "thesis_template_zh": "RAND 更适合用于压力测试 AI 基础设施和政策路径假设，而不是短期催化剂流。",
+        "notes": "RAND public research reports on AI strategy and R&D.",
+    },
+    {
         "source_key": "sec_current_8k",
         "name": "SEC Current 8-K Feed",
         "source_type": "regulatory_feed",
@@ -380,6 +476,13 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def strip_html_tags(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", text)
+    return normalize_text(text)
+
+
 def normalize_text(text: str) -> str:
     text = (text or "").replace("\u2011", "-").replace("\u2013", "-").replace("\u2014", "-")
     text = re.sub(r"\s+", " ", text)
@@ -388,6 +491,30 @@ def normalize_text(text: str) -> str:
 
 def content_hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
+
+
+def extract_date_from_text(text: str) -> str:
+    raw = normalize_text(text)
+    if not raw:
+        return ""
+    month_formats = ("%b %d, %Y", "%B %d, %Y")
+    patterns = [
+        r"\b([A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4})\b",
+        r"\b(\d{4}-\d{2}-\d{2})\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, raw)
+        if not match:
+            continue
+        value = match.group(1)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return value
+        for fmt in month_formats:
+            try:
+                return datetime.strptime(value, fmt).date().isoformat()
+            except ValueError:
+                continue
+    return ""
 
 
 def get_session() -> requests.Session:
@@ -539,7 +666,7 @@ def fetch_json_list(session: requests.Session, source: Dict[str, Any]) -> List[D
                     or item.get("created_at")
                     or ""
                 ),
-                "summary": normalize_text(item.get("description") or item.get("pipeline_tag") or title),
+                "summary": strip_html_tags(item.get("description") or item.get("pipeline_tag") or title),
                 "raw_text": raw_text[:30000],
                 "metadata": {"language": "en", "content_type": "json", "raw": item},
             }
@@ -583,45 +710,89 @@ def fetch_feed(session: requests.Session, source: Dict[str, Any]) -> List[Dict[s
                 "url": link or f"{source['url']}#{content_hash(raw_text)[:12]}",
                 "title": title,
                 "published_at": published,
-                "summary": summary[:1200],
-                "raw_text": raw_text[:30000],
+                "summary": strip_html_tags(summary)[:1200],
+                "raw_text": strip_html_tags(raw_text)[:30000],
                 "metadata": {"language": "en", "content_type": "feed"},
             }
         )
     return docs
 
 
+def fetch_search_proxy_body(session: requests.Session, url: str, max_length: int) -> Dict[str, Any]:
+    resp = session.get(
+        f"{SEARCH_PROXY_URL}/fetch",
+        params={"url": url, "max_length": max(500, min(int(max_length or 6000), 30000))},
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def search_result_allowed(source: Dict[str, Any], item: Dict[str, Any]) -> bool:
+    haystack = normalize_text(
+        f"{item.get('title') or ''} {item.get('snippet') or ''} {item.get('url') or ''}"
+    ).lower()
+    include_terms = [str(term).lower() for term in source.get("include_terms") or [] if str(term).strip()]
+    exclude_terms = [str(term).lower() for term in source.get("exclude_terms") or [] if str(term).strip()]
+    if include_terms and not any(term in haystack for term in include_terms):
+        return False
+    if exclude_terms and any(term in haystack for term in exclude_terms):
+        return False
+    return True
+
+
 def fetch_search_proxy(session: requests.Session, source: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not SEARCH_PROXY_URL:
         raise RuntimeError("INTELLIGENCE_SEARCH_PROXY_URL is not configured")
     query = source.get("query") or source["url"].replace("search://", "")
+    result_limit = max(1, min(int(source.get("result_limit", 6) or 6), 10))
+    expand_fetch = bool(int(source.get("expand_fetch", 0) or 0))
+    fetch_max_length = int(source.get("fetch_max_length", 8000) or 8000)
     resp = session.post(
         f"{SEARCH_PROXY_URL}/search",
-        json={"q": query, "num_results": 6, "nocache": 1},
+        json={"q": query, "num_results": result_limit, "nocache": 1},
         timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
     payload = resp.json()
     docs: List[Dict[str, Any]] = []
-    for item in (payload.get("results") or [])[:6]:
+    for item in (payload.get("results") or [])[:result_limit]:
         if not isinstance(item, dict):
+            continue
+        if not search_result_allowed(source, item):
             continue
         title = normalize_text(item.get("title") or source["name"])
         url = item.get("url") or f"{source['url']}#{content_hash(title)[:12]}"
-        snippet = normalize_text(item.get("snippet") or "")
+        snippet = strip_html_tags(item.get("snippet") or "")
+        published_at = extract_date_from_text(snippet)
+        fetched_payload: Dict[str, Any] = {}
+        raw_text = normalize_text(f"{title} {snippet} {url}")[:30000]
+        if expand_fetch and url.startswith(("http://", "https://")):
+            try:
+                fetched_payload = fetch_search_proxy_body(session, url, fetch_max_length)
+                fetched_content = strip_html_tags(fetched_payload.get("content") or "")
+                if fetched_content:
+                    raw_text = fetched_content[:30000]
+            except Exception:
+                fetched_payload = {}
         docs.append(
             {
                 "source_key": source["source_key"],
                 "url": url,
                 "title": title,
-                "published_at": "",
-                "summary": snippet,
-                "raw_text": normalize_text(f"{title} {snippet} {url}")[:30000],
+                "published_at": published_at,
+                "summary": snippet or normalize_text(raw_text[:500]),
+                "raw_text": raw_text,
                 "metadata": {
                     "language": "en",
-                    "content_type": "search_result",
+                    "content_type": "search_result_expanded" if raw_text != normalize_text(f"{title} {snippet} {url}")[:30000] else "search_result",
                     "query": query,
                     "engine": item.get("engine"),
+                    "search_snippet": snippet,
+                    "fetch_length": fetched_payload.get("length"),
                 },
             }
         )
@@ -857,9 +1028,9 @@ def generic_event_key(category: str, source_key: str, title: str, url: str) -> s
 
 
 def clean_doc_summary(doc: Dict[str, Any], title: str, max_len: int = 520) -> str:
-    summary = normalize_text(doc.get("summary") or "")
+    summary = strip_html_tags(doc.get("summary") or "")
     if not summary or summary == title:
-        summary = normalize_text(doc.get("raw_text") or "")[:max_len]
+        summary = strip_html_tags(doc.get("raw_text") or "")[:max_len]
     return summary[:max_len] if summary else title
 
 
@@ -1114,6 +1285,88 @@ def generic_signal_event_payload(doc: Dict[str, Any], title: str, text: str, low
     return None
 
 
+RESEARCH_ONLY_SOURCE_KEYS = {
+    "stanford_hai_ai_index",
+    "brookings_ai_research",
+    "cset_ai_publications",
+    "rand_ai_research",
+}
+
+RESEARCH_CONTEXT_TERMS = (
+    "artificial intelligence",
+    "agi",
+    "physical ai",
+    "embodied ai",
+    "policy",
+    "governance",
+    "adoption",
+    "labor",
+    "labor market",
+    "compute",
+    "data center",
+    "robotics",
+    "economy",
+    "sovereignty",
+    "competition",
+    "safety",
+    "risk",
+    "strategy",
+)
+
+
+def research_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    source_key = doc.get("source_key") or ""
+    source = source_meta_for_key(source_key)
+    if source_key not in RESEARCH_ONLY_SOURCE_KEYS and source.get("category") != "ai_research":
+        return None
+
+    title = normalize_text(doc.get("title") or "")
+    if not title:
+        return None
+
+    text = normalize_text(f"{title} {doc.get('summary') or ''} {doc.get('raw_text') or ''}")
+    lower = text.lower()
+    has_signal = contains_any(lower, RESEARCH_SIGNAL_TERMS + RESEARCH_CONTEXT_TERMS)
+    if contains_any(lower, GENERIC_NOISE_TERMS) and not has_signal:
+        return None
+    if not has_signal:
+        return None
+
+    source_name = source.get("name") or source_key
+    published_at = doc.get("published_at") or extract_date_from_text(doc.get("summary") or "") or extract_date_from_text(doc.get("raw_text") or "")
+    summary = clean_doc_summary(doc, title, max_len=640)
+    thesis = source.get("thesis_template") or "Use as a medium-term validation input for AI capability, adoption, compute demand and policy path."
+    thesis_zh = source.get("thesis_template_zh") or "作为 AI 能力、采用率、算力需求和政策路径的中期验证输入。"
+    relevance = source.get("investment_relevance") or "AI infrastructure, cloud, semiconductors, software, data center power"
+    relevance_zh = source.get("investment_relevance_zh") or "AI 基础设施、云、半导体、软件、数据中心电力"
+
+    evidence: List[Tuple[str, str, str]] = [
+        ("Source", source_name, doc.get("url") or ""),
+        ("Topic", title, doc.get("url") or ""),
+    ]
+    if published_at:
+        evidence.append(("Published", published_at, doc.get("url") or ""))
+
+    return {
+        "report_key": content_hash(f"research|{source_key}|{doc.get('url') or title}")[:24],
+        "title": title,
+        "title_zh": doc.get("title_zh") or "",
+        "source_key": source_key,
+        "source_name": source_name,
+        "url": doc.get("url") or "",
+        "report_type": source.get("report_type") or "research",
+        "published_at": published_at,
+        "language": (doc.get("metadata") or {}).get("language", "en"),
+        "summary": summary,
+        "summary_zh": doc.get("summary_zh") or "",
+        "thesis": thesis,
+        "thesis_zh": thesis_zh,
+        "relevance": relevance,
+        "relevance_zh": relevance_zh,
+        "evidence": evidence,
+    }
+
+
 def event_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     title = normalize_text(doc.get("title") or "")
     text = normalize_text(f"{title} {doc.get('url') or ''} {doc.get('summary') or ''} {doc.get('raw_text') or ''}")
@@ -1200,6 +1453,81 @@ def event_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
 
     return generic_signal_event_payload(doc, title, text, lower)
+
+
+def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report: Dict[str, Any]) -> bool:
+    existing = conn.execute("SELECT id FROM research_reports WHERE report_key = ?", (report["report_key"],)).fetchone()
+    if existing:
+        report_id = int(existing[0])
+        conn.execute(
+            """
+            UPDATE research_reports
+            SET title=?, title_zh=?, source_key=?, source_name=?, url=?, report_type=?,
+                published_at=?, fetched_at=?, language=?, summary=?, summary_zh=?,
+                thesis=?, thesis_zh=?, relevance=?, relevance_zh=?, status='active'
+            WHERE id=?
+            """,
+            (
+                report["title"],
+                report.get("title_zh"),
+                report.get("source_key"),
+                report.get("source_name"),
+                report.get("url"),
+                report.get("report_type", "research"),
+                report.get("published_at"),
+                now_iso(),
+                report.get("language", "en"),
+                report.get("summary"),
+                report.get("summary_zh"),
+                report.get("thesis"),
+                report.get("thesis_zh"),
+                report.get("relevance"),
+                report.get("relevance_zh"),
+                report_id,
+            ),
+        )
+        added = False
+    else:
+        cursor = conn.execute(
+            """
+            INSERT INTO research_reports
+            (report_key, title, title_zh, source_key, source_name, url, report_type,
+             published_at, fetched_at, language, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+            """,
+            (
+                report["report_key"],
+                report["title"],
+                report.get("title_zh"),
+                report.get("source_key"),
+                report.get("source_name"),
+                report.get("url"),
+                report.get("report_type", "research"),
+                report.get("published_at"),
+                now_iso(),
+                report.get("language", "en"),
+                report.get("summary"),
+                report.get("summary_zh"),
+                report.get("thesis"),
+                report.get("thesis_zh"),
+                report.get("relevance"),
+                report.get("relevance_zh"),
+            ),
+        )
+        report_id = int(cursor.lastrowid)
+        added = True
+
+    for sort_order, evidence in enumerate(report.get("evidence") or [], start=1):
+        label, value, source_url = (list(evidence) + ["", "", ""])[:3]
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO research_evidence
+            (report_id, label, value, source_url, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (report_id, label, value, source_url or report.get("url"), sort_order),
+        )
+    return added
 
 
 def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, Any], bundle: Dict[str, Any]) -> bool:
@@ -1329,46 +1657,31 @@ def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, An
 
     research = bundle.get("research")
     if research:
-        report_key = content_hash(f"{bundle['event_key']}|{doc['url']}")[:24]
-        conn.execute(
-            """
-            INSERT INTO research_reports
-            (report_key, title, title_zh, source_key, source_name, url, report_type,
-             published_at, fetched_at, language, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, ?, ?, ?, 'active')
-            ON CONFLICT(report_key) DO UPDATE SET
-                title=excluded.title,
-                title_zh=excluded.title_zh,
-                source_key=excluded.source_key,
-                source_name=excluded.source_name,
-                report_type=excluded.report_type,
-                published_at=excluded.published_at,
-                fetched_at=excluded.fetched_at,
-                summary=excluded.summary,
-                summary_zh=excluded.summary_zh,
-                thesis=excluded.thesis,
-                thesis_zh=excluded.thesis_zh,
-                relevance=excluded.relevance,
-                relevance_zh=excluded.relevance_zh,
-                status='active'
-            """,
-            (
-                report_key,
-                doc.get("title") or bundle["title"],
-                bundle.get("title_zh"),
-                doc["source_key"],
-                doc["source_key"],
-                doc["url"],
-                research.get("report_type", "research"),
-                doc.get("published_at"),
-                now_iso(),
-                doc.get("summary") or bundle.get("summary"),
-                doc.get("summary_zh") or bundle.get("summary_zh"),
-                research.get("thesis"),
-                research.get("thesis_zh"),
-                research.get("relevance"),
-                research.get("relevance_zh"),
-            ),
+        source = source_meta_for_key(doc["source_key"])
+        upsert_research_report(
+            conn,
+            doc,
+            {
+                "report_key": content_hash(f"{bundle['event_key']}|{doc['url']}")[:24],
+                "title": doc.get("title") or bundle["title"],
+                "title_zh": doc.get("title_zh") or "",
+                "source_key": doc["source_key"],
+                "source_name": source.get("name") or doc["source_key"],
+                "url": doc["url"],
+                "report_type": research.get("report_type", "research"),
+                "published_at": doc.get("published_at"),
+                "language": (doc.get("metadata") or {}).get("language", "en"),
+                "summary": doc.get("summary") or bundle.get("summary"),
+                "summary_zh": doc.get("summary_zh") or "",
+                "thesis": research.get("thesis"),
+                "thesis_zh": research.get("thesis_zh") or "",
+                "relevance": research.get("relevance"),
+                "relevance_zh": research.get("relevance_zh") or "",
+                "evidence": [
+                    ("Event", bundle["title"], doc["url"]),
+                    ("Source", source.get("name") or doc["source_key"], doc["url"]),
+                ],
+            },
         )
     return added
 
@@ -1471,6 +1784,7 @@ def apply_documents_to_db(
     total_added_docs = 0
     total_updated_docs = 0
     total_events_added = 0
+    total_research_added = 0
     promoted_by_source: Dict[str, int] = {}
 
     with get_sqlite_connection(DB_PATH, timeout=60, busy_timeout=15000) as conn:
@@ -1521,6 +1835,10 @@ def apply_documents_to_db(
                         promoted_by_source[source_key] = promoted + 1
                     if upsert_event_bundle(conn, doc_id, doc, bundle):
                         total_events_added += 1
+                else:
+                    research = research_payload_for_document(doc)
+                    if research and upsert_research_report(conn, doc, research):
+                        total_research_added += 1
             update_source_status(conn, source_key, ok=True)
 
         conn.commit()
@@ -1531,6 +1849,7 @@ def apply_documents_to_db(
         "records_added": total_added_docs,
         "records_updated": total_updated_docs,
         "events_added": total_events_added,
+        "research_added": total_research_added,
         "records_failed": failures,
     }
 

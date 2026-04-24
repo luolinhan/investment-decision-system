@@ -249,6 +249,13 @@ class IntelligenceService:
             )
             latest_events = self.list_events(limit=8)
             research = self.list_research(limit=6)
+            research_count_row = conn.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM research_reports
+                WHERE status = 'active'
+                """
+            ).fetchone()
             source_health = self.list_sources()
             last_run_row = conn.execute(
                 """
@@ -268,7 +275,7 @@ class IntelligenceService:
                 "active_events": sum(item["count"] for item in event_counts),
                 "p0_events": p0,
                 "p1_events": p1,
-                "research_reports": len(research),
+                "research_reports": int(research_count_row["count"] if research_count_row else 0),
                 "enabled_sources": sum(1 for item in source_health if item.get("enabled")),
             },
             "event_counts": event_counts,

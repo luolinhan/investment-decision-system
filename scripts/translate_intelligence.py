@@ -36,14 +36,9 @@ class BailianTranslator:
     def enabled(self) -> bool:
         return bool(self.api_key)
 
-    def translate_payload(self, payload: Dict[str, Any]) -> Dict[str, str]:
+    def _request_content(self, system_prompt: str, user_payload: Dict[str, Any]) -> str:
         if not self.enabled():
-            return {}
-        prompt = (
-            "你是面向A股和港股投资研究的信息翻译助手。"
-            "请把输入英文翻译成简洁、准确、保留专有名词的中文。"
-            "只返回严格JSON，字段名保持和输入一致；不要添加解释。"
-        )
+            return ""
         resp = requests.post(
             f"{self.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
@@ -52,14 +47,18 @@ class BailianTranslator:
                 "temperature": 0.1,
                 "max_tokens": 1200,
                 "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
                 ],
             },
             timeout=self.timeout,
         )
         resp.raise_for_status()
         content = (((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        return content
+
+    @staticmethod
+    def _normalize_json_block(content: str) -> str:
         if content.startswith("```"):
             content = content.strip("`")
             content = content.replace("json\n", "", 1).strip()
@@ -67,8 +66,37 @@ class BailianTranslator:
         end = content.rfind("}")
         if start >= 0 and end > start:
             content = content[start : end + 1]
-        parsed = json.loads(content)
-        return {str(k): str(v) for k, v in parsed.items() if v is not None}
+        return content
+
+    def translate_payload(self, payload: Dict[str, Any]) -> Dict[str, str]:
+        if not self.enabled():
+            return {}
+        prompt = (
+            "你是面向A股和港股投资研究的信息翻译助手。"
+            "请把输入英文翻译成简洁、准确、保留专有名词的中文。"
+            "只返回严格JSON，字段名保持和输入一致；不要添加解释。"
+        )
+        content = self._normalize_json_block(self._request_content(prompt, payload))
+        try:
+            parsed = json.loads(content)
+            return {str(k): str(v) for k, v in parsed.items() if v is not None}
+        except json.JSONDecodeError:
+            repair_prompt = (
+                "你是 JSON 修复助手。"
+                "把输入中的 raw_output 修复成严格合法的 JSON，且只保留 required_keys 中列出的字段。"
+                "不要添加解释。"
+            )
+            repaired = self._normalize_json_block(
+                self._request_content(
+                    repair_prompt,
+                    {"required_keys": list(payload.keys()), "raw_output": content},
+                )
+            )
+            try:
+                parsed = json.loads(repaired)
+                return {str(k): str(v) for k, v in parsed.items() if v is not None}
+            except json.JSONDecodeError:
+                return {}
 
 
 def fallback_translate_label(text: str) -> str:
@@ -87,6 +115,26 @@ def fallback_translate_label(text: str) -> str:
     return mapping.get(text, text)
 
 
+def needs_translation(existing_zh: str, original: str) -> bool:
+    zh = (existing_zh or "").strip()
+    src = (original or "").strip()
+    if not zh:
+        return True
+    if src and zh == src:
+        return True
+    chinese_chars = sum(1 for ch in zh if "\u4e00" <= ch <= "\u9fff")
+    ascii_letters = sum(1 for ch in zh if ch.isascii() and ch.isalpha())
+    if chinese_chars == 0 and ascii_letters > 0:
+        return True
+    placeholder_prefixes = (
+        "官方 AI 信号：",
+        "FDA 生物医药信号：",
+        "AI 仓库信号：",
+        "AI 研究信号：",
+    )
+    return any(prefix in zh for prefix in placeholder_prefixes)
+
+
 def translate_event_rows(conn: sqlite3.Connection, translator: BailianTranslator, limit: int) -> int:
     rows = conn.execute(
         """
@@ -103,13 +151,16 @@ def translate_event_rows(conn: sqlite3.Connection, translator: BailianTranslator
     ).fetchall()
     updated = 0
     for row in rows:
-        translated = translator.translate_payload(
-            {
-                "title_zh": row["title"] or "",
-                "summary_zh": row["summary"] or "",
-                "impact_summary_zh": row["impact_summary"] or "",
-            }
-        ) if translator.enabled() else {}
+        try:
+            translated = translator.translate_payload(
+                {
+                    "title_zh": row["title"] or "",
+                    "summary_zh": row["summary"] or "",
+                    "impact_summary_zh": row["impact_summary"] or "",
+                }
+            ) if translator.enabled() else {}
+        except Exception:
+            translated = {}
         conn.execute(
             """
             UPDATE intelligence_events
@@ -144,7 +195,10 @@ def translate_fact_rows(conn: sqlite3.Connection, translator: BailianTranslator,
     for row in rows:
         translated = {}
         if translator.enabled():
-            translated = translator.translate_payload({"label_zh": row["label"] or "", "value_zh": row["value"] or ""})
+            try:
+                translated = translator.translate_payload({"label_zh": row["label"] or "", "value_zh": row["value"] or ""})
+            except Exception:
+                translated = {}
         conn.execute(
             """
             UPDATE event_facts
@@ -168,10 +222,6 @@ def translate_research_rows(conn: sqlite3.Connection, translator: BailianTransla
         SELECT id, title, summary, thesis, relevance
         FROM research_reports
         WHERE status = 'active'
-          AND (title_zh IS NULL OR title_zh = ''
-               OR summary_zh IS NULL OR summary_zh = ''
-               OR thesis_zh IS NULL OR thesis_zh = ''
-               OR relevance_zh IS NULL OR relevance_zh = '')
         ORDER BY fetched_at DESC
         LIMIT ?
         """,
@@ -179,28 +229,54 @@ def translate_research_rows(conn: sqlite3.Connection, translator: BailianTransla
     ).fetchall()
     updated = 0
     for row in rows:
-        translated = translator.translate_payload(
-            {
-                "title_zh": row["title"] or "",
-                "summary_zh": row["summary"] or "",
-                "thesis_zh": row["thesis"] or "",
-                "relevance_zh": row["relevance"] or "",
-            }
-        ) if translator.enabled() else {}
+        existing = conn.execute(
+            """
+            SELECT title_zh, summary_zh, thesis_zh, relevance_zh
+            FROM research_reports
+            WHERE id = ?
+            """,
+            (row["id"],),
+        ).fetchone()
+        title_zh_old = (existing["title_zh"] if existing else "") or ""
+        summary_zh_old = (existing["summary_zh"] if existing else "") or ""
+        thesis_zh_old = (existing["thesis_zh"] if existing else "") or ""
+        relevance_zh_old = (existing["relevance_zh"] if existing else "") or ""
+
+        should_translate = any(
+            (
+                needs_translation(title_zh_old, row["title"] or ""),
+                needs_translation(summary_zh_old, row["summary"] or ""),
+                needs_translation(thesis_zh_old, row["thesis"] or ""),
+                needs_translation(relevance_zh_old, row["relevance"] or ""),
+            )
+        )
+        if not should_translate:
+            continue
+        try:
+            translated = translator.translate_payload(
+                {
+                    "title_zh": row["title"] or "",
+                    "summary_zh": row["summary"] or "",
+                    "thesis_zh": row["thesis"] or "",
+                    "relevance_zh": row["relevance"] or "",
+                }
+            ) if translator.enabled() else {}
+        except Exception:
+            translated = {}
         conn.execute(
             """
             UPDATE research_reports
-            SET title_zh=COALESCE(NULLIF(title_zh, ''), ?),
-                summary_zh=COALESCE(NULLIF(summary_zh, ''), ?),
-                thesis_zh=COALESCE(NULLIF(thesis_zh, ''), ?),
-                relevance_zh=COALESCE(NULLIF(relevance_zh, ''), ?)
+            SET title_zh=?,
+                summary_zh=?,
+                thesis_zh=?,
+                relevance_zh=?
             WHERE id=?
             """,
             (
-                translated.get("title_zh") or row["title"],
-                translated.get("summary_zh") or row["summary"],
-                translated.get("thesis_zh") or row["thesis"],
-                translated.get("relevance_zh") or row["relevance"],
+                translated.get("title_zh") or title_zh_old or row["title"],
+                translated.get("summary_zh") or summary_zh_old or row["summary"],
+                translated.get("thesis_zh") or thesis_zh_old or row["thesis"],
+                translated.get("relevance_zh") or relevance_zh_old or row["relevance"],
                 row["id"],
             ),
         )
