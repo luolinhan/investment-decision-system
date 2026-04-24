@@ -1510,24 +1510,35 @@ class InvestmentDataService:
         else: level, label, color = 'very_low', 'Very Low Risk', '#22c55e'
         return {'score': round(score, 1), 'level': level, 'label': label, 'color': color, 'signals': signals}
 
+    @staticmethod
+    def _trim_global_risk_payload(payload: Dict[str, Any], days: int) -> Dict[str, Any]:
+        try:
+            requested_days = max(1, min(int(days or 180), 365))
+        except Exception:
+            requested_days = 180
+        trimmed = dict(payload)
+        trimmed["days"] = requested_days
+        for key in ("us10y", "vix", "gold", "oil", "yield_spread", "dxy"):
+            item = trimmed.get(key)
+            if isinstance(item, dict) and isinstance(item.get("history"), list):
+                trimmed[key] = {**item, "history": item["history"][-requested_days:]}
+        return trimmed
+
     def get_global_risk_radar(self, days: int = 180, force_refresh: bool = False) -> Dict[str, Any]:
+        try:
+            requested_days = max(1, min(int(days or 180), 365))
+        except Exception:
+            requested_days = 180
         if (
             not force_refresh
             and self._global_risk_cache is not None
             and self._cache_is_fresh(self._global_risk_cache_at, GLOBAL_RISK_CACHE_TTL_SECONDS)
         ):
             cached_days = self._global_risk_cache.get("days", 0)
-            if cached_days >= days:
-                return {
-                    **self._global_risk_cache,
-                    }
-                trimmed = dict(self._global_risk_cache)
-                for _k in ("us10y", "vix", "gold", "oil", "yield_spread", "dxy"):
-                    if _k in trimmed and "history" in trimmed[_k]:
-                        trimmed[_k] = {**trimmed[_k], "history": trimmed[_k]["history"][-days:]}
-                return trimmed
+            if cached_days >= requested_days:
+                return self._trim_global_risk_payload(self._global_risk_cache, requested_days)
 
-        fetch_days = max(days, 180)
+        fetch_days = max(requested_days, 180)
         payload = {
             "update_time": datetime.now().replace(microsecond=0).isoformat(),
             "days": fetch_days,
@@ -1543,11 +1554,7 @@ class InvestmentDataService:
         self._global_risk_cache = payload
         self._global_risk_cache_at = time.time()
 
-        trimmed = dict(payload)
-        for _k in ("us10y", "vix", "gold", "oil", "yield_spread", "dxy"):
-            if _k in trimmed and "history" in trimmed[_k]:
-                trimmed[_k] = {**trimmed[_k], "history": trimmed[_k]["history"][-days:]}
-        return trimmed
+        return self._trim_global_risk_payload(payload, requested_days)
 
     def get_hk_stocks_direct(self, keywords: List[str] = None) -> List[Dict[str, Any]]:
         stocks = self.get_watch_stocks().get("hk_stocks", [])

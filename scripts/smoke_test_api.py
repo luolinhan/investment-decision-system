@@ -27,6 +27,11 @@ TESTS = [
         "assert": lambda p: (p.get("summary") or {}).get("total", 0) >= 1,
     },
     {
+        "name": "data assets",
+        "path": "/investment/api/data-health/assets",
+        "assert": lambda p: (p.get("summary") or {}).get("total", 0) >= 1,
+    },
+    {
         "name": "news",
         "path": "/investment/api/news",
         "assert": lambda p: sum(len(v or []) for v in (p.get("news") or {}).values()) > 0,
@@ -34,7 +39,7 @@ TESTS = [
     {
         "name": "global risk",
         "path": "/investment/api/global-risk?days=5",
-        "assert": lambda p: bool(p.get("us10y") or p.get("vix") or p.get("composite")),
+        "assert": lambda p: p.get("days") == 5 and bool(p.get("us10y") or p.get("vix") or p.get("composite_risk")),
     },
     {
         "name": "opportunity pool",

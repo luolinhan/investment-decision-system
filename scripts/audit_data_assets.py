@@ -77,8 +77,31 @@ def classify(row_count: int, latest: Dict[str, Any], refs: int) -> str:
     return "review"
 
 
+def load_registry(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='indicator_registry'"
+    ).fetchone()
+    if not table:
+        return {}
+    rows = conn.execute("""
+        SELECT indicator_key, table_name, display_name, status, freshness_sla_days, reason
+        FROM indicator_registry
+    """).fetchall()
+    return {
+        row[1]: {
+            "indicator_key": row[0],
+            "display_name": row[2],
+            "registry_status": row[3],
+            "freshness_sla_days": row[4],
+            "registry_reason": row[5],
+        }
+        for row in rows
+    }
+
+
 def audit(db_path: Path) -> Dict[str, Any]:
     conn = sqlite3.connect(db_path)
+    registry = load_registry(conn)
     tables = [
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -90,13 +113,16 @@ def audit(db_path: Path) -> Dict[str, Any]:
         row_count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         latest = latest_value(conn, table, columns)
         refs = code_reference_count(ROOT, table)
+        registry_item = registry.get(table, {})
+        status_hint = registry_item.get("registry_status") or classify(row_count, latest, refs)
         assets.append({
             "table": table,
             "rows": row_count,
             "latest_column": latest["column"],
             "latest_value": latest["value"],
             "code_reference_count": refs,
-            "status_hint": classify(row_count, latest, refs),
+            "status_hint": status_hint,
+            **registry_item,
         })
     conn.close()
     summary = {}
@@ -130,7 +156,8 @@ def main() -> int:
     print("table\trows\tlatest\trefs\tstatus")
     for item in result["assets"]:
         latest = f"{item['latest_column']}={item['latest_value']}" if item["latest_column"] else "-"
-        print(f"{item['table']}\t{item['rows']}\t{latest}\t{item['code_reference_count']}\t{item['status_hint']}")
+        registry_label = item.get("indicator_key") or "-"
+        print(f"{item['table']}\t{item['rows']}\t{latest}\t{item['code_reference_count']}\t{item['status_hint']}\t{registry_label}")
     return 0
 
 

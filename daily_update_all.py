@@ -23,6 +23,7 @@ TASKS = [
     ("scripts/sync_margin_balance.py", "融资融券余额同步"),
     ("scripts/sync_currency_rates.py", "汇率数据同步"),
     ("scripts/sync_macro_indicators.py", "宏观指标同步(中国PMI)"),
+    ("scripts/sync_indicator_registry.py", "指标注册表同步(数据治理状态)"),
     ("scripts/sync_hk_stocks.py", "港股数据同步(热榜/指数/回购)"),
     ("scripts/sync_sector_data.py", "板块数据同步(列表/资金流/成分股)"),
     ("scripts/sync_global_risk_extended.py", "全球风险扩展同步(国债收益率/DXY)"),

@@ -8,6 +8,7 @@
 import sqlite3
 import sys
 import os
+import json
 from datetime import datetime
 
 os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
@@ -64,6 +65,22 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     ensure_table(conn)
     cursor = conn.cursor()
+
+    if os.getenv("FORCE_MARGIN_SYNC", "").strip() != "1":
+        print("  [DEPRECATED] margin_balance source is stale; sync disabled until a reliable source is selected.")
+        try:
+            cursor.execute("SELECT MAX(trade_date) FROM margin_balance")
+            latest = cursor.fetchone()[0]
+            print(f"  latest_existing={latest}")
+        finally:
+            conn.close()
+        print("ETL_METRICS_JSON=" + json.dumps({
+            "records_processed": 0,
+            "records_failed": 0,
+            "records_skipped": 1,
+            "status": "deprecated",
+        }, ensure_ascii=False))
+        return
 
     try:
         df = ak.stock_margin_sse()

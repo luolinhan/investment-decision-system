@@ -1577,6 +1577,13 @@ async def get_data_health_overview():
     )
 
 
+@router.get("/api/data-health/assets")
+async def get_data_asset_overview():
+    """获取数据资产状态，用于指标下线和页面过滤。"""
+    db = get_db_service()
+    return db.get_data_asset_overview()
+
+
 @router.get("/api/etl/logs")
 async def get_etl_logs(limit: int = 50, job_type: str = None):
     """获取ETL日志"""

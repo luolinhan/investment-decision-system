@@ -1417,6 +1417,149 @@ class InvestmentDataService:
             if conn:
                 conn.close()
 
+    # ==================== 数据资产治理 ====================
+
+    def _table_exists(self, conn: sqlite3.Connection, table_name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _parse_asset_date(value: Any) -> Optional[datetime]:
+        if value in (None, ""):
+            return None
+        text = str(value).strip()
+        if len(text) >= 10:
+            text = text[:10]
+        try:
+            return datetime.strptime(text, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    def _get_table_latest_value(self, conn: sqlite3.Connection, table_name: str, columns: List[str]) -> Dict[str, Any]:
+        candidates = [
+            "trade_date",
+            "date",
+            "report_date",
+            "as_of_date",
+            "published",
+            "fetched_at",
+            "updated_at",
+            "created_at",
+            "start_time",
+        ]
+        c = conn.cursor()
+        for column in candidates:
+            if column not in columns:
+                continue
+            try:
+                value = c.execute(f"SELECT MAX({column}) FROM {table_name}").fetchone()[0]
+                if value:
+                    return {"column": column, "value": value}
+            except Exception:
+                continue
+        return {"column": None, "value": None}
+
+    def _load_indicator_registry(self, conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
+        if not self._table_exists(conn, "indicator_registry"):
+            return {}
+        rows = conn.execute("""
+            SELECT indicator_key, layer, table_name, display_name, status, source,
+                   freshness_sla_days, decision_usage, reason, updated_at
+            FROM indicator_registry
+        """).fetchall()
+        registry = {}
+        for row in rows:
+            item = {
+                "indicator_key": row[0],
+                "layer": row[1],
+                "table_name": row[2],
+                "display_name": row[3],
+                "status": row[4],
+                "source": row[5],
+                "freshness_sla_days": row[6],
+                "decision_usage": row[7],
+                "reason": row[8],
+                "registry_updated_at": row[9],
+            }
+            registry.setdefault(row[2], item)
+        return registry
+
+    def get_data_asset_overview(self) -> Dict[str, Any]:
+        """Return table-level asset status for pruning and UI gating."""
+        conn = None
+        try:
+            conn = self._get_db()
+            c = conn.cursor()
+            tables = [
+                row[0]
+                for row in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+                if not row[0].startswith("sqlite_")
+            ]
+            registry_by_table = self._load_indicator_registry(conn)
+            assets = []
+            now = datetime.now()
+            for table in tables:
+                columns = self._get_table_columns(conn, table)
+                row_count = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                latest = self._get_table_latest_value(conn, table, columns)
+                registry = registry_by_table.get(table)
+                status = (registry or {}).get("status")
+                if not status:
+                    status = "remove_candidate" if row_count == 0 else "review"
+
+                latest_dt = self._parse_asset_date(latest.get("value"))
+                freshness_sla_days = (registry or {}).get("freshness_sla_days")
+                age_days = None
+                health = "unknown"
+                if row_count == 0:
+                    health = "empty"
+                elif latest_dt is not None:
+                    age_days = max(0, (now - latest_dt).days)
+                    if freshness_sla_days is not None and age_days > int(freshness_sla_days):
+                        health = "stale"
+                    else:
+                        health = "fresh"
+                if status in {"deprecated", "removed"}:
+                    health = status
+
+                assets.append({
+                    "table": table,
+                    "rows": row_count,
+                    "latest_column": latest.get("column"),
+                    "latest_value": latest.get("value"),
+                    "age_days": age_days,
+                    "status": status,
+                    "health": health,
+                    "indicator_key": (registry or {}).get("indicator_key"),
+                    "layer": (registry or {}).get("layer"),
+                    "display_name": (registry or {}).get("display_name"),
+                    "decision_usage": (registry or {}).get("decision_usage"),
+                    "reason": (registry or {}).get("reason"),
+                })
+
+            summary = {"total": len(assets), "by_status": {}, "by_health": {}}
+            for item in assets:
+                summary["by_status"][item["status"]] = summary["by_status"].get(item["status"], 0) + 1
+                summary["by_health"][item["health"]] = summary["by_health"].get(item["health"], 0) + 1
+            return {
+                "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+                "summary": summary,
+                "assets": assets,
+            }
+        except Exception as exc:
+            return {
+                "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+                "summary": {"total": 0, "by_status": {}, "by_health": {}},
+                "assets": [],
+                "error": str(exc)[:300],
+            }
+        finally:
+            if conn:
+                conn.close()
+
     # ==================== 策略回测与性能 ====================
 
     def get_strategy_perf_overview(self, setup_name: Optional[str] = None, windows: List[int] = None) -> Dict[str, Any]:
