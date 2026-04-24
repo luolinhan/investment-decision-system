@@ -31,6 +31,7 @@ import logging
 import os
 import re
 import sys
+import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -170,6 +171,35 @@ SNAPSHOT_INDICATORS = [
         "notes": "生猪供应指数（日频，历史有限）。akshare 无直接能繁母猪存栏函数，"
                  "以 futures_hog_supply 作为供应侧短期代理，历史约 90 天。",
     },
+    {
+        "indicator_code": "CN_TSF_YOY",
+        "category": "macro_cn",
+        "indicator_type": "credit",
+        "frequency": "monthly",
+        "direction": "leading",
+        "half_life_days": 90,
+        "affected_assets": ["CN bonds", "CN equities", "CNY"],
+        "affected_sectors": ["broad"],
+        "source": "akshare:macro_china_shrzgm / macro_china_new_financial_credit",
+        "confidence": 0.75,
+        "status": "active",
+        "notes": "社融同比。优先使用 macro_china_shrzgm；若 akshare 接口失败，则回退为新增金融信贷同比代理，"
+                 "并在 quality_flag 中标记 estimated。",
+    },
+    {
+        "indicator_code": "CN_NEW_LOANS",
+        "category": "macro_cn",
+        "indicator_type": "credit",
+        "frequency": "monthly",
+        "direction": "leading",
+        "half_life_days": 60,
+        "affected_assets": ["CN bonds", "CN equities", "CNY"],
+        "affected_sectors": ["financials"],
+        "source": "akshare:macro_rmb_loan",
+        "confidence": 0.85,
+        "status": "active",
+        "notes": "新增人民币贷款总额（月频，亿元）。用于补充宽信用判断的月度趋势。",
+    },
 ]
 
 
@@ -191,22 +221,28 @@ def _safe_float(val: Any) -> Optional[float]:
         return None
 
 
-def _fetch_akshare(func_name: str, **kwargs) -> Optional[pd.DataFrame]:
+def _fetch_akshare(func_name: str, max_retries: int = 1, **kwargs) -> Optional[pd.DataFrame]:
     """Safely call an akshare function, returning None on failure."""
-    try:
-        import akshare as ak
-        func = getattr(ak, func_name, None)
-        if func is None:
-            logger.warning("[SKIP] akshare.%s not found", func_name)
+    for attempt in range(max_retries + 1):
+        try:
+            import akshare as ak
+            func = getattr(ak, func_name, None)
+            if func is None:
+                logger.warning("[SKIP] akshare.%s not found", func_name)
+                return None
+            result = func(**kwargs)
+            if result is None or (isinstance(result, pd.DataFrame) and result.empty):
+                logger.info("[EMPTY] akshare.%s returned empty", func_name)
+                return None
+            return result if isinstance(result, pd.DataFrame) else None
+        except Exception as e:
+            if attempt < max_retries:
+                logger.info("[RETRY] akshare.%s attempt %d failed: %s", func_name, attempt + 1, e)
+                time.sleep(2)
+                continue
+            logger.warning("[FAIL] akshare.%s after %d retries: %s", func_name, max_retries, e)
             return None
-        result = func(**kwargs)
-        if result is None or (isinstance(result, pd.DataFrame) and result.empty):
-            logger.info("[EMPTY] akshare.%s returned empty", func_name)
-            return None
-        return result if isinstance(result, pd.DataFrame) else None
-    except Exception as e:
-        logger.warning("[FAIL] akshare.%s: %s", func_name, e)
-        return None
+    return None
 
 
 def _parse_china_month(raw: str) -> Optional[str]:
@@ -221,6 +257,16 @@ def _parse_china_month(raw: str) -> Optional[str]:
     if m2:
         return f"{m2.group(1)}-{m2.group(2)}"
     return None
+
+
+def _parse_rmb_loan_month(raw: str) -> Optional[str]:
+    """Parse '2023-10' style strings from macro_rmb_loan."""
+    if not raw or not isinstance(raw, str):
+        return None
+    match = re.match(r"(\d{4})-(\d{1,2})", raw.strip())
+    if not match:
+        return None
+    return f"{match.group(1)}-{int(match.group(2)):02d}"
 
 
 def _catalog_update(store: RadarStore) -> None:
@@ -611,6 +657,138 @@ def collect_hog_supply(store: RadarStore) -> Dict[str, Any]:
         return _fail(started, str(e))
 
 
+def _parse_tsf_official(
+    store: RadarStore,
+    df: pd.DataFrame,
+    started: str,
+) -> Dict[str, Any]:
+    rows_read = 0
+    obs_rows: List[Dict[str, Any]] = []
+    columns = list(df.columns)
+    date_col = columns[0] if columns else None
+    yoy_col = next((col for col in columns[1:] if "同比" in str(col)), None)
+    if not date_col or not yoy_col:
+        return _fail(started, "macro_china_shrzgm missing expected date/yoy columns")
+
+    for _, row in df.iterrows():
+        obs_date = _parse_china_month(str(row.get(date_col, "")))
+        if obs_date is None:
+            rows_read += 1
+            continue
+        val = _safe_float(row.get(yoy_col))
+        if val is not None:
+            obs_rows.append({
+                "indicator_code": "CN_TSF_YOY",
+                "obs_date": obs_date,
+                "value": val,
+                "unit": "pct",
+                "source": "akshare:macro_china_shrzgm",
+                "quality_flag": "good",
+            })
+        rows_read += 1
+
+    rows_upserted = store.upsert_indicator_observations(obs_rows) if obs_rows else 0
+    return {
+        "started_at": started,
+        "finished_at": _now_utc(),
+        "status": "success" if obs_rows else "partial",
+        "rows_read": rows_read,
+        "rows_upserted": rows_upserted,
+        "error_message": None,
+        "notes": f"社融同比(官方): {rows_upserted} obs, "
+                 f"范围 {obs_rows[0]['obs_date'] if obs_rows else 'N/A'} ~ {obs_rows[-1]['obs_date'] if obs_rows else 'N/A'}",
+    }
+
+
+def collect_tsf_proxy(store: RadarStore) -> Dict[str, Any]:
+    """TSF YoY, falling back to new financial credit YoY when the official endpoint is unavailable."""
+    started = _now_utc()
+    rows_read = 0
+
+    official_df = _fetch_akshare("macro_china_shrzgm", max_retries=1)
+    if official_df is not None:
+        logger.info("macro_china_shrzgm succeeded, using official TSF data")
+        return _parse_tsf_official(store, official_df, started)
+
+    logger.info("macro_china_shrzgm unavailable, falling back to macro_china_new_financial_credit")
+    df = _fetch_akshare("macro_china_new_financial_credit")
+    if df is None:
+        return _fail(started, "both macro_china_shrzgm and macro_china_new_financial_credit failed")
+
+    obs_rows: List[Dict[str, Any]] = []
+    for _, row in df.iterrows():
+        obs_date = _parse_china_month(str(row.get("月份", "")))
+        if obs_date is None:
+            rows_read += 1
+            continue
+        val = _safe_float(row.get("当月-同比增长"))
+        if val is not None:
+            obs_rows.append({
+                "indicator_code": "CN_TSF_YOY",
+                "obs_date": obs_date,
+                "value": val,
+                "unit": "pct",
+                "source": "akshare:macro_china_new_financial_credit",
+                "quality_flag": "estimated",
+                "notes": "新增金融信贷同比代理社融景气；官方社融接口不可用时启用",
+            })
+        rows_read += 1
+
+    rows_upserted = store.upsert_indicator_observations(obs_rows) if obs_rows else 0
+    return {
+        "started_at": started,
+        "finished_at": _now_utc(),
+        "status": "success" if obs_rows else "partial",
+        "rows_read": rows_read,
+        "rows_upserted": rows_upserted,
+        "error_message": None,
+        "notes": f"社融同比代理(新增信贷): {rows_upserted} obs, "
+                 f"范围 {obs_rows[0]['obs_date'] if obs_rows else 'N/A'} ~ {obs_rows[-1]['obs_date'] if obs_rows else 'N/A'}",
+    }
+
+
+def collect_new_loans(store: RadarStore) -> Dict[str, Any]:
+    """New RMB loans from akshare macro_rmb_loan."""
+    started = _now_utc()
+    rows_read = 0
+    try:
+        df = _fetch_akshare("macro_rmb_loan")
+        if df is None:
+            return _fail(started, "akshare.macro_rmb_loan returned None")
+
+        obs_rows: List[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            obs_date = _parse_rmb_loan_month(str(row.get("月份", "")))
+            if obs_date is None:
+                rows_read += 1
+                continue
+            val = _safe_float(row.get("新增人民币贷款-总额"))
+            if val is not None:
+                obs_rows.append({
+                    "indicator_code": "CN_NEW_LOANS",
+                    "obs_date": obs_date,
+                    "value": val,
+                    "unit": "hundred_million_cny",
+                    "source": "akshare:macro_rmb_loan",
+                    "quality_flag": "good",
+                })
+            rows_read += 1
+
+        rows_upserted = store.upsert_indicator_observations(obs_rows) if obs_rows else 0
+        return {
+            "started_at": started,
+            "finished_at": _now_utc(),
+            "status": "success" if obs_rows else "partial",
+            "rows_read": rows_read,
+            "rows_upserted": rows_upserted,
+            "error_message": None,
+            "notes": f"新增人民币贷款: {rows_upserted} obs, "
+                     f"范围 {obs_rows[0]['obs_date'] if obs_rows else 'N/A'} ~ {obs_rows[-1]['obs_date'] if obs_rows else 'N/A'}",
+        }
+    except Exception as e:
+        return _fail(started, str(e))
+
+
 def _fail(started: str, error: str) -> Dict[str, Any]:
     return {
         "started_at": started,
@@ -636,6 +814,8 @@ COLLECTORS = [
     ("Snapshot: Semiconductor Index (output proxy)", collect_semi_index),
     ("Snapshot: Solar Equipment Index (output proxy)", collect_solar_index),
     ("Snapshot: Hog Supply Index (sow proxy)", collect_hog_supply),
+    ("Snapshot: TSF YoY (credit cycle proxy)", collect_tsf_proxy),
+    ("Snapshot: New RMB Loans", collect_new_loans),
 ]
 
 UNAVAILABLE_NOTES = {
@@ -721,6 +901,29 @@ def main() -> None:
     print(f"  Total observations upserted: {total_obs}")
     print(f"  Unavailable indicators (logged): {len(UNAVAILABLE_NOTES)}")
     print("=" * 60)
+    metrics = {
+        "run_timestamp": started_at,
+        "total_collectors": len(COLLECTORS),
+        "success": total_ok,
+        "partial": total_partial,
+        "failed": total_fail,
+        "total_observations": total_obs,
+        "unavailable_count": len(UNAVAILABLE_NOTES),
+        "details": [],
+    }
+    for item in results:
+        metrics["details"].append({
+            "status": item.get("status"),
+            "rows_upserted": item.get("rows_upserted", 0),
+            "notes": item.get("notes"),
+        })
+    for code, note in UNAVAILABLE_NOTES.items():
+        metrics["details"].append({
+            "indicator": code,
+            "status": "unavailable",
+            "notes": note,
+        })
+    print("ETL_METRICS_JSON=" + json.dumps(metrics, ensure_ascii=False))
 
 
 if __name__ == "__main__":

@@ -479,35 +479,48 @@ def main():
     print(f"HK Radar Sync - {datetime.now()}")
     print("=" * 60)
 
+    etl_metrics = {
+        "hk_south_flow": 0,
+        "hk_north_money": 0,
+        "hk_indices": 0,
+        "ah_premium": 0,
+        "hk_visitor_arrivals": 0,
+        "status": "partial",
+    }
+
     ensure_radar_db()
     con = duckdb.connect(RADAR_DB_PATH)
 
     try:
         # Step 1: 从 investment.db 回填资金流
-        backfill_from_investment_db(con)
+        added_south, added_north = backfill_from_investment_db(con)
+        etl_metrics["hk_south_flow"] = added_south
+        etl_metrics["hk_north_money"] = added_north
 
         # Step 2: 获取恒生指数
         df_indices = fetch_hk_indices()
         if df_indices is not None:
-            upsert_indices(con, df_indices)
+            etl_metrics["hk_indices"] = upsert_indices(con, df_indices)
 
         # Step 3: 获取A/H溢价
         df_ah = fetch_ah_premium()
         if df_ah is not None:
-            upsert_ah_premium(con, df_ah)
+            etl_metrics["ah_premium"] = upsert_ah_premium(con, df_ah)
 
         # Step 4: 获取访客流量
         df_visitor = fetch_visitor_arrivals()
         if df_visitor is not None:
-            upsert_visitor_arrivals(con, df_visitor)
+            etl_metrics["hk_visitor_arrivals"] = upsert_visitor_arrivals(con, df_visitor)
 
         # Step 5: 显示摘要
         show_summary(con)
+        etl_metrics["status"] = "success"
 
     except Exception as e:
         print(f"\n[FAIL] {e}")
         import traceback
         traceback.print_exc()
+        etl_metrics["status"] = "failed"
         sys.exit(1)
     finally:
         con.close()
@@ -515,6 +528,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"Sync completed at {datetime.now()}")
     print("=" * 60)
+    print(f"ETL_METRICS_JSON={etl_metrics}")
 
 
 if __name__ == "__main__":
