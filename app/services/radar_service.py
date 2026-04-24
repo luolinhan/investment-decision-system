@@ -83,6 +83,15 @@ def _parse_any_datetime(value: Any) -> Optional[datetime]:
         except Exception:
             continue
     return None
+
+
+def _is_duckdb_lock_error(exc: Exception) -> bool:
+    text = str(exc)
+    return (
+        "Could not set lock on file" in text
+        or "File is already open in" in text
+        or "无法访问" in text
+    )
     if isinstance(value, (list, dict)):
         return value
     try:
@@ -253,7 +262,7 @@ class RadarService:
                     """
                 )
         except duckdb.IOException as exc:
-            if "Could not set lock on file" in str(exc) and self.db_path.exists():
+            if _is_duckdb_lock_error(exc) and self.db_path.exists():
                 return
             raise
 

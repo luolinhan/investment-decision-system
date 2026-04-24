@@ -46,6 +46,15 @@ def _safe_slug(text: str, limit: int = 64) -> str:
     return (cleaned or "untitled")[:limit]
 
 
+def _is_duckdb_lock_error(exc: Exception) -> bool:
+    text = str(exc)
+    return (
+        "Could not set lock on file" in text
+        or "File is already open in" in text
+        or "无法访问" in text
+    )
+
+
 def _pick_text(*values: Any, fallback: str = "-") -> str:
     for value in values:
         if value not in (None, ""):
@@ -114,7 +123,7 @@ class RadarReportExporter:
                 return RadarService(db_path=db_path)
             except Exception as exc:
                 last_error = exc
-                if "Could not set lock on file" not in str(exc):
+                if not _is_duckdb_lock_error(exc):
                     raise
                 time.sleep(1.0)
         if last_error:
