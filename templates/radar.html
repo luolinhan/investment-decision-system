@@ -322,9 +322,9 @@
         <div class="page-title">中国资产领先指标雷达</div>
         <div class="page-subtitle">先看宏观与外部约束，再看港股流动性，再看 thesis card 与失效条件。</div>
     </div>
-    <button class="btn btn-secondary" onclick="loadRadar(true)">
+    <button class="btn btn-secondary" onclick="loadRadar()">
         <i class="bi bi-arrow-clockwise"></i>
-        刷新
+        重新加载
     </button>
 </div>
 
@@ -761,42 +761,50 @@
 
     async function loadRadar(forceRefresh = false) {
         const suffix = forceRefresh ? `?force_refresh=1&t=${Date.now()}` : '';
-        const data = await api(`/investment/api/radar/overview${suffix}`);
-        document.getElementById('heroRegime').textContent = `${data.summary.macro_regime || '-'} | External ${data.summary.external_risk_score ?? '-'} | HK ${data.summary.hk_liquidity_score ?? '-'}`;
-        document.getElementById('heroSummary').textContent = `DuckDB: ${data.db_path || '-'}；整体 thesis_confidence ${data.summary.thesis_confidence ?? '-'}；覆盖率 ${data.summary.data_coverage ?? '-'}%；待补齐核心指标 ${data.summary.missing_indicators ?? 0} 项；最近同步 ${formatDate(data.summary.last_data_sync)}。`;
-        renderChips('heroFlags', [
-            `macro_regime: ${data.summary.macro_regime || '-'}`,
-            `external_risk_score: ${data.summary.external_risk_score ?? '-'}`,
-            `hk_liquidity_score: ${data.summary.hk_liquidity_score ?? '-'}`,
-            `sector_preposition_score: ${data.summary.sector_preposition_score ?? '-'}`,
-            `pipeline_failures_24h: ${data.summary.pipeline_failures_24h ?? 0}`,
-        ]);
-        renderSummary(data.summary || {});
+        try {
+            const data = await api(`/investment/api/radar/overview${suffix}`);
+            const servedFrom = data.meta?.served_from || 'live';
+            document.getElementById('heroRegime').textContent = `${data.summary.macro_regime || '-'} | External ${data.summary.external_risk_score ?? '-'} | HK ${data.summary.hk_liquidity_score ?? '-'}`;
+            document.getElementById('heroSummary').textContent = `DuckDB: ${data.db_path || '-'}；数据来源 ${servedFrom}；整体 thesis_confidence ${data.summary.thesis_confidence ?? '-'}；覆盖率 ${data.summary.data_coverage ?? '-'}%；待补齐核心指标 ${data.summary.missing_indicators ?? 0} 项；最近同步 ${formatDate(data.summary.last_data_sync)}。`;
+            renderChips('heroFlags', [
+                `macro_regime: ${data.summary.macro_regime || '-'}`,
+                `external_risk_score: ${data.summary.external_risk_score ?? '-'}`,
+                `hk_liquidity_score: ${data.summary.hk_liquidity_score ?? '-'}`,
+                `sector_preposition_score: ${data.summary.sector_preposition_score ?? '-'}`,
+                `pipeline_failures_24h: ${data.summary.pipeline_failures_24h ?? 0}`,
+                `served_from: ${servedFrom}`,
+            ]);
+            renderSummary(data.summary || {});
 
-        document.getElementById('macroSubtitle').textContent = `${data.macro.inflation_state || '-'} | ${data.macro.quadrant?.money || '-'} × ${data.macro.quadrant?.credit || '-'} | 覆盖率 ${data.macro.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.macro.freshness?.last_update)}`;
-        document.getElementById('macroScore').textContent = data.macro.score ?? '-';
-        renderSignals('macroDrivers', data.macro.signals || []);
-        renderChips('macroFlags', [...(data.macro.beneficiaries || []), ...(data.macro.policy_divergence || []), ...(data.macro.missing_keys || [])]);
-        upsertChart('macroChart', data.macro.charts || []);
+            document.getElementById('macroSubtitle').textContent = `${data.macro.inflation_state || '-'} | ${data.macro.quadrant?.money || '-'} × ${data.macro.quadrant?.credit || '-'} | 覆盖率 ${data.macro.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.macro.freshness?.last_update)}`;
+            document.getElementById('macroScore').textContent = data.macro.score ?? '-';
+            renderSignals('macroDrivers', data.macro.signals || []);
+            renderChips('macroFlags', [...(data.macro.beneficiaries || []), ...(data.macro.policy_divergence || []), ...(data.macro.missing_keys || [])]);
+            upsertChart('macroChart', data.macro.charts || []);
 
-        document.getElementById('externalSubtitle').textContent = `${data.external.risk_state || '-'} | 覆盖率 ${data.external.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.external.freshness?.last_update)}`;
-        document.getElementById('externalScore').textContent = data.external.external_risk_score ?? '-';
-        renderSignals('externalDrivers', data.external.signals || []);
-        renderChips('externalFlags', Object.values(data.external.asset_map || {}));
-        upsertChart('externalChart', data.external.charts || []);
+            document.getElementById('externalSubtitle').textContent = `${data.external.risk_state || '-'} | 覆盖率 ${data.external.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.external.freshness?.last_update)}`;
+            document.getElementById('externalScore').textContent = data.external.external_risk_score ?? '-';
+            renderSignals('externalDrivers', data.external.signals || []);
+            renderChips('externalFlags', Object.values(data.external.asset_map || {}));
+            upsertChart('externalChart', data.external.charts || []);
 
-        document.getElementById('hkSubtitle').textContent = `${data.hk.risk_appetite || '-'} | 覆盖率 ${data.hk.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.hk.freshness?.last_update)}`;
-        document.getElementById('hkScore').textContent = data.hk.hk_liquidity_score ?? '-';
-        renderSignals('hkDrivers', data.hk.signals || []);
-        renderChips('hkFlags', [...(data.hk.flags || []), ...(data.hk.missing_keys || [])]);
-        upsertChart('hkChart', data.hk.charts || []);
+            document.getElementById('hkSubtitle').textContent = `${data.hk.risk_appetite || '-'} | 覆盖率 ${data.hk.coverage_ratio ?? '-'}% | 更新 ${formatDate(data.hk.freshness?.last_update)}`;
+            document.getElementById('hkScore').textContent = data.hk.hk_liquidity_score ?? '-';
+            renderSignals('hkDrivers', data.hk.signals || []);
+            renderChips('hkFlags', [...(data.hk.flags || []), ...(data.hk.missing_keys || [])]);
+            upsertChart('hkChart', data.hk.charts || []);
 
-        renderPizza(data.pizza || {});
-        renderThesis(data.sectors || {});
-        renderPolicy(data.policy || {});
-        renderMemory(data.memory || {});
-        renderGaps(data.gaps || {});
-        renderPipeline(data.pipeline || {});
+            renderPizza(data.pizza || {});
+            renderThesis(data.sectors || {});
+            renderPolicy(data.policy || {});
+            renderMemory(data.memory || {});
+            renderGaps(data.gaps || {});
+            renderPipeline(data.pipeline || {});
+        } catch (error) {
+            document.getElementById('heroRegime').textContent = 'Radar 暂不可用';
+            document.getElementById('heroSummary').textContent = error?.message || '无法读取雷达概览。';
+            renderChips('heroFlags', ['api_error']);
+        }
     }
 
     loadRadar();

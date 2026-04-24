@@ -56,6 +56,12 @@ def _display(value: Optional[float], unit: str = "", digits: int = 2, signed: bo
 def _json_loads(value: Any, fallback: Any) -> Any:
     if value in (None, ""):
         return fallback
+    if isinstance(value, (list, dict)):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return fallback
 
 
 def _parse_any_datetime(value: Any) -> Optional[datetime]:
@@ -92,12 +98,6 @@ def _is_duckdb_lock_error(exc: Exception) -> bool:
         or "File is already open in" in text
         or "无法访问" in text
     )
-    if isinstance(value, (list, dict)):
-        return value
-    try:
-        return json.loads(value)
-    except Exception:
-        return fallback
 
 
 REQUIRED_INDICATORS: List[Dict[str, Any]] = [
@@ -209,6 +209,8 @@ class RadarService:
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = Path(db_path or RADAR_DB_PATH)
         self.parquet_dir = PARQUET_DIR
+        self.snapshot_dir = self.db_path.parent / "cache"
+        self.overview_snapshot_path = self.snapshot_dir / "overview.json"
         self.intelligence = IntelligenceService()
         self.memory = ObsidianMemoryService()
         self._overview_cache: Optional[Dict[str, Any]] = None
@@ -218,6 +220,7 @@ class RadarService:
     def ensure_schema(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.parquet_dir.mkdir(parents=True, exist_ok=True)
+        self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         try:
             RadarStore(db_path=str(self.db_path), parquet_dir=str(self.parquet_dir)).ensure_schema()
             with duckdb.connect(str(self.db_path)) as conn:
@@ -268,6 +271,46 @@ class RadarService:
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
         return duckdb.connect(str(self.db_path), read_only=True)
+
+    def _load_overview_snapshot(self) -> Optional[Dict[str, Any]]:
+        path = self.overview_snapshot_path
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        meta = dict(payload.get("meta") or {})
+        meta.update(
+            {
+                "served_from": "snapshot",
+                "snapshot_path": str(path),
+                "snapshot_mtime": datetime.fromtimestamp(path.stat().st_mtime).replace(microsecond=0).isoformat(),
+            }
+        )
+        payload["meta"] = meta
+        return payload
+
+    def _write_overview_snapshot(self, payload: Dict[str, Any]) -> None:
+        self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+        meta = dict(payload.get("meta") or {})
+        meta.update(
+            {
+                "served_from": "live",
+                "snapshot_path": str(self.overview_snapshot_path),
+                "snapshot_written_at": datetime.now().replace(microsecond=0).isoformat(),
+            }
+        )
+        snapshot_payload = dict(payload)
+        snapshot_payload["meta"] = meta
+        tmp_path = self.overview_snapshot_path.with_suffix(".json.tmp")
+        tmp_path.write_text(
+            json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp_path.replace(self.overview_snapshot_path)
 
     def _table_columns(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> List[str]:
         if not self._table_exists(conn, table_name):
@@ -1135,62 +1178,87 @@ class RadarService:
             and (datetime.now() - self._overview_cache_at).total_seconds() < 300
         ):
             return self._overview_cache
-        macro = self._get_macro_panel()
-        external = self._get_external_panel()
-        hk = self._get_hk_panel()
-        sectors = self._get_sector_panel()
-        policy = self._get_policy_panel()
-        pizza = self._get_pizza_panel()
-        gaps = self._get_gaps()
-        memory = self._get_memory_panel()
-        runs = self._recent_runs(limit=12)
-        pipeline = self._get_pipeline_panel(runs)
-        overall_confidence = round(
-            (
-                sectors.get("thesis_confidence", 0.5)
-                + macro.get("score", 50) / 100.0
-                + external.get("external_risk_score", 50) / 100.0
-                + hk.get("hk_liquidity_score", 50) / 100.0
+        if not force_refresh:
+            snapshot_payload = self._load_overview_snapshot()
+            if snapshot_payload:
+                self._overview_cache = snapshot_payload
+                self._overview_cache_at = datetime.now()
+                return snapshot_payload
+        try:
+            macro = self._get_macro_panel()
+            external = self._get_external_panel()
+            hk = self._get_hk_panel()
+            sectors = self._get_sector_panel()
+            policy = self._get_policy_panel()
+            pizza = self._get_pizza_panel()
+            gaps = self._get_gaps()
+            memory = self._get_memory_panel()
+            runs = self._recent_runs(limit=12)
+            pipeline = self._get_pipeline_panel(runs)
+            overall_confidence = round(
+                (
+                    sectors.get("thesis_confidence", 0.5)
+                    + macro.get("score", 50) / 100.0
+                    + external.get("external_risk_score", 50) / 100.0
+                    + hk.get("hk_liquidity_score", 50) / 100.0
+                )
+                / 4.0,
+                2,
             )
-            / 4.0,
-            2,
-        )
-        payload = {
-            "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-            "db_path": str(self.db_path),
-            "summary": {
-                "macro_regime": macro.get("macro_regime"),
-                "external_risk_score": external.get("external_risk_score"),
-                "hk_liquidity_score": hk.get("hk_liquidity_score"),
-                "sector_preposition_score": sectors.get("sector_preposition_score"),
-                "thesis_confidence": overall_confidence,
-                "missing_indicators": gaps.get("summary", {}).get("missing_total", 0),
-                "data_coverage": round(
-                    (
-                        (macro.get("coverage_ratio") or 0)
-                        + (external.get("coverage_ratio") or 0)
-                        + (hk.get("coverage_ratio") or 0)
-                    )
-                    / 3.0,
-                    1,
-                ),
-                "last_data_sync": pipeline.get("last_sync_at"),
-                "pipeline_failures_24h": pipeline.get("failure_24h"),
-            },
-            "macro": macro,
-            "external": external,
-            "hk": hk,
-            "sectors": sectors,
-            "policy": policy,
-            "pizza": pizza,
-            "gaps": gaps,
-            "memory": memory,
-            "pipeline": pipeline,
-            "recent_source_runs": runs,
-        }
-        self._overview_cache = payload
-        self._overview_cache_at = datetime.now()
-        return payload
+            payload = {
+                "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+                "db_path": str(self.db_path),
+                "meta": {
+                    "served_from": "live",
+                    "snapshot_path": str(self.overview_snapshot_path),
+                },
+                "summary": {
+                    "macro_regime": macro.get("macro_regime"),
+                    "external_risk_score": external.get("external_risk_score"),
+                    "hk_liquidity_score": hk.get("hk_liquidity_score"),
+                    "sector_preposition_score": sectors.get("sector_preposition_score"),
+                    "thesis_confidence": overall_confidence,
+                    "missing_indicators": gaps.get("summary", {}).get("missing_total", 0),
+                    "data_coverage": round(
+                        (
+                            (macro.get("coverage_ratio") or 0)
+                            + (external.get("coverage_ratio") or 0)
+                            + (hk.get("coverage_ratio") or 0)
+                        )
+                        / 3.0,
+                        1,
+                    ),
+                    "last_data_sync": pipeline.get("last_sync_at"),
+                    "pipeline_failures_24h": pipeline.get("failure_24h"),
+                },
+                "macro": macro,
+                "external": external,
+                "hk": hk,
+                "sectors": sectors,
+                "policy": policy,
+                "pizza": pizza,
+                "gaps": gaps,
+                "memory": memory,
+                "pipeline": pipeline,
+                "recent_source_runs": runs,
+            }
+            self._overview_cache = payload
+            self._overview_cache_at = datetime.now()
+            self._write_overview_snapshot(payload)
+            return payload
+        except Exception as exc:
+            if not force_refresh or _is_duckdb_lock_error(exc):
+                snapshot_payload = self._load_overview_snapshot()
+                if snapshot_payload:
+                    meta = dict(snapshot_payload.get("meta") or {})
+                    meta["served_from"] = "snapshot_fallback"
+                    snapshot_payload["meta"] = meta
+                    self._overview_cache = snapshot_payload
+                    self._overview_cache_at = datetime.now()
+                    return snapshot_payload
+            if self._overview_cache is not None:
+                return self._overview_cache
+            raise
 
     def get_indicator_series(self, indicator_key: str, limit: int = 60) -> Dict[str, Any]:
         return {
