@@ -23,6 +23,8 @@ $arguments = @(
     "--no-access-log"
 )
 
+$env:RADAR_SNAPSHOT_ONLY = "1"
+
 Start-Process `
     -FilePath $pythonExe `
     -WorkingDirectory $repoRoot `

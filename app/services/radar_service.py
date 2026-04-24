@@ -211,11 +211,17 @@ class RadarService:
         self.parquet_dir = PARQUET_DIR
         self.snapshot_dir = self.db_path.parent / "cache"
         self.overview_snapshot_path = self.snapshot_dir / "overview.json"
+        self.snapshot_only = str(os.getenv("RADAR_SNAPSHOT_ONLY", "")).strip().lower() in {"1", "true", "yes", "on"}
         self.intelligence = IntelligenceService()
         self.memory = ObsidianMemoryService()
         self._overview_cache: Optional[Dict[str, Any]] = None
         self._overview_cache_at: Optional[datetime] = None
-        self.ensure_schema()
+        if self.snapshot_only:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.parquet_dir.mkdir(parents=True, exist_ok=True)
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self.ensure_schema()
 
     def ensure_schema(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1171,6 +1177,18 @@ class RadarService:
         }
 
     def get_overview(self, force_refresh: bool = False) -> Dict[str, Any]:
+        if self.snapshot_only:
+            snapshot_payload = self._load_overview_snapshot()
+            if snapshot_payload:
+                meta = dict(snapshot_payload.get("meta") or {})
+                meta["served_from"] = "snapshot_only"
+                snapshot_payload["meta"] = meta
+                self._overview_cache = snapshot_payload
+                self._overview_cache_at = datetime.now()
+                return snapshot_payload
+            if self._overview_cache is not None:
+                return self._overview_cache
+            raise RuntimeError(f"Radar snapshot is not available: {self.overview_snapshot_path}")
         if (
             not force_refresh
             and self._overview_cache is not None
