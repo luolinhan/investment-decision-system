@@ -22,7 +22,6 @@ from app.utils.regime import compute_regime
 from app.services.public_research import PublicResearchService
 from app.services.coding_plan_service import CodingPlanService
 from app.services.strategy_planning_service import StrategyPlanningService
-from app.services.sector_service import get_sector_service
 from app.services.north_flow_service import get_north_flow_service
 from quant_workbench.service import QuantWorkbenchService
 from quant_workbench.sync import QuantWorkbenchSync
@@ -946,17 +945,6 @@ async def get_hk_indices():
     return {"data": data}
 
 
-@router.get("/api/hk/repurchase")
-async def get_hk_repurchase(days: int = 30):
-    """港股回购统计 (DB优先 + API降级)"""
-    db = get_db_service()
-    data = db.get_hk_repurchase_latest(days)
-    if not data:
-        service = get_investment_service()
-        data = service.get_hk_repurchase_stats(days)
-    return {"total": len(data), "data": data}
-
-
 @router.get("/api/hk/history/{symbol}")
 async def get_hk_history(symbol: str, days: int = 365):
     """港股历史行情"""
@@ -1341,153 +1329,6 @@ async def get_sector_overview():
         "tmt_count": len(db.get_tmt_metrics()),
         "biotech_count": len(db.get_biotech_pipeline()),
         "consumer_count": len(db.get_consumer_metrics())
-    }
-
-
-# ==================== 板块/行业模块 ====================
-
-@router.get("/api/sector/overview")
-async def get_sector_overview():
-    """获取行业板块总览 — 涨跌幅排行"""
-    service = get_sector_service()
-    sectors = service.get_sector_list()
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "total": len(sectors),
-        "sectors": sectors,
-    }
-
-
-@router.get("/api/sector/list")
-async def get_sector_list():
-    """获取行业板块列表（别名，同 overview）"""
-    return await get_sector_overview()
-
-
-@router.get("/api/sector/flow")
-async def get_sector_fund_flow(indicator: str = "今日"):
-    """获取行业板块资金流向 - 前端字段名适配"""
-    service = get_sector_service()
-    flow = service.get_sector_fund_flow(indicator=indicator)
-    # 如果资金流数据为空，使用板块列表作为降级（用涨跌幅代替资金流方向）
-    if not flow:
-        sector_list = service.get_sector_list()
-        for s in sector_list:
-            flow.append({
-                "sector_name": s.get("sector_name", ""),
-                "change_pct": s.get("change_pct", 0),
-                "main_net_inflow": None,
-                "main_outflow": None,
-                "net_inflow": None,
-                "company_count": s.get("rise_count", 0) + (s.get("fall_count", 0) or 0),
-                "top_stock": s.get("lead_stock", ""),
-                "top_stock_pct": s.get("lead_stock_pct"),
-            })
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "list": flow,
-    }
-
-
-@router.get("/api/sector/rotation")
-async def get_sector_rotation():
-    """获取板块轮动信号 - 前端字段名适配"""
-    service = get_sector_service()
-    signal = service.get_sector_rotation_signal()
-    # 字段名适配：前端期望 hot_sectors, cold_sectors, net_inflow
-    top_gainers = signal.get("top_gainers", []) or []
-    top_inflow = signal.get("top_inflow", []) or []
-
-    # 计算冷门板块 (涨跌幅最低的)
-    all_sectors = service.get_sector_list()
-    by_change_asc = sorted(all_sectors, key=lambda x: x.get("change_pct") or 0)[:5]
-
-    # 计算净流入
-    net_inflow = 0
-    for s in top_gainers:
-        net_inflow += (s.get("turnover") or 0) * 0.01  # 粗略估算
-
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "hot_sectors": [
-            {"name": s.get("sector_name", ""), "change_pct": s.get("change_pct", 0)}
-            for s in top_gainers[:5]
-        ],
-        "cold_sectors": [
-            {"name": s.get("sector_name", ""), "change_pct": s.get("change_pct", 0)}
-            for s in by_change_asc[:3]
-        ],
-        "net_inflow": net_inflow,
-    }
-
-
-@router.get("/api/sector/heatmap")
-async def get_sector_heatmap():
-    """获取板块热力图数据 - 前端字段名适配"""
-    service = get_sector_service()
-    heatmap = service.get_sector_heatmap()
-    # 字段名适配：前端期望 name 而非 sector_name
-    sectors = []
-    for s in heatmap:
-        sectors.append({
-            "name": s.get("sector_name", ""),
-            "change_pct": s.get("change_pct", 0),
-            "turnover": s.get("turnover") or 0,
-            "volume": s.get("volume") or 0,
-            "rise_count": s.get("rise_count", 0),
-            "fall_count": s.get("fall_count", 0),
-            "lead_stock": s.get("lead_stock", ""),
-        })
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "sectors": sectors,
-    }
-
-
-@router.get("/api/sector/{sector_name}/stocks")
-async def get_sector_stocks(sector_name: str):
-    """获取某行业板块下的成分股 - 前端字段名适配"""
-    service = get_sector_service()
-    stocks = service.get_sector_stocks(sector_name)
-    # 字段名适配：前端期望 code, name, price, change_pct, turnover, net_flow
-    adapted = []
-    for s in stocks:
-        adapted.append({
-            "code": s.get("stock_code", ""),
-            "name": s.get("stock_name", ""),
-            "price": s.get("price"),
-            "change_pct": s.get("change_pct", 0),
-            "turnover": s.get("turnover") or 0,
-            "net_flow": 0,  # 板块内个股资金流需单独查询，暂设为0
-        })
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "sector_name": sector_name,
-        "total": len(adapted),
-        "stocks": adapted,
-    }
-
-
-@router.get("/api/sector/{sector_name}/leader")
-async def get_sector_leader(sector_name: str):
-    """获取板块龙头股"""
-    service = get_sector_service()
-    leader = service.get_sector_leader(sector_name)
-    return {
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
-        "sector": sector_name,
-        "leader": leader,
-    }
-
-
-@router.post("/api/sector/refresh")
-async def refresh_sector_data():
-    """强制刷新板块数据并保存到本地"""
-    service = get_sector_service()
-    service.save_sector_data()
-    return {
-        "ok": True,
-        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
     }
 
 

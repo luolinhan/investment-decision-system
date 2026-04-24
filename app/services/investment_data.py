@@ -1698,36 +1698,6 @@ class InvestmentDataService:
                 print(f"港股指数 {symbol} 获取失败: {exc}")
         return result
 
-    def get_hk_repurchase_stats(self, days: int = 30) -> List[Dict[str, Any]]:
-        """
-        港股回购统计（重要信号）
-        """
-        try:
-            df = ak.stock_hk_repurchase_em()
-            if df is None or df.empty:
-                return []
-            df = df.head(days)
-            # 按公司聚合
-            company_stats = {}
-            for _, row in df.iterrows():
-                name = str(row.get("公司名称", ""))
-                if name not in company_stats:
-                    company_stats[name] = {
-                        "name": name,
-                        "code": str(row.get("代码", "")),
-                        "total_amount": 0,
-                        "count": 0,
-                    }
-                company_stats[name]["total_amount"] += self._safe_float(row.get("回购金额")) or 0
-                company_stats[name]["count"] += 1
-
-            result = sorted(company_stats.values(), key=lambda x: x["total_amount"], reverse=True)
-            return result[:30]
-        except Exception as exc:
-            print(f"港股回购数据获取失败: {exc}")
-            return []
-
-
 if __name__ == "__main__":
     service = InvestmentDataService()
     overview = service.get_market_overview(force_refresh=True)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-同步港股数据: 热榜、指数日线、回购
+同步港股数据: 热榜、指数日线
 
 数据源: akshare stock_hk_spot (Sina), stock_hk_index_spot_sina (Sina)
 注意: eastmoney API 在阿里云 Windows 上被网络策略阻断，改用 Sina 数据源
@@ -99,10 +99,6 @@ def main():
             print(f"  [OK] HK Indices: {added} records")
     except Exception as e:
         print(f"  HK Indices FAIL: {e}")
-
-    # 3. HK Repurchase — no direct Sina source, skip gracefully
-    # stock_hk_repurchase_em() uses eastmoney which is blocked
-    print("  HK Repurchase: skipped (Sina source not available)")
 
     conn.close()
     print("\n[OK] HK Stocks sync done")

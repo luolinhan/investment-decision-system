@@ -1776,27 +1776,6 @@ class InvestmentDataService:
         finally:
             conn.close()
 
-    def get_hk_repurchase_latest(self, days: int = 30) -> List[Dict]:
-        """获取最新港股回购数据"""
-        conn = self._get_db()
-        c = conn.cursor()
-        try:
-            c.execute("""
-                SELECT code, name, repurchase_amount, trade_date
-                FROM hk_repurchase
-                ORDER BY trade_date DESC LIMIT 500
-            """)
-            result = []
-            for r in c.fetchall():
-                result.append({
-                    "code": r[0], "name": r[1],
-                    "repurchase_amount": r[2], "date": r[3],
-                })
-            return result
-        finally:
-            conn.close()
-
-
 # 测试
 if __name__ == "__main__":
     service = InvestmentDataService()
