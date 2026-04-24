@@ -1324,6 +1324,7 @@ class InvestmentDataService:
     def _fetch_oil_radar(self, days: int = 180):
         """Oil price from local commodity_prices table."""
         history = []
+        invalid_count = 0
         try:
             import sqlite3 as _sql
             conn = _sql.connect("data/investment.db")
@@ -1334,11 +1335,41 @@ class InvestmentDataService:
                 (days,),
             ).fetchall()
             conn.close()
-            history = [{"date": r[0], "value": round(float(r[1]), 2)} for r in reversed(rows) if r[1]]
+            for trade_date, raw_price in reversed(rows):
+                if raw_price is None:
+                    continue
+                try:
+                    price = float(raw_price)
+                except Exception:
+                    invalid_count += 1
+                    continue
+                # Crude oil in CNY/bbl should not be negative or far above 900 in
+                # normal market data. Values outside this range usually mean the
+                # upstream field is an adjustment amount or a different unit.
+                if not 150 <= price <= 900:
+                    invalid_count += 1
+                    continue
+                history.append({"date": trade_date, "value": round(price, 2)})
         except Exception as exc:
             print(f"Oil history failed: {exc}")
         payload = self._build_series_summary(history, source="sqlite:commodity_prices", unit="CNY/bbl")
         payload.update(self._classify_oil(payload.get("latest")))
+        if invalid_count:
+            payload["invalid_count"] = invalid_count
+            payload["quality_warning"] = "oil values outside sane CNY/bbl range were excluded"
+        if not history:
+            payload["zone"] = "unavailable"
+            payload["commentary"] = "油价字段当前不可用，已从综合风险评分中排除"
+        else:
+            try:
+                as_of = datetime.strptime(str(payload.get("as_of")), "%Y-%m-%d")
+                if (datetime.now() - as_of).days > 21:
+                    payload["raw_latest"] = payload.get("latest")
+                    payload["latest"] = None
+                    payload["zone"] = "stale"
+                    payload["commentary"] = "油价数据已超过21天未更新，已从综合风险评分中排除"
+            except Exception:
+                pass
         return payload
 
     def _fetch_yield_spread_radar(self, days: int = 180):
@@ -1362,8 +1393,29 @@ class InvestmentDataService:
         return payload
 
     def _fetch_dxy_radar(self, days: int = 180):
-        """US Dollar Index via yfinance."""
+        """US Dollar Index, preferring local DB snapshots over yfinance."""
         history = []
+        source = "sqlite:us_treasury_history"
+        try:
+            import sqlite3 as _sql
+            conn = _sql.connect("data/investment.db")
+            c = conn.cursor()
+            rows = c.execute(
+                "SELECT trade_date, dxy FROM us_treasury_history "
+                "WHERE dxy IS NOT NULL AND dxy BETWEEN 70 AND 130 "
+                "ORDER BY trade_date DESC LIMIT ?",
+                (days,),
+            ).fetchall()
+            conn.close()
+            history = [{"date": r[0], "value": round(float(r[1]), 2)} for r in reversed(rows) if r[1] is not None]
+        except Exception as exc:
+            print(f"DXY sqlite fallback failed: {exc}")
+
+        if history:
+            payload = self._build_series_summary(history, source=source, unit="")
+            payload.update(self._classify_dxy(payload.get("latest")))
+            return payload
+
         try:
             import yfinance as yf
             df = yf.download("DX-Y.NYB", period=f"{min(days, 365)}d", progress=False)
@@ -1374,10 +1426,14 @@ class InvestmentDataService:
                     except Exception:
                         cv = float(row["Close"])
                     history.append({"date": date_idx.strftime("%Y-%m-%d"), "value": round(cv, 2)})
+                source = "yahoo:DX-Y.NYB"
         except Exception as exc:
             print(f"DXY failed: {exc}")
-        payload = self._build_series_summary(history, source="yahoo:DX-Y.NYB", unit="")
+        payload = self._build_series_summary(history, source=source, unit="")
         payload.update(self._classify_dxy(payload.get("latest")))
+        if not history:
+            payload["zone"] = "unavailable"
+            payload["commentary"] = "美元指数暂不可用，已从综合风险评分中排除"
         return payload
 
     def _classify_gold(self, value):

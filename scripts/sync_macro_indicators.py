@@ -10,6 +10,7 @@ import re
 import sqlite3
 import sys
 import os
+import json
 from datetime import datetime
 
 os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
@@ -62,21 +63,37 @@ def parse_chinese_date(raw):
     return str(raw)[:10]
 
 
+def parse_float(val):
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def main():
     print("=" * 60)
     print(f"Macro Indicators Sync - {datetime.now()}")
     print("=" * 60)
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=60)
+    conn.execute("PRAGMA busy_timeout=60000")
     ensure_table(conn)
+    metrics = {"records_processed": 0, "records_failed": 0, "records_skipped": 0}
 
     # 1. China PMI
     try:
         df = ak.macro_china_pmi()
         if df is not None and not df.empty:
             print(f"  PMI: {len(df)} records, columns={list(df.columns)}")
-            row = df.iloc[-1]
-            date = parse_chinese_date(str(row.iloc[0]))
+            work = df.copy()
+            first_col = work.columns[0]
+            work["_parsed_date"] = work[first_col].map(lambda v: parse_chinese_date(str(v)))
+            work = work[work["_parsed_date"].astype(str).str.match(r"^\d{4}-\d{2}-\d{2}$", na=False)]
+            work = work.sort_values("_parsed_date")
+            if work.empty:
+                raise ValueError("no parseable PMI date rows")
+            row = work.iloc[-1]
+            date = row["_parsed_date"]
 
             # Column structure: [月份, 制造业-指数, 制造业-同比增减, 非制造业-指数, 非制造业-同比增减]
             # PMI = col[1], NMI = col[3]
@@ -84,35 +101,43 @@ def main():
             nmi_val = None
             if len(df.columns) > 1:
                 col1 = df.columns[1]
-                try:
-                    pmi_val = float(row[col1]) if row[col1] is not None else None
-                except (ValueError, TypeError):
-                    pass
+                pmi_val = parse_float(row[col1])
             if len(df.columns) > 3:
                 col3 = df.columns[3]
-                try:
-                    nmi_val = float(row[col3]) if row[col3] is not None else None
-                except (ValueError, TypeError):
-                    pass
+                nmi_val = parse_float(row[col3])
 
             if pmi_val and 20 < pmi_val < 80:  # PMI sanity check
                 upsert(conn, date, "china_manufacturing_pmi", pmi_val, "", "akshare")
+                metrics["records_processed"] += 1
                 print(f"    {date}: PMI={pmi_val}")
             else:
+                metrics["records_skipped"] += 1
                 print(f"    [WARN] PMI value {pmi_val} out of range, skipped")
 
             if nmi_val and 20 < nmi_val < 80:  # NMI sanity check
                 upsert(conn, date, "china_non_manufacturing_pmi", nmi_val, "", "akshare")
+                metrics["records_processed"] += 1
                 print(f"    {date}: NMI={nmi_val}")
             elif nmi_val:
+                metrics["records_skipped"] += 1
                 print(f"    [WARN] NMI value {nmi_val} out of range, skipped")
 
+            conn.execute("""
+                DELETE FROM macro_indicators
+                WHERE indicator_name IN ('china_manufacturing_pmi', 'china_non_manufacturing_pmi')
+                  AND (value IS NULL OR value <= 20 OR value >= 80 OR trade_date NOT GLOB '????-??-??')
+            """)
+            deleted = conn.total_changes
             conn.commit()
     except Exception as e:
+        metrics["records_failed"] += 1
         print(f"  PMI FAIL: {e}")
 
     conn.close()
     print("\n[OK] Macro indicators sync done")
+    print("ETL_METRICS_JSON=" + json.dumps(metrics, ensure_ascii=False))
+    if metrics["records_processed"] == 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
