@@ -4,8 +4,10 @@
 Data coverage:
   China macro: M1, M2, TSF, CPI, PPI, FAI, RE investment, industrial VA, FDI
   Global: US2Y, US10Y, 2s10s spread, DXY, Gold, VIX, USD/CNH
+  US monetary policy: Fed Funds Effective Rate, 10Y Breakeven inflation
 
-Uses akshare for China macro, yfinance for global prices/rates.
+Uses akshare for China macro, akshare bond_zh_us_rate for US Treasury yields,
+FRED CSV for Fed Funds / breakeven, yfinance for global prices/rates.
 Failing items are logged in source_runs and catalog notes — never fabricated.
 
 Run:
@@ -92,6 +94,53 @@ def _fetch_yfinance(ticker: str, period: str = "2y", interval: str = "1d") -> Op
         return df
     except Exception as e:
         logger.warning("[FAIL] yfinance %s: %s", ticker, e)
+        return None
+
+
+def _fetch_fred_series(series_id: str) -> Optional[pd.DataFrame]:
+    """Fetch a FRED series via CSV download. Requires proxy for external access."""
+    try:
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            text = resp.read().decode()
+        df = pd.read_csv(pd.StringIO(text), parse_dates=["observation_date"])
+        if df.empty:
+            logger.info("[EMPTY] FRED %s returned empty", series_id)
+            return None
+        df.columns = ["obs_date", "value"]
+        df["obs_date"] = df["obs_date"].astype(str).str[:10]
+        df["value"] = pd.to_numeric(df["value"], errors="coerce")
+        df = df.dropna(subset=["value"])
+        return df if not df.empty else None
+    except Exception as e:
+        logger.warning("[FAIL] FRED %s: %s", series_id, e)
+        return None
+
+
+def _fetch_akshare_us_rates() -> Optional[pd.DataFrame]:
+    """Fetch US Treasury yields via akshare bond_zh_us_rate."""
+    try:
+        import akshare as ak
+        df = ak.bond_zh_us_rate()
+        if df is None or df.empty:
+            logger.info("[EMPTY] akshare.bond_zh_us_rate returned empty")
+            return None
+        # Rename to simpler columns
+        df = df.rename(columns={
+            "日期": "obs_date",
+            "美国国债收益率2年": "us_2y",
+            "美国国债收益率10年": "us_10y",
+            "美国国债收益率10年-2年": "us_10s_2s",
+        })
+        df["obs_date"] = df["obs_date"].astype(str)
+        for col in ["us_2y", "us_10y", "us_10s_2s"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df
+    except Exception as e:
+        logger.warning("[FAIL] akshare.bond_zh_us_rate: %s", e)
         return None
 
 
@@ -500,60 +549,98 @@ def collect_cn_fdi(store: RadarStore) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def collect_global_rates_fx(store: RadarStore) -> Dict[str, Any]:
-    """Collect US rates, DXY, USD/CNH via yfinance."""
+    """Collect US rates (akshare primary, FRED/yfinance fallback), DXY, USD/CNH."""
     started = _now_utc()
     rows_read = 0
     rows_upserted = 0
     error = None
     try:
         obs_rows: List[Dict[str, Any]] = []
+        us_2y_dict: Dict[str, float] = {}
+        us_10y_dict: Dict[str, float] = {}
 
-        # US 10Y yield
-        us10y = _fetch_yfinance("^TNX", period="2y")
-        if us10y is not None:
-            for idx, row in us10y.iterrows():
-                val = _safe_float(row.get("Close"))
-                if val is not None:
-                    obs_rows.append({
-                        "indicator_code": "US_10Y_YIELD",
-                        "obs_date": str(idx)[:10],
-                        "value": val,
-                        "unit": "pct",
-                        "source": "yfinance:^TNX",
-                        "quality_flag": "good",
-                    })
-            rows_read += len(us10y)
-
-        # US 2Y yield (try multiple tickers)
-        us2y = _fetch_yfinance("^IRX", period="2y")  # ^IRX is 13-week, try ^TYX for 30Y
-        if us2y is None:
-            us2y = _fetch_yfinance("US2Y=T", period="2y")
-        if us2y is None:
-            us2y = _fetch_yfinance("^TU2Y", period="2y")
-        if us2y is not None:
-            for idx, row in us2y.iterrows():
-                val = _safe_float(row.get("Close"))
-                if val is not None:
+        # --- US 2Y and 10Y yields: akshare bond_zh_us_rate primary ---
+        ak_us = _fetch_akshare_us_rates()
+        ak_success = False
+        if ak_us is not None and "us_2y" in ak_us.columns and "us_10y" in ak_us.columns:
+            for _, row in ak_us.iterrows():
+                date_str = str(row["obs_date"])[:10]
+                v2 = _safe_float(row.get("us_2y"))
+                v10 = _safe_float(row.get("us_10y"))
+                if v2 is not None:
+                    us_2y_dict[date_str] = v2
                     obs_rows.append({
                         "indicator_code": "US_2Y_YIELD",
-                        "obs_date": str(idx)[:10],
-                        "value": val,
+                        "obs_date": date_str,
+                        "value": v2,
                         "unit": "pct",
-                        "source": "yfinance:^IRX",
+                        "source": "akshare:bond_zh_us_rate",
                         "quality_flag": "good",
                     })
-            rows_read += len(us2y)
+                if v10 is not None:
+                    us_10y_dict[date_str] = v10
+                    obs_rows.append({
+                        "indicator_code": "US_10Y_YIELD",
+                        "obs_date": date_str,
+                        "value": v10,
+                        "unit": "pct",
+                        "source": "akshare:bond_zh_us_rate",
+                        "quality_flag": "good",
+                    })
+            rows_read += len(ak_us)
+            ak_success = True
 
-        # Derive 2s10s spread
-        if obs_rows:
-            us10y_data = {r["obs_date"]: r["value"] for r in obs_rows if r["indicator_code"] == "US_10Y_YIELD"}
-            us2y_data = {r["obs_date"]: r["value"] for r in obs_rows if r["indicator_code"] == "US_2Y_YIELD"}
-            common = set(us10y_data.keys()) & set(us2y_data.keys())
+        # Fallback: FRED CSV for missing dates or if akshare failed
+        if not ak_success or len(us_10y_dict) == 0:
+            for fred_id, code in [("DGS2", "US_2Y_YIELD"), ("DGS10", "US_10Y_YIELD")]:
+                target = us_2y_dict if code == "US_2Y_YIELD" else us_10y_dict
+                fred_df = _fetch_fred_series(fred_id)
+                if fred_df is not None:
+                    for _, row in fred_df.iterrows():
+                        d = str(row["obs_date"])
+                        v = _safe_float(row["value"])
+                        if v is not None and d not in target:
+                            target[d] = v
+                            obs_rows.append({
+                                "indicator_code": code,
+                                "obs_date": d,
+                                "value": v,
+                                "unit": "pct",
+                                "source": f"fred:{fred_id}",
+                                "quality_flag": "good",
+                            })
+                    rows_read += len(fred_df)
+
+        # Last fallback: yfinance
+        if len(us_10y_dict) == 0:
+            for yf_ticker, code in [("^TNX", "US_10Y_YIELD"), ("^IRX", "US_2Y_YIELD")]:
+                target = us_2y_dict if code == "US_2Y_YIELD" else us_10y_dict
+                yf_df = _fetch_yfinance(yf_ticker, period="2y")
+                if yf_df is not None:
+                    for idx, row in yf_df.iterrows():
+                        v = _safe_float(row.get("Close"))
+                        if v is not None:
+                            d = str(idx)[:10]
+                            if d not in target:
+                                target[d] = v
+                                obs_rows.append({
+                                    "indicator_code": code,
+                                    "obs_date": d,
+                                    "value": v,
+                                    "unit": "pct",
+                                    "source": f"yfinance:{yf_ticker}",
+                                    "quality_flag": "good",
+                                })
+                    rows_read += len(yf_df)
+
+        # Derive 2s10s spread from whatever we have
+        if us_10y_dict and us_2y_dict:
+            common = set(us_10y_dict.keys()) & set(us_2y_dict.keys())
             for d in sorted(common):
                 obs_rows.append({
                     "indicator_code": "US_2S10S",
                     "obs_date": d,
-                    "value": round(us10y_data[d] - us2y_data[d], 4),
+                    "value": round(us_10y_dict[d] - us_2y_dict[d], 4),
                     "unit": "pct",
                     "source": "derived",
                     "quality_flag": "good",
@@ -626,6 +713,63 @@ def collect_global_rates_fx(store: RadarStore) -> Dict[str, Any]:
             "started_at": started, "finished_at": _now_utc(), "status": "failed",
             "rows_read": rows_read, "rows_upserted": rows_upserted,
             "error_message": error, "notes": f"Rates/FX sync failed: {error}",
+        }
+
+
+def collect_us_monetary_policy(store: RadarStore) -> Dict[str, Any]:
+    """Collect Fed Funds Effective Rate and 10Y Breakeven from FRED."""
+    started = _now_utc()
+    rows_read = 0
+    rows_upserted = 0
+    error = None
+    try:
+        obs_rows: List[Dict[str, Any]] = []
+
+        # Fed Funds Effective Rate
+        dff_df = _fetch_fred_series("DFF")
+        if dff_df is not None:
+            for _, row in dff_df.iterrows():
+                obs_rows.append({
+                    "indicator_code": "FED_FUNDS_EFFECTIVE",
+                    "obs_date": str(row["obs_date"]),
+                    "value": _safe_float(row["value"]),
+                    "unit": "pct",
+                    "source": "fred:DFF",
+                    "quality_flag": "good",
+                })
+            rows_read += len(dff_df)
+
+        # 10Y Breakeven Inflation
+        be_df = _fetch_fred_series("T10YIE")
+        if be_df is not None:
+            for _, row in be_df.iterrows():
+                obs_rows.append({
+                    "indicator_code": "US_10Y_BREAKEVEN",
+                    "obs_date": str(row["obs_date"]),
+                    "value": _safe_float(row["value"]),
+                    "unit": "pct",
+                    "source": "fred:T10YIE",
+                    "quality_flag": "good",
+                })
+            rows_read += len(be_df)
+
+        if obs_rows:
+            rows_upserted = store.upsert_indicator_observations(obs_rows)
+        _update_catalog_ts(store, ["FED_FUNDS_EFFECTIVE", "US_10Y_BREAKEVEN"])
+
+        return {
+            "started_at": started, "finished_at": _now_utc(), "status": "success",
+            "rows_read": rows_read, "rows_upserted": rows_upserted,
+            "error_message": None,
+            "notes": f"Monetary policy: {rows_upserted} obs from {rows_read} rows",
+        }
+    except Exception as e:
+        error = str(e)
+        logger.exception("collect_us_monetary_policy failed")
+        return {
+            "started_at": started, "finished_at": _now_utc(), "status": "failed",
+            "rows_read": rows_read, "rows_upserted": rows_upserted,
+            "error_message": error, "notes": f"Monetary policy sync failed: {error}",
         }
 
 
@@ -771,6 +915,7 @@ COLLECTORS = [
     ("China: Fixed-Asset Investment", collect_cn_investment),
     ("China: FDI", collect_cn_fdi),
     ("Global: Rates & FX", collect_global_rates_fx),
+    ("Global: US Monetary Policy", collect_us_monetary_policy),
     ("Global: Commodities & VIX", collect_global_commodities_volatility),
 ]
 
