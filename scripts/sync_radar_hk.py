@@ -90,7 +90,11 @@ def ensure_radar_db():
             )
         """)
 
-        visitor_cols = {row[1] for row in con.execute("PRAGMA table_info('hk_visitor_arrivals')").fetchall()}
+        try:
+            visitor_info = con.execute("PRAGMA table_info('hk_visitor_arrivals')").fetchall()
+        except Exception:
+            visitor_info = []
+        visitor_cols = {row[1] for row in visitor_info}
         if visitor_cols and "date" not in visitor_cols:
             con.execute("ALTER TABLE hk_visitor_arrivals RENAME TO hk_visitor_arrivals_legacy")
 
