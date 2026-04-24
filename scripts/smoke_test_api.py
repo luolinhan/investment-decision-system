@@ -52,6 +52,11 @@ TESTS = [
         "assert": lambda p: bool(p.get("summary")) or p.get("status") == "building",
     },
     {
+        "name": "intelligence hub",
+        "path": "/investment/api/intelligence/hub",
+        "assert": lambda p: (p.get("summary") or {}).get("enabled_sources", 0) >= 1,
+    },
+    {
         "name": "decision center",
         "path": "/investment/api/decision-center",
         "assert": lambda p: bool(p.get("regime") or p.get("decision_matrix") or p.get("macro_regime")),

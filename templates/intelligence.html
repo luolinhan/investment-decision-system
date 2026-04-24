@@ -1,0 +1,662 @@
+{% extends "base.html" %}
+
+{% block title %}情报雷达 - 研报中心{% endblock %}
+
+{% block extra_css %}
+<style>
+    .intel-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.25rem;
+    }
+
+    .intel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .intel-title-group h2 {
+        font-size: 1.65rem;
+        line-height: 1.15;
+        letter-spacing: 0;
+        margin-bottom: 0.35rem;
+    }
+
+    .intel-title-group p {
+        color: var(--text-secondary);
+        max-width: 760px;
+        line-height: 1.7;
+        font-size: 0.92rem;
+    }
+
+    .sync-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        background: rgba(15, 23, 42, 0.68);
+        border-radius: 0.5rem;
+        padding: 0.55rem 0.75rem;
+        font-size: 0.78rem;
+        white-space: nowrap;
+    }
+
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.85rem;
+    }
+
+    .metric-box {
+        border: 1px solid var(--border-color);
+        background: rgba(15, 23, 42, 0.72);
+        border-radius: 0.625rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .metric-label {
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .metric-value {
+        font-family: var(--font-mono);
+        font-size: 1.35rem;
+        font-weight: 700;
+    }
+
+    .intel-main-grid {
+        display: grid;
+        grid-template-columns: minmax(360px, 0.92fr) minmax(0, 1.35fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .panel {
+        border: 1px solid var(--border-color);
+        background: rgba(15, 23, 42, 0.72);
+        border-radius: 0.625rem;
+        overflow: hidden;
+    }
+
+    .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.95rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .panel-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-btn {
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        border-radius: 0.45rem;
+        padding: 0.45rem 0.65rem;
+        font-size: 0.78rem;
+        cursor: pointer;
+    }
+
+    .filter-btn.active,
+    .filter-btn:hover {
+        color: var(--accent-cyan);
+        border-color: var(--border-glow);
+        background: var(--accent-cyan-dim);
+    }
+
+    .event-list {
+        display: flex;
+        flex-direction: column;
+        max-height: 720px;
+        overflow: auto;
+    }
+
+    .event-row {
+        border: 0;
+        border-bottom: 1px solid var(--border-color);
+        background: transparent;
+        color: inherit;
+        padding: 1rem;
+        text-align: left;
+        cursor: pointer;
+        transition: var(--transition-fast);
+    }
+
+    .event-row:hover,
+    .event-row.active {
+        background: rgba(56, 189, 248, 0.08);
+    }
+
+    .event-topline {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .priority-badge {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        border-radius: 0.4rem;
+        padding: 0.18rem 0.42rem;
+        border: 1px solid var(--border-color);
+    }
+
+    .priority-P0 { color: var(--accent-red); border-color: rgba(239, 68, 68, 0.45); }
+    .priority-P1 { color: var(--accent-gold); border-color: rgba(251, 191, 36, 0.45); }
+    .priority-P2 { color: var(--accent-cyan); border-color: rgba(56, 189, 248, 0.35); }
+
+    .event-title {
+        font-size: 0.96rem;
+        font-weight: 700;
+        line-height: 1.45;
+        margin-bottom: 0.4rem;
+    }
+
+    .event-summary {
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        line-height: 1.55;
+    }
+
+    .event-meta {
+        display: flex;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        margin-top: 0.7rem;
+    }
+
+    .detail-body {
+        padding: 1.1rem;
+    }
+
+    .detail-kicker {
+        color: var(--accent-cyan);
+        font-size: 0.76rem;
+        font-family: var(--font-mono);
+        margin-bottom: 0.65rem;
+    }
+
+    .detail-title {
+        font-size: 1.35rem;
+        line-height: 1.35;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0;
+    }
+
+    .detail-summary {
+        color: var(--text-secondary);
+        line-height: 1.7;
+        margin-bottom: 1rem;
+    }
+
+    .impact-box {
+        border-left: 3px solid var(--accent-cyan);
+        background: rgba(56, 189, 248, 0.08);
+        padding: 0.85rem 1rem;
+        color: var(--text-primary);
+        line-height: 1.65;
+        border-radius: 0.4rem;
+        margin-bottom: 1rem;
+    }
+
+    .section-label {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 1rem 0 0.55rem;
+    }
+
+    .fact-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .fact-table th,
+    .fact-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 0.55rem 0.45rem;
+        vertical-align: top;
+        font-size: 0.82rem;
+    }
+
+    .fact-table th {
+        text-align: left;
+        color: var(--text-muted);
+        font-weight: 600;
+        width: 28%;
+    }
+
+    .entity-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+    }
+
+    .entity-pill {
+        display: inline-flex;
+        gap: 0.35rem;
+        align-items: center;
+        border: 1px solid var(--border-color);
+        border-radius: 0.45rem;
+        padding: 0.38rem 0.55rem;
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+    }
+
+    .lower-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 1rem;
+    }
+
+    .research-list,
+    .source-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .research-row,
+    .source-row {
+        padding: 0.95rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .research-row:last-child,
+    .source-row:last-child {
+        border-bottom: 0;
+    }
+
+    .research-title {
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-decoration: none;
+        line-height: 1.45;
+    }
+
+    .research-title:hover {
+        color: var(--accent-cyan);
+    }
+
+    .research-thesis {
+        color: var(--text-secondary);
+        line-height: 1.55;
+        margin-top: 0.4rem;
+        font-size: 0.8rem;
+    }
+
+    .source-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .source-name {
+        font-size: 0.86rem;
+        font-weight: 650;
+    }
+
+    .source-status {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 0.35rem;
+    }
+
+    .health-dot {
+        width: 0.55rem;
+        height: 0.55rem;
+        border-radius: 50%;
+        background: var(--accent-green);
+        flex: 0 0 auto;
+    }
+
+    .health-dot.warn { background: var(--accent-gold); }
+    .empty-state {
+        padding: 2rem 1rem;
+        color: var(--text-muted);
+        text-align: center;
+        line-height: 1.7;
+    }
+
+    @media (max-width: 1180px) {
+        .metric-strip,
+        .intel-main-grid,
+        .lower-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 760px) {
+        .intel-header {
+            flex-direction: column;
+        }
+        .metric-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .event-list {
+            max-height: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="intel-shell">
+    <header class="intel-header">
+        <div class="intel-title-group">
+            <h2>重大事项情报雷达</h2>
+            <p>持续探听官方文档、模型仓库、可信媒体和研究材料，先形成事件档案，再映射到 A/H 风险偏好、行业链条和后续验证点。</p>
+        </div>
+        <div class="sync-chip">
+            <i class="bi bi-database-check"></i>
+            <span id="lastRunLabel">读取中</span>
+        </div>
+    </header>
+
+    <section class="metric-strip">
+        <div class="metric-box">
+            <div class="metric-label">活跃事件</div>
+            <div class="metric-value" id="metricEvents">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">P0 事件</div>
+            <div class="metric-value" id="metricP0">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">P1 事件</div>
+            <div class="metric-value" id="metricP1">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">深度材料</div>
+            <div class="metric-value" id="metricResearch">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">启用信息源</div>
+            <div class="metric-value" id="metricSources">-</div>
+        </div>
+    </section>
+
+    <section class="intel-main-grid">
+        <div class="panel">
+            <div class="panel-head">
+                <div class="panel-title">事件队列</div>
+                <div class="filter-row" id="priorityFilters">
+                    <button class="filter-btn active" data-priority="">全部</button>
+                    <button class="filter-btn" data-priority="P0">P0</button>
+                    <button class="filter-btn" data-priority="P1">P1</button>
+                    <button class="filter-btn" data-priority="P2">P2</button>
+                </div>
+            </div>
+            <div class="event-list" id="eventList">
+                <div class="empty-state">正在读取事件库...</div>
+            </div>
+        </div>
+
+        <article class="panel" id="eventDetail">
+            <div class="empty-state">选择左侧事件查看事实基础、影响链和验证点。</div>
+        </article>
+    </section>
+
+    <section class="lower-grid">
+        <div class="panel">
+            <div class="panel-head">
+                <div class="panel-title">研报与深度材料</div>
+                <a class="filter-btn" href="/reports">研究证据库</a>
+            </div>
+            <div class="research-list" id="researchList">
+                <div class="empty-state">暂无深度材料。</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">
+                <div class="panel-title">信息源健康</div>
+                <span class="filter-btn">只读入库</span>
+            </div>
+            <div class="source-list" id="sourceList">
+                <div class="empty-state">正在读取信息源状态...</div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPriority = '';
+    let currentEvents = [];
+
+    function shortDate(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+        return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function externalLink(url, text) {
+        if (!url) return '';
+        return `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" class="research-title">${escapeHtml(text || '来源')}</a>`;
+    }
+
+    function renderMetrics(payload) {
+        const summary = payload.summary || {};
+        document.getElementById('metricEvents').textContent = summary.active_events ?? 0;
+        document.getElementById('metricP0').textContent = summary.p0_events ?? 0;
+        document.getElementById('metricP1').textContent = summary.p1_events ?? 0;
+        document.getElementById('metricResearch').textContent = summary.research_reports ?? 0;
+        document.getElementById('metricSources').textContent = summary.enabled_sources ?? 0;
+
+        const run = payload.last_run || {};
+        const label = run.finished_at
+            ? `最近探听 ${shortDate(run.finished_at)} · ${run.status || '-'}`
+            : '等待首次探听';
+        document.getElementById('lastRunLabel').textContent = label;
+    }
+
+    function renderEvents(events) {
+        currentEvents = events || [];
+        const box = document.getElementById('eventList');
+        if (!currentEvents.length) {
+            box.innerHTML = '<div class="empty-state">暂无已入库事件。采集器会继续探听官方源和模型仓库。</div>';
+            document.getElementById('eventDetail').innerHTML = '<div class="empty-state">等待事件入库。</div>';
+            return;
+        }
+        box.innerHTML = currentEvents.map((event, index) => `
+            <button class="event-row ${index === 0 ? 'active' : ''}" data-event-key="${escapeHtml(event.event_key)}">
+                <div class="event-topline">
+                    <span class="priority-badge priority-${escapeHtml(event.priority)}">${escapeHtml(event.priority)}</span>
+                    <span>${escapeHtml(event.category)}</span>
+                </div>
+                <div class="event-title">${escapeHtml(event.title_zh || event.title)}</div>
+                <div class="event-summary">${escapeHtml(event.summary_zh || event.summary || '')}</div>
+                <div class="event-meta">
+                    <span>${escapeHtml(event.verification_status || 'watching')}</span>
+                    <span>${shortDate(event.event_time || event.last_seen_at)}</span>
+                    <span>${Number(event.impact_score || 0).toFixed(0)} impact</span>
+                    <span>${event.source_count || 0} sources</span>
+                </div>
+            </button>
+        `).join('');
+
+        box.querySelectorAll('.event-row').forEach(row => {
+            row.addEventListener('click', () => {
+                box.querySelectorAll('.event-row').forEach(item => item.classList.remove('active'));
+                row.classList.add('active');
+                loadEventDetail(row.dataset.eventKey);
+            });
+        });
+        loadEventDetail(currentEvents[0].event_key);
+    }
+
+    async function loadEventDetail(eventKey) {
+        const detail = document.getElementById('eventDetail');
+        detail.innerHTML = '<div class="empty-state">正在读取事件档案...</div>';
+        try {
+            const event = await api(`/investment/api/intelligence/events/${encodeURIComponent(eventKey)}`);
+            const facts = event.facts || [];
+            const entities = event.entities || [];
+            const updates = event.updates || [];
+            detail.innerHTML = `
+                <div class="panel-head">
+                    <div class="panel-title">事件档案</div>
+                    ${externalLink(event.primary_source_url, '主来源')}
+                </div>
+                <div class="detail-body">
+                    <div class="detail-kicker">${escapeHtml(event.priority)} · ${escapeHtml(event.verification_status || '')} · ${shortDate(event.event_time || event.last_seen_at)}</div>
+                    <h3 class="detail-title">${escapeHtml(event.title_zh || event.title)}</h3>
+                    <div class="detail-summary">${escapeHtml(event.summary_zh || event.summary || '')}</div>
+                    <div class="impact-box">${escapeHtml(event.impact_summary || '暂无影响链。')}</div>
+
+                    <div class="section-label">事实基础</div>
+                    ${facts.length ? `
+                        <table class="fact-table">
+                            <tbody>
+                                ${facts.map(fact => `
+                                    <tr>
+                                        <th>${escapeHtml(fact.label)}</th>
+                                        <td>
+                                            ${escapeHtml(fact.value)} ${fact.unit ? `<span style="color: var(--text-muted);">${escapeHtml(fact.unit)}</span>` : ''}
+                                            ${fact.source_count > 1 ? `<span style="color: var(--text-muted); margin-left: 0.45rem;">${fact.source_count} sources</span>` : ''}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : '<div class="empty-state">暂无结构化事实。</div>'}
+
+                    <div class="section-label">实体与影响链</div>
+                    <div class="entity-pills">
+                        ${entities.map(entity => `
+                            <span class="entity-pill">
+                                <span>${escapeHtml(entity.entity_type || 'entity')}</span>
+                                <strong>${escapeHtml(entity.name)}</strong>
+                                ${entity.role ? `<span>${escapeHtml(entity.role)}</span>` : ''}
+                            </span>
+                        `).join('') || '<span class="entity-pill">等待映射</span>'}
+                    </div>
+
+                    <div class="section-label">后续更新</div>
+                    ${updates.slice(0, 8).map(update => `
+                        <div class="research-row">
+                            ${externalLink(update.url, update.title || update.source_key)}
+                            <div class="research-thesis">${escapeHtml(update.summary || '')}</div>
+                            <div class="event-meta"><span>${escapeHtml(update.source_key || '')}</span><span>${shortDate(update.published_at || update.created_at)}</span></div>
+                        </div>
+                    `).join('') || '<div class="empty-state">暂无更新记录。</div>'}
+                </div>
+            `;
+        } catch (error) {
+            detail.innerHTML = `<div class="empty-state">事件档案读取失败：${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    function renderResearch(rows) {
+        const box = document.getElementById('researchList');
+        if (!rows || !rows.length) {
+            box.innerHTML = '<div class="empty-state">暂无研报或深度材料。</div>';
+            return;
+        }
+        box.innerHTML = rows.map(item => `
+            <div class="research-row">
+                ${externalLink(item.url, item.title_zh || item.title)}
+                <div class="research-thesis">${escapeHtml(item.thesis || item.summary || '')}</div>
+                <div class="event-meta">
+                    <span>${escapeHtml(item.report_type || 'research')}</span>
+                    <span>${escapeHtml(item.source_name || item.source_key || '')}</span>
+                    <span>${shortDate(item.published_at || item.fetched_at)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderSources(rows) {
+        const box = document.getElementById('sourceList');
+        if (!rows || !rows.length) {
+            box.innerHTML = '<div class="empty-state">暂无信息源注册。</div>';
+            return;
+        }
+        box.innerHTML = rows.map(source => {
+            const ok = source.last_success_at && !source.last_error;
+            const dotClass = ok ? '' : 'warn';
+            return `
+                <div class="source-row">
+                    <div class="source-top">
+                        <div class="source-name">${escapeHtml(source.name)}</div>
+                        <span class="health-dot ${dotClass}"></span>
+                    </div>
+                    <div class="source-status">
+                        ${escapeHtml(source.source_type)} · ${escapeHtml(source.credibility)} · ${source.cadence_minutes || '-'} min
+                    </div>
+                    <div class="source-status">
+                        success ${shortDate(source.last_success_at)} · checked ${shortDate(source.last_checked_at)}
+                    </div>
+                    ${source.last_error ? `<div class="source-status">error ${escapeHtml(source.last_error)}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function loadHub() {
+        try {
+            const url = currentPriority
+                ? `/investment/api/intelligence/events?limit=80&priority=${encodeURIComponent(currentPriority)}`
+                : '/investment/api/intelligence/events?limit=80';
+            const [overview, eventsPayload, researchPayload, sourcesPayload] = await Promise.all([
+                api('/investment/api/intelligence/hub'),
+                api(url),
+                api('/investment/api/intelligence/research?limit=12'),
+                api('/investment/api/intelligence/sources')
+            ]);
+            renderMetrics(overview);
+            renderEvents(eventsPayload.data || []);
+            renderResearch(researchPayload.data || []);
+            renderSources(sourcesPayload.data || []);
+        } catch (error) {
+            showToast(`情报雷达读取失败：${error.message}`, 'error');
+            document.getElementById('eventList').innerHTML = `<div class="empty-state">读取失败：${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    document.getElementById('priorityFilters').addEventListener('click', (event) => {
+        const button = event.target.closest('.filter-btn');
+        if (!button) return;
+        document.querySelectorAll('#priorityFilters .filter-btn').forEach(item => item.classList.remove('active'));
+        button.classList.add('active');
+        currentPriority = button.dataset.priority || '';
+        loadHub();
+    });
+
+    document.addEventListener('DOMContentLoaded', loadHub);
+</script>
+{% endblock %}

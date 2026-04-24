@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_investment_runtime_profile, settings
 from app.db import get_sqlite_connection
 from app.services.financial_news import FinancialNewsService
+from app.services.intelligence_service import IntelligenceService
 from app.services.investment_data import InvestmentDataService
 from app.services.investment_db_service import InvestmentDataService as DbService
 from app.utils.regime import compute_regime
@@ -39,6 +40,7 @@ _workbench_service = None
 _public_research_service = None
 _strategy_planner = None
 _coding_plan_service = None
+_intelligence_service = None
 _runtime_refresh_lock = threading.Lock()
 _runtime_refresh_state: Dict[str, Any] = {
     "running": False,
@@ -251,6 +253,13 @@ def get_coding_plan_service():
     return _coding_plan_service
 
 
+def get_intelligence_service():
+    global _intelligence_service
+    if _intelligence_service is None:
+        _intelligence_service = IntelligenceService()
+    return _intelligence_service
+
+
 def _summarize_workbench(opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
     grade_counts = {"A": 0, "B": 0, "C": 0}
     total_score = 0.0
@@ -286,6 +295,12 @@ def normalize_index_keys(indices: Dict) -> Dict:
 async def investment_dashboard(request: Request):
     """投资决策仪表板页面"""
     return templates.TemplateResponse("investment.html", {"request": request})
+
+
+@router.get("/intelligence", response_class=HTMLResponse)
+async def intelligence_hub_page(request: Request):
+    """重大事项情报雷达页面。"""
+    return templates.TemplateResponse("intelligence.html", {"request": request})
 
 
 @router.get("/api/overview")
@@ -756,6 +771,44 @@ async def intelligence_brief_refresh(force_refresh: bool = True):
     """强制刷新百炼增强情报。"""
     service = get_coding_plan_service()
     return service.generate_daily_brief(force_refresh=force_refresh, persist=True)
+
+
+@router.get("/api/intelligence/hub")
+async def intelligence_hub_overview():
+    """获取重大事项情报雷达概览。"""
+    service = get_intelligence_service()
+    return service.get_overview()
+
+
+@router.get("/api/intelligence/events")
+async def intelligence_events(limit: int = 50, priority: str = None, category: str = None):
+    """获取已入库的重大事项。"""
+    service = get_intelligence_service()
+    return {"data": service.list_events(limit=limit, priority=priority, category=category)}
+
+
+@router.get("/api/intelligence/events/{event_key}")
+async def intelligence_event_detail(event_key: str):
+    """获取事件档案。"""
+    service = get_intelligence_service()
+    payload = service.get_event(event_key)
+    if not payload:
+        raise HTTPException(status_code=404, detail="event not found")
+    return payload
+
+
+@router.get("/api/intelligence/research")
+async def intelligence_research(limit: int = 50):
+    """获取研报和深度材料库。"""
+    service = get_intelligence_service()
+    return {"data": service.list_research(limit=limit)}
+
+
+@router.get("/api/intelligence/sources")
+async def intelligence_sources():
+    """获取情报源健康状态。"""
+    service = get_intelligence_service()
+    return {"data": service.list_sources()}
 
 
 @router.post("/api/runtime/minute-refresh")

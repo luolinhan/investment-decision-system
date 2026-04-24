@@ -658,9 +658,13 @@
         <nav>
             <div class="nav-section">
                 <div class="nav-section-title">决策</div>
-                <a class="nav-link {% if '/investment' in request.url.path %}active{% endif %}" href="/investment/" style="border: 1px solid var(--border-glow);">
+                <a class="nav-link {% if request.url.path == '/investment/' %}active{% endif %}" href="/investment/" style="border: 1px solid var(--border-glow);">
                     <i class="bi bi-graph-up-arrow"></i>
                     <span>决策中枢</span>
+                </a>
+                <a class="nav-link {% if '/investment/intelligence' in request.url.path %}active{% endif %}" href="/investment/intelligence">
+                    <i class="bi bi-radar"></i>
+                    <span>情报雷达</span>
                 </a>
                 <a class="nav-link {% if '/reports' in request.url.path %}active{% endif %}" href="/reports">
                     <i class="bi bi-journal-text"></i>

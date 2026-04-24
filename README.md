@@ -6,6 +6,7 @@
 - 研报与事件催化库：研报抓取、检索、关联股票
 - 机会池与评分：质量、增长、估值、技术、确认、催化、风险、覆盖度综合评分
 - 市场状态看板：宏观、情绪、指数、流动性等参考指标聚合
+- 重大事项情报雷达：官方文档、模型仓库、可信媒体和深度材料持续探听入库，页面只读本地事件档案
 - 分钟级刷新：盘中/盘前数据更新与策略快照
 
 ## 目录结构
@@ -42,6 +43,8 @@
 - 空壳财报清理：`cleanup_empty_financials.py`
 - CSV 导入：`import_csvs_to_db.py`
 - 研报库合并：`merge_reports_db.py`
+- 重大事项探听：`scripts/sync_intelligence.py`
+- Windows 持续探听任务入口：`intelligence_probe_task.bat`
 
 ## 百炼接入
 - 配置 `BAILIAN_API_KEY` 后自动启用翻译、摘要、结构化抽取
@@ -57,11 +60,19 @@
 - `technical_indicators` 技术指标与趋势信号
 - `stock_factor_snapshot` 因子快照
 - `reports` 研报库（位于 `reports.db`）
+- `source_registry` 情报源注册和健康状态
+- `raw_documents` 原始网页、模型仓库、API 响应和深度材料
+- `intelligence_events` 重大事项主表
+- `event_facts` 结构化事实基础
+- `event_entities` 公司、产品、行业和影响链实体
+- `research_reports` 研报、system card、模型卡和官方深度材料
 
 ## API 入口
 - 健康检查：`/health`
 - 首页与仪表盘：`/investment/`
+- 情报雷达页面：`/investment/intelligence`
 - 机会池概览：`/investment/api/opportunity-pools/overview`
+- 情报雷达 API：`/investment/api/intelligence/hub`
 
 ## 常见问题
 - AkShare 接口被代理阻断时，优先清理系统代理或使用 `sync_no_proxy.bat`。
