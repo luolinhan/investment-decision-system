@@ -24,6 +24,7 @@ from app.services.public_research import PublicResearchService
 from app.services.coding_plan_service import CodingPlanService
 from app.services.strategy_planning_service import StrategyPlanningService
 from app.services.north_flow_service import get_north_flow_service
+from app.services.research_workbench_service import get_research_workbench_service
 from quant_workbench.service import QuantWorkbenchService
 from quant_workbench.sync import QuantWorkbenchSync
 
@@ -41,6 +42,7 @@ _public_research_service = None
 _strategy_planner = None
 _coding_plan_service = None
 _intelligence_service = None
+_research_workbench_service = None
 _runtime_refresh_lock = threading.Lock()
 _runtime_refresh_state: Dict[str, Any] = {
     "running": False,
@@ -258,6 +260,13 @@ def get_intelligence_service():
     if _intelligence_service is None:
         _intelligence_service = IntelligenceService()
     return _intelligence_service
+
+
+def get_research_workbench_svc():
+    global _research_workbench_service
+    if _research_workbench_service is None:
+        _research_workbench_service = get_research_workbench_service()
+    return _research_workbench_service
 
 
 def _summarize_workbench(opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1671,3 +1680,64 @@ async def get_runtime_profile(request: Request):
         "generated_at": datetime.now().replace(microsecond=0).isoformat(),
     })
     return profile
+
+
+# ==================== 研究工作台 ====================
+
+@router.get("/research", response_class=HTMLResponse)
+async def research_workbench_page(request: Request):
+    """研究工作台页面。"""
+    return templates.TemplateResponse("research_workbench.html", {"request": request})
+
+
+@router.get("/api/research/workbench")
+async def research_workbench_overview():
+    """研究工作台聚合概览。"""
+    svc = get_research_workbench_svc()
+    try:
+        return svc.get_overview()
+    except Exception as exc:
+        print(f"research_workbench_overview失败: {exc}")
+        return {"error": str(exc), "total": 0}
+
+
+@router.get("/api/research/list")
+async def research_workbench_list(
+    limit: int = 50,
+    focus_area: Optional[str] = None,
+    publisher_region: Optional[str] = None,
+    target_scope: Optional[str] = None,
+    report_type: Optional[str] = None,
+    query: Optional[str] = None,
+):
+    """研究工作台报告列表（支持筛选）。"""
+    svc = get_research_workbench_svc()
+    try:
+        items = svc.list_reports(
+            limit=limit,
+            focus_area=focus_area,
+            publisher_region=publisher_region,
+            target_scope=target_scope,
+            report_type=report_type,
+            query=query,
+        )
+        return {"total": len(items), "items": items}
+    except Exception as exc:
+        print(f"research_workbench_list失败: {exc}")
+        return {"error": str(exc), "total": 0, "items": []}
+
+
+@router.get("/api/research/{report_key}")
+async def research_workbench_detail(report_key: str):
+    """单份研究报告详情（含证据链）。"""
+    svc = get_research_workbench_svc()
+    try:
+        detail = svc.get_report_detail(report_key)
+        if not detail:
+            raise HTTPException(status_code=404, detail=f"report not found: {report_key}")
+        return detail
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"research_workbench_detail失败: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
