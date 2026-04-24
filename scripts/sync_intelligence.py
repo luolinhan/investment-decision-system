@@ -529,7 +529,16 @@ def fetch_json_list(session: requests.Session, source: Dict[str, Any]) -> List[D
                 "source_key": source["source_key"],
                 "url": html_url or f"{source['url']}#{content_hash(raw_text)[:12]}",
                 "title": title,
-                "published_at": item.get("createdAt") or item.get("created_at") or item.get("pushedAt") or item.get("updated_at") or "",
+                "published_at": (
+                    item.get("lastModified")
+                    or item.get("last_modified")
+                    or item.get("pushedAt")
+                    or item.get("pushed_at")
+                    or item.get("updated_at")
+                    or item.get("createdAt")
+                    or item.get("created_at")
+                    or ""
+                ),
                 "summary": normalize_text(item.get("description") or item.get("pipeline_tag") or title),
                 "raw_text": raw_text[:30000],
                 "metadata": {"language": "en", "content_type": "json", "raw": item},
@@ -682,6 +691,429 @@ def upsert_raw_document(conn: sqlite3.Connection, doc: Dict[str, Any]) -> Tuple[
     return int(cursor.lastrowid), True, False
 
 
+OFFICIAL_AI_SIGNAL_SOURCES = {
+    "openai_gpt55_search",
+    "anthropic_news",
+    "google_ai_blog_rss",
+    "google_deepmind_blog",
+    "meta_ai_blog",
+    "mistral_news",
+}
+
+MODEL_REPO_SIGNAL_SOURCES = {
+    "deepseek_hf_flash",
+    "huggingface_deepseek_models",
+    "huggingface_trending_models",
+    "github_deepseek_repos",
+    "github_openai_repos",
+    "github_modelcontextprotocol_repos",
+}
+
+EVENT_PROMOTION_LIMITS = {
+    "huggingface_deepseek_models": 8,
+    "github_deepseek_repos": 6,
+    "huggingface_trending_models": 6,
+    "github_openai_repos": 6,
+    "github_modelcontextprotocol_repos": 6,
+    "google_ai_blog_rss": 8,
+    "arxiv_ai_recent": 8,
+    "fda_press_rss": 8,
+}
+
+AI_SOURCE_ENTITIES = {
+    "openai_gpt55_search": "OpenAI",
+    "anthropic_news": "Anthropic",
+    "google_ai_blog_rss": "Google",
+    "google_deepmind_blog": "Google DeepMind",
+    "meta_ai_blog": "Meta AI",
+    "mistral_news": "Mistral AI",
+    "deepseek_hf_flash": "DeepSeek",
+    "huggingface_deepseek_models": "DeepSeek",
+    "github_deepseek_repos": "DeepSeek",
+    "github_openai_repos": "OpenAI",
+    "github_modelcontextprotocol_repos": "Model Context Protocol",
+}
+
+OFFICIAL_AI_TERMS = (
+    "introducing",
+    "announce",
+    "announcing",
+    "launch",
+    "release",
+    "available",
+    "general availability",
+    "new model",
+    "frontier model",
+    "reasoning model",
+    "agent",
+    "agents",
+    "inference",
+    "benchmark",
+    "claude",
+    "gemini",
+    "llama",
+    "mistral",
+    "gpt",
+    "deepseek",
+    "grok",
+    "alphafold",
+    "alphago",
+    "vertex ai",
+    "cloud tpu",
+    "data center",
+)
+
+REPO_SIGNAL_TERMS = (
+    "deepseek",
+    "gpt",
+    "openai",
+    "qwen",
+    "llama",
+    "mistral",
+    "gemma",
+    "phi",
+    "claude",
+    "gemini",
+    "reasoning",
+    "agent",
+    "agents",
+    "inference",
+    "multimodal",
+    "vision",
+    "audio",
+    "vl",
+    "v4",
+    "r1",
+    "moe",
+    "diffusion",
+    "embedding",
+    "reranker",
+    "mcp",
+    "codex",
+    "eval",
+    "sdk",
+    "server",
+)
+
+RESEARCH_SIGNAL_TERMS = (
+    "large language model",
+    "llm",
+    "reasoning",
+    "agent",
+    "agents",
+    "inference",
+    "benchmark",
+    "multimodal",
+    "diffusion",
+    "reinforcement learning",
+    "transformer",
+    "mixture of experts",
+    "gpu",
+)
+
+FDA_SIGNAL_TERMS = (
+    "fda approves",
+    "approval",
+    "approves",
+    "authorizes",
+    "clearance",
+    "clinical",
+    "drug",
+    "therapy",
+    "biologics",
+    "vaccine",
+)
+
+GENERIC_NOISE_TERMS = (
+    "privacy policy",
+    "terms of use",
+    "careers",
+    "cookie",
+    "press kit",
+    "newsletter",
+    "podcast",
+)
+
+
+def source_meta_for_key(source_key: str) -> Dict[str, Any]:
+    for source in SOURCES:
+        if source["source_key"] == source_key:
+            return source
+    return {"source_key": source_key, "name": source_key, "category": "intelligence", "source_type": "unknown"}
+
+
+def compact_event_slug(value: str, max_len: int = 72) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
+    slug = slug[:max_len].strip("_")
+    return slug or content_hash(value)[:12]
+
+
+def contains_any(text: str, terms: Iterable[str]) -> bool:
+    return any(term in text for term in terms)
+
+
+def generic_event_key(category: str, source_key: str, title: str, url: str) -> str:
+    return f"{category}_{source_key}_{compact_event_slug(title)}_{content_hash(url or title)[:8]}"
+
+
+def clean_doc_summary(doc: Dict[str, Any], title: str, max_len: int = 520) -> str:
+    summary = normalize_text(doc.get("summary") or "")
+    if not summary or summary == title:
+        summary = normalize_text(doc.get("raw_text") or "")[:max_len]
+    return summary[:max_len] if summary else title
+
+
+def metadata_raw(doc: Dict[str, Any]) -> Dict[str, Any]:
+    raw = (doc.get("metadata") or {}).get("raw") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def repository_metric_facts(doc: Dict[str, Any], start_order: int) -> List[Tuple[str, str, str, str, str, str, int, float]]:
+    raw = metadata_raw(doc)
+    facts: List[Tuple[str, str, str, str, str, str, int, float]] = []
+    metric_candidates = [
+        ("stars", "Stars", "星标数", raw.get("stargazers_count")),
+        ("forks", "Forks", "Fork 数", raw.get("forks_count")),
+        ("likes", "Likes", "点赞数", raw.get("likes")),
+        ("downloads", "Downloads", "下载量", raw.get("downloads")),
+        ("pipeline", "Pipeline", "模型任务", raw.get("pipeline_tag")),
+    ]
+    order = start_order
+    for fact_type, label, label_zh, value in metric_candidates:
+        if value is None or value == "":
+            continue
+        facts.append((fact_type, label, label_zh, str(value), str(value), "", order, 0.58))
+        order += 1
+    return facts
+
+
+def material_repo_signal(source_key: str, lower: str, title: str) -> bool:
+    title_lower = title.lower()
+    if source_key == "huggingface_deepseek_models":
+        return contains_any(title_lower, ("v4", "v3.2", "r1", "ocr", "prover", "math", "vl", "coder", "moe"))
+    if source_key == "github_deepseek_repos":
+        return contains_any(
+            title_lower,
+            ("v4", "v3", "r1", "ocr", "vl", "coder", "moe", "deepgemm", "deepep", "flashmla", "tilekernels", "3fs"),
+        )
+    if source_key == "huggingface_trending_models":
+        return contains_any(
+            title_lower,
+            ("deepseek", "qwen", "llama", "mistral", "gemma", "phi", "whisper", "stable-diffusion", "flux", "gpt", "vl"),
+        )
+    if source_key == "github_openai_repos":
+        return contains_any(
+            title_lower,
+            ("codex", "agents", "gpt", "eval", "openai-python", "openai-node", "realtime", "responses", "skills"),
+        )
+    if source_key == "github_modelcontextprotocol_repos":
+        return contains_any(
+            title_lower,
+            ("sdk", "servers", "inspector", "registry", "specification", "conformance", "experimental", "auth"),
+        )
+    return contains_any(lower, REPO_SIGNAL_TERMS)
+
+
+def generic_signal_event_payload(doc: Dict[str, Any], title: str, text: str, lower: str) -> Optional[Dict[str, Any]]:
+    source_key = doc.get("source_key") or ""
+    source = source_meta_for_key(source_key)
+    source_name = source.get("name") or source_key
+    url = doc.get("url") or ""
+    event_time = doc.get("published_at") or now_iso()
+    summary = clean_doc_summary(doc, title)
+
+    has_specific_signal = contains_any(lower, OFFICIAL_AI_TERMS + REPO_SIGNAL_TERMS + RESEARCH_SIGNAL_TERMS)
+    if contains_any(lower, GENERIC_NOISE_TERMS) and not has_specific_signal:
+        return None
+
+    if source_key in OFFICIAL_AI_SIGNAL_SOURCES and contains_any(lower, OFFICIAL_AI_TERMS):
+        company = AI_SOURCE_ENTITIES.get(source_key, source_name)
+        return {
+            "event_key": generic_event_key("ai_official", source_key, title, url),
+            "title": f"{company} official AI signal: {title}",
+            "title_zh": f"{company} 官方 AI 信号：{title}",
+            "category": "ai_model",
+            "priority": "P1",
+            "confidence": 0.68,
+            "event_time": event_time,
+            "summary": summary,
+            "summary_zh": f"官方源出现 AI 模型、产品或基础设施相关信号：{summary}",
+            "impact_summary": (
+                "Treat as a pre-confirmation signal for the AI cycle. Verify model capability, availability, pricing, "
+                "developer adoption and A/H supply-chain read-through before raising exposure."
+            ),
+            "impact_summary_zh": "作为 AI 周期预确认信号处理，后续验证模型能力、可用性、定价、开发者采用和 A/H 供应链映射。",
+            "impact_score": 68,
+            "verification_status": "official_signal",
+            "facts": [
+                ("source", "Source", "来源", source_name, source_name, "", 1, 0.85),
+                ("signal", "Signal title", "信号标题", title, title, "", 2, 0.72),
+                ("time", "Published or updated", "发布或更新时间", event_time, event_time, "", 3, 0.56),
+                (
+                    "market",
+                    "A/H watch chain",
+                    "A/H 观察链条",
+                    "AI applications, cloud, servers, optical modules, PCB, memory, edge devices",
+                    "AI 应用、云、服务器、光模块、PCB、存储、端侧设备",
+                    "",
+                    4,
+                    0.64,
+                ),
+            ],
+            "entities": [
+                ("company", company, "", "", "issuer", 0.82),
+                ("sector", "AI infrastructure", "", "A/H", "impact_chain", 0.72),
+                ("sector", "AI applications", "", "A/H", "impact_chain", 0.66),
+            ],
+            "research": {
+                "report_type": "official_signal",
+                "thesis": "Official AI updates can reprice model-cycle expectations; track follow-on benchmark, API, pricing and capex evidence.",
+                "thesis_zh": "官方 AI 更新可能重估模型周期预期，后续跟踪 benchmark、API、定价和资本开支证据。",
+                "relevance": "AI models, cloud, semiconductors, server supply chain, software applications",
+                "relevance_zh": "AI 模型、云、半导体、服务器供应链、软件应用",
+            },
+        }
+
+    if source_key in MODEL_REPO_SIGNAL_SOURCES and material_repo_signal(source_key, lower, title):
+        company = AI_SOURCE_ENTITIES.get(source_key, "AI ecosystem")
+        facts = [
+            ("source", "Source", "来源", source_name, source_name, "", 1, 0.72),
+            ("repo", "Repository/model", "仓库或模型", title, title, "", 2, 0.7),
+            ("time", "Created or updated", "创建或更新时间", event_time, event_time, "", 3, 0.52),
+            (
+                "market",
+                "Validation path",
+                "验证路径",
+                "watch downloads, stars, API references, inference cost and downstream app integration",
+                "跟踪下载、星标、API 引用、推理成本和下游应用集成",
+                "",
+                4,
+                0.58,
+            ),
+        ]
+        facts.extend(repository_metric_facts(doc, 5))
+        return {
+            "event_key": generic_event_key("ai_repo", source_key, title, url),
+            "title": f"AI repository signal: {title}",
+            "title_zh": f"AI 仓库信号：{title}",
+            "category": "ai_tooling" if "mcp" in lower or "sdk" in lower or "codex" in lower else "ai_model",
+            "priority": "P2",
+            "confidence": 0.52,
+            "event_time": event_time,
+            "summary": summary,
+            "summary_zh": f"模型或代码仓库出现更新信号：{summary}",
+            "impact_summary": (
+                "Repository activity is an early but noisy adoption signal. Promote only after official announcement, benchmark, "
+                "download, API or downstream order evidence improves."
+            ),
+            "impact_summary_zh": "仓库活跃度是早期但噪声较高的采用信号，需结合官方公告、benchmark、下载、API 或下游订单证据再升级。",
+            "impact_score": 52,
+            "verification_status": "repo_signal",
+            "facts": facts,
+            "entities": [
+                ("company", company, "", "", "maintainer", 0.7),
+                ("platform", "GitHub" if "github" in source_key else "Hugging Face", "", "global", "distribution", 0.66),
+                ("sector", "AI developer ecosystem", "", "global", "impact_chain", 0.62),
+            ],
+            "research": {
+                "report_type": "repo_signal",
+                "thesis": "Repository updates help detect early AI tooling and model adoption, but need external validation before becoming a trade thesis.",
+                "thesis_zh": "仓库更新可帮助发现 AI 工具和模型采用早期变化，但成为交易线索前需要外部验证。",
+                "relevance": "AI developer tools, model distribution, inference stack",
+                "relevance_zh": "AI 开发工具、模型分发、推理栈",
+            },
+        }
+
+    if source_key == "arxiv_ai_recent" and contains_any(lower, RESEARCH_SIGNAL_TERMS):
+        return {
+            "event_key": generic_event_key("ai_research", source_key, title, url),
+            "title": f"AI research signal: {title}",
+            "title_zh": f"AI 研究信号：{title}",
+            "category": "ai_research",
+            "priority": "P2",
+            "confidence": 0.42,
+            "event_time": event_time,
+            "summary": summary,
+            "summary_zh": f"arXiv 出现 AI 研究前沿信号：{summary}",
+            "impact_summary": "Use as a technology radar input, not a standalone trading signal; verify whether it enters product releases, benchmarks or capex plans.",
+            "impact_summary_zh": "作为技术雷达输入，而非独立交易信号；需验证是否进入产品发布、评测榜单或资本开支计划。",
+            "impact_score": 42,
+            "verification_status": "research_preprint",
+            "facts": [
+                ("source", "Source", "来源", source_name, source_name, "", 1, 0.66),
+                ("paper", "Paper title", "论文标题", title, title, "", 2, 0.66),
+                ("time", "Published or updated", "发布或更新时间", event_time, event_time, "", 3, 0.5),
+                (
+                    "market",
+                    "Follow-up validation",
+                    "后续验证",
+                    "model release, benchmark adoption, cloud/GPU demand, enterprise productization",
+                    "模型发布、评测采用、云/GPU 需求、企业产品化",
+                    "",
+                    4,
+                    0.48,
+                ),
+            ],
+            "entities": [
+                ("sector", "AI research", "", "global", "technology_signal", 0.7),
+                ("sector", "AI infrastructure", "", "A/H", "impact_chain", 0.5),
+            ],
+            "research": {
+                "report_type": "preprint",
+                "thesis": "Recent AI papers can foreshadow model capability shifts; keep them in the radar until product or benchmark confirmation appears.",
+                "thesis_zh": "近期 AI 论文可能提前反映模型能力变化，在产品或 benchmark 确认前作为雷达信号保留。",
+                "relevance": "AI research, model capability, compute demand",
+                "relevance_zh": "AI 研究、模型能力、算力需求",
+            },
+        }
+
+    if source_key == "fda_press_rss" and contains_any(lower, FDA_SIGNAL_TERMS):
+        is_approval = "approves" in lower or "approval" in lower or "fda approves" in lower
+        return {
+            "event_key": generic_event_key("biotech_regulatory", source_key, title, url),
+            "title": f"FDA biotech signal: {title}",
+            "title_zh": f"FDA 生物医药信号：{title}",
+            "category": "biotech",
+            "priority": "P1" if is_approval else "P2",
+            "confidence": 0.66 if is_approval else 0.48,
+            "event_time": event_time,
+            "summary": summary,
+            "summary_zh": f"FDA 监管源出现药品、疗法或临床相关信号：{summary}",
+            "impact_summary": "Map to HK/A biotech peers by indication, modality and partner pipeline; verify licensing, milestones and clinical read-through.",
+            "impact_summary_zh": "按适应症、技术路线和合作管线映射港股/A股创新药标的，后续验证 BD、里程碑和临床读出传导。",
+            "impact_score": 64 if is_approval else 48,
+            "verification_status": "regulatory_release",
+            "facts": [
+                ("source", "Source", "来源", source_name, source_name, "", 1, 0.82),
+                ("signal", "Regulatory signal", "监管信号", title, title, "", 2, 0.72),
+                ("time", "Published or updated", "发布或更新时间", event_time, event_time, "", 3, 0.54),
+                (
+                    "market",
+                    "A/H watch chain",
+                    "A/H 观察链条",
+                    "innovative drugs, CRO/CDMO, licensing, clinical catalysts",
+                    "创新药、CRO/CDMO、授权交易、临床催化",
+                    "",
+                    4,
+                    0.58,
+                ),
+            ],
+            "entities": [
+                ("regulator", "FDA", "", "US", "source", 0.92),
+                ("sector", "Biotech", "", "A/H", "impact_chain", 0.68),
+            ],
+            "research": {
+                "report_type": "regulatory_release",
+                "thesis": "FDA regulatory releases can validate modalities and indications relevant to HK/A biotech pipelines.",
+                "thesis_zh": "FDA 监管公告可验证与港股/A股创新药管线相关的技术路线和适应症。",
+                "relevance": "Biotech, innovative drugs, CRO/CDMO, licensing",
+                "relevance_zh": "生物医药、创新药、CRO/CDMO、授权交易",
+            },
+        }
+
+    return None
+
+
 def event_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     title = normalize_text(doc.get("title") or "")
     text = normalize_text(f"{title} {doc.get('url') or ''} {doc.get('summary') or ''} {doc.get('raw_text') or ''}")
@@ -767,7 +1199,7 @@ def event_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             },
         }
 
-    return None
+    return generic_signal_event_payload(doc, title, text, lower)
 
 
 def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, Any], bundle: Dict[str, Any]) -> bool:
@@ -1039,6 +1471,7 @@ def apply_documents_to_db(
     total_added_docs = 0
     total_updated_docs = 0
     total_events_added = 0
+    promoted_by_source: Dict[str, int] = {}
 
     with get_sqlite_connection(DB_PATH, timeout=60, busy_timeout=15000) as conn:
         ensure_sources(conn)
@@ -1079,6 +1512,13 @@ def apply_documents_to_db(
                     total_updated_docs += 1
                 bundle = event_payload_for_document(doc)
                 if bundle:
+                    priority = bundle.get("priority") or "P2"
+                    limit = EVENT_PROMOTION_LIMITS.get(source_key)
+                    if priority != "P0" and limit is not None:
+                        promoted = promoted_by_source.get(source_key, 0)
+                        if promoted >= limit:
+                            continue
+                        promoted_by_source[source_key] = promoted + 1
                     if upsert_event_bundle(conn, doc_id, doc, bundle):
                         total_events_added += 1
             update_source_status(conn, source_key, ok=True)
