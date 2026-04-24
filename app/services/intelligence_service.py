@@ -87,11 +87,13 @@ class IntelligenceService:
                     url TEXT NOT NULL UNIQUE,
                     canonical_url TEXT,
                     title TEXT,
+                    title_zh TEXT,
                     published_at TEXT,
                     fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     language TEXT DEFAULT 'en',
                     content_hash TEXT,
                     summary TEXT,
+                    summary_zh TEXT,
                     raw_text TEXT,
                     metadata_json TEXT,
                     status TEXT DEFAULT 'active'
@@ -112,6 +114,7 @@ class IntelligenceService:
                     summary TEXT,
                     summary_zh TEXT,
                     impact_summary TEXT,
+                    impact_summary_zh TEXT,
                     impact_score REAL DEFAULT 0,
                     verification_status TEXT DEFAULT 'watching',
                     source_count INTEGER DEFAULT 0,
@@ -124,7 +127,9 @@ class IntelligenceService:
                     event_id INTEGER NOT NULL,
                     fact_type TEXT,
                     label TEXT NOT NULL,
+                    label_zh TEXT,
                     value TEXT NOT NULL,
+                    value_zh TEXT,
                     unit TEXT,
                     source_url TEXT,
                     confidence REAL DEFAULT 0.7,
@@ -138,9 +143,11 @@ class IntelligenceService:
                     event_id INTEGER NOT NULL,
                     entity_type TEXT,
                     name TEXT NOT NULL,
+                    name_zh TEXT,
                     ticker TEXT,
                     market TEXT,
                     role TEXT,
+                    role_zh TEXT,
                     relevance_score REAL DEFAULT 0.5,
                     UNIQUE(event_id, entity_type, name, role)
                 );
@@ -172,8 +179,11 @@ class IntelligenceService:
                     fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     language TEXT DEFAULT 'en',
                     summary TEXT,
+                    summary_zh TEXT,
                     thesis TEXT,
+                    thesis_zh TEXT,
                     relevance TEXT,
+                    relevance_zh TEXT,
                     status TEXT DEFAULT 'active'
                 );
 
@@ -196,7 +206,23 @@ class IntelligenceService:
                 CREATE INDEX IF NOT EXISTS idx_research_reports_published ON research_reports(published_at);
                 """
             )
+            self._ensure_column(conn, "raw_documents", "title_zh", "TEXT")
+            self._ensure_column(conn, "raw_documents", "summary_zh", "TEXT")
+            self._ensure_column(conn, "intelligence_events", "impact_summary_zh", "TEXT")
+            self._ensure_column(conn, "event_facts", "label_zh", "TEXT")
+            self._ensure_column(conn, "event_facts", "value_zh", "TEXT")
+            self._ensure_column(conn, "event_entities", "name_zh", "TEXT")
+            self._ensure_column(conn, "event_entities", "role_zh", "TEXT")
+            self._ensure_column(conn, "research_reports", "summary_zh", "TEXT")
+            self._ensure_column(conn, "research_reports", "thesis_zh", "TEXT")
+            self._ensure_column(conn, "research_reports", "relevance_zh", "TEXT")
             conn.commit()
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, column_type: str) -> None:
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
     def get_overview(self) -> Dict[str, Any]:
         with self._connect() as conn:
@@ -272,7 +298,7 @@ class IntelligenceService:
         sql = f"""
             SELECT event_key, title, title_zh, category, priority, confidence,
                    first_seen_at, last_seen_at, event_time, summary, summary_zh,
-                   impact_summary, impact_score, verification_status, source_count,
+                   impact_summary, impact_summary_zh, impact_score, verification_status, source_count,
                    primary_source_url
             FROM intelligence_events
             WHERE {' AND '.join(clauses)}
@@ -302,7 +328,7 @@ class IntelligenceService:
             fact_rows = self._rows_to_dicts(
                 conn.execute(
                     """
-                    SELECT fact_type, label, value, unit, source_url, confidence, sort_order
+                    SELECT fact_type, label, label_zh, value, value_zh, unit, source_url, confidence, sort_order
                     FROM event_facts
                     WHERE event_id = ?
                     ORDER BY sort_order ASC, id ASC
@@ -330,7 +356,7 @@ class IntelligenceService:
             event["entities"] = self._rows_to_dicts(
                 conn.execute(
                     """
-                    SELECT entity_type, name, ticker, market, role, relevance_score
+                    SELECT entity_type, name, name_zh, ticker, market, role, role_zh, relevance_score
                     FROM event_entities
                     WHERE event_id = ?
                     ORDER BY relevance_score DESC, id ASC
@@ -353,7 +379,7 @@ class IntelligenceService:
                 conn.execute(
                     """
                     SELECT report_key, title, title_zh, source_name, url, report_type,
-                           published_at, summary, thesis, relevance
+                           published_at, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh
                     FROM research_reports
                     WHERE status = 'active'
                       AND (
@@ -377,7 +403,7 @@ class IntelligenceService:
                     """
                     SELECT report_key, title, title_zh, source_name, source_key, url,
                            report_type, published_at, fetched_at, language, summary,
-                           thesis, relevance
+                           summary_zh, thesis, thesis_zh, relevance, relevance_zh
                     FROM research_reports
                     WHERE status = 'active'
                     ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC

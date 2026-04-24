@@ -6,7 +6,7 @@
 - 研报与事件催化库：研报抓取、检索、关联股票
 - 机会池与评分：质量、增长、估值、技术、确认、催化、风险、覆盖度综合评分
 - 市场状态看板：宏观、情绪、指数、流动性等参考指标聚合
-- 重大事项情报雷达：官方文档、模型仓库、可信媒体和深度材料持续探听入库，页面只读本地事件档案
+- 重大事项情报雷达：官方文档、模型仓库、可信媒体和深度材料持续探听入库，页面只读本地事件档案，并提供中英双语展示
 - 分钟级刷新：盘中/盘前数据更新与策略快照
 
 ## 目录结构
@@ -44,7 +44,9 @@
 - CSV 导入：`import_csvs_to_db.py`
 - 研报库合并：`merge_reports_db.py`
 - 重大事项探听：`scripts/sync_intelligence.py`
+- 重大事项翻译：`scripts/translate_intelligence.py`
 - Windows 持续探听任务入口：`intelligence_probe_task.bat`
+- 阿里云海外采集回灌入口：`intelligence_aliyun_probe_task.bat`
 
 ## 百炼接入
 - 配置 `BAILIAN_API_KEY` 后自动启用翻译、摘要、结构化抽取
@@ -52,6 +54,7 @@
 - 配置项（在 `.env` 或 `.env.local` 中设置）：
   - `BAILIAN_API_KEY`: 百炼 API 密钥
   - `BAILIAN_BASE_URL`: API 基础 URL（默认 `https://coding.dashscope.aliyuncs.com/v1`）
+  - `BAILIAN_MODEL`: 翻译/结构化模型（默认 `qwen3-coder-plus`）
 
 ## 核心数据表
 - `stock_pool_constituents` 核心池成分

@@ -171,6 +171,13 @@
         margin-bottom: 0.4rem;
     }
 
+    .en-line {
+        color: var(--text-muted);
+        font-size: 0.76rem;
+        line-height: 1.45;
+        margin-top: 0.15rem;
+    }
+
     .event-summary {
         color: var(--text-secondary);
         font-size: 0.82rem;
@@ -208,6 +215,14 @@
         color: var(--text-secondary);
         line-height: 1.7;
         margin-bottom: 1rem;
+    }
+
+    .detail-summary-en {
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin-top: -0.5rem;
+        margin-bottom: 1rem;
+        font-size: 0.84rem;
     }
 
     .impact-box {
@@ -469,6 +484,12 @@
         return `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" class="research-title">${escapeHtml(text || '来源')}</a>`;
     }
 
+    function bilingual(primary, secondary, secondaryClass = 'en-line') {
+        const zh = escapeHtml(primary || secondary || '-');
+        const en = secondary && secondary !== primary ? `<div class="${secondaryClass}">${escapeHtml(secondary)}</div>` : '';
+        return `${zh}${en}`;
+    }
+
     function renderMetrics(payload) {
         const summary = payload.summary || {};
         document.getElementById('metricEvents').textContent = summary.active_events ?? 0;
@@ -498,8 +519,8 @@
                     <span class="priority-badge priority-${escapeHtml(event.priority)}">${escapeHtml(event.priority)}</span>
                     <span>${escapeHtml(event.category)}</span>
                 </div>
-                <div class="event-title">${escapeHtml(event.title_zh || event.title)}</div>
-                <div class="event-summary">${escapeHtml(event.summary_zh || event.summary || '')}</div>
+                <div class="event-title">${bilingual(event.title_zh, event.title)}</div>
+                <div class="event-summary">${bilingual(event.summary_zh, event.summary)}</div>
                 <div class="event-meta">
                     <span>${escapeHtml(event.verification_status || 'watching')}</span>
                     <span>${shortDate(event.event_time || event.last_seen_at)}</span>
@@ -534,9 +555,13 @@
                 </div>
                 <div class="detail-body">
                     <div class="detail-kicker">${escapeHtml(event.priority)} · ${escapeHtml(event.verification_status || '')} · ${shortDate(event.event_time || event.last_seen_at)}</div>
-                    <h3 class="detail-title">${escapeHtml(event.title_zh || event.title)}</h3>
+                    <h3 class="detail-title">${bilingual(event.title_zh, event.title)}</h3>
                     <div class="detail-summary">${escapeHtml(event.summary_zh || event.summary || '')}</div>
-                    <div class="impact-box">${escapeHtml(event.impact_summary || '暂无影响链。')}</div>
+                    ${event.summary && event.summary !== event.summary_zh ? `<div class="detail-summary-en">${escapeHtml(event.summary)}</div>` : ''}
+                    <div class="impact-box">
+                        ${escapeHtml(event.impact_summary_zh || event.impact_summary || '暂无影响链。')}
+                        ${event.impact_summary && event.impact_summary !== event.impact_summary_zh ? `<div class="en-line">${escapeHtml(event.impact_summary)}</div>` : ''}
+                    </div>
 
                     <div class="section-label">事实基础</div>
                     ${facts.length ? `
@@ -544,9 +569,9 @@
                             <tbody>
                                 ${facts.map(fact => `
                                     <tr>
-                                        <th>${escapeHtml(fact.label)}</th>
+                                        <th>${bilingual(fact.label_zh, fact.label)}</th>
                                         <td>
-                                            ${escapeHtml(fact.value)} ${fact.unit ? `<span style="color: var(--text-muted);">${escapeHtml(fact.unit)}</span>` : ''}
+                                            ${bilingual(fact.value_zh, fact.value)} ${fact.unit ? `<span style="color: var(--text-muted);">${escapeHtml(fact.unit)}</span>` : ''}
                                             ${fact.source_count > 1 ? `<span style="color: var(--text-muted); margin-left: 0.45rem;">${fact.source_count} sources</span>` : ''}
                                         </td>
                                     </tr>
@@ -560,8 +585,8 @@
                         ${entities.map(entity => `
                             <span class="entity-pill">
                                 <span>${escapeHtml(entity.entity_type || 'entity')}</span>
-                                <strong>${escapeHtml(entity.name)}</strong>
-                                ${entity.role ? `<span>${escapeHtml(entity.role)}</span>` : ''}
+                                <strong>${bilingual(entity.name_zh, entity.name)}</strong>
+                                ${entity.role ? `<span>${bilingual(entity.role_zh, entity.role)}</span>` : ''}
                             </span>
                         `).join('') || '<span class="entity-pill">等待映射</span>'}
                     </div>
@@ -590,7 +615,11 @@
         box.innerHTML = rows.map(item => `
             <div class="research-row">
                 ${externalLink(item.url, item.title_zh || item.title)}
-                <div class="research-thesis">${escapeHtml(item.thesis || item.summary || '')}</div>
+                ${item.title && item.title !== item.title_zh ? `<div class="en-line">${escapeHtml(item.title)}</div>` : ''}
+                <div class="research-thesis">
+                    ${escapeHtml(item.thesis_zh || item.summary_zh || item.thesis || item.summary || '')}
+                    ${(item.thesis || item.summary) && (item.thesis || item.summary) !== (item.thesis_zh || item.summary_zh) ? `<div class="en-line">${escapeHtml(item.thesis || item.summary)}</div>` : ''}
+                </div>
                 <div class="event-meta">
                     <span>${escapeHtml(item.report_type || 'research')}</span>
                     <span>${escapeHtml(item.source_name || item.source_key || '')}</span>

@@ -27,6 +27,7 @@ TASKS = [
     ("scripts/sync_global_risk_extended.py", "全球风险扩展同步(国债收益率/DXY)"),
     ("scripts/sync_news.py", "新闻数据同步(Bloomberg RSS)"),
     ("scripts/sync_intelligence.py", "重大事项情报探听与入库"),
+    ("scripts/translate_intelligence.py", "重大事项中英双语补齐"),
     ("scripts/sync_valuation_percentile.py", "估值百分位计算"),
 ]
 
