@@ -2,6 +2,24 @@
 
 面向投资研判的一体化平台，集成研报与事件催化、机会池评分、市场状态看板、分钟级刷新与策略辅助输出。后端基于 FastAPI，数据存储在本地 SQLite，面向 Windows 环境部署优化。
 
+## Codex 长期维护入口
+
+这个仓库已经作为 Codex 的长期项目工作区使用，推荐入口如下：
+
+- 项目级规则：`AGENTS.md`
+- Claude worker 说明：`CLAUDE.md`
+- 长期状态面板：`PROJECT_STATUS.md`
+- Codex 主控入口：`investment-codex`
+- Claude Worker A：`investment-worker-a`
+- Claude Worker B：`investment-worker-b`
+
+推荐流程：
+
+1. 在本仓库目录启动 `investment-codex`
+2. 先看 `PROJECT_STATUS.md`
+3. 需要并行开发时，再把任务卡发给 worker
+4. 集成、测试、部署和验收始终在 control 仓库完成
+
 ## 功能概览
 - 研报与事件催化库：研报抓取、检索、关联股票
 - 机会池与评分：质量、增长、估值、技术、确认、催化、风险、覆盖度综合评分
