@@ -10,7 +10,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_investment_runtime_profile, settings
@@ -25,6 +25,7 @@ from app.services.coding_plan_service import CodingPlanService
 from app.services.strategy_planning_service import StrategyPlanningService
 from app.services.north_flow_service import get_north_flow_service
 from app.services.research_workbench_service import get_research_workbench_service
+from app.services.shortline_service import ShortlineService
 from quant_workbench.service import QuantWorkbenchService
 from quant_workbench.sync import QuantWorkbenchSync
 
@@ -43,6 +44,7 @@ _strategy_planner = None
 _coding_plan_service = None
 _intelligence_service = None
 _research_workbench_service = None
+_shortline_service = None
 _runtime_refresh_lock = threading.Lock()
 _runtime_refresh_state: Dict[str, Any] = {
     "running": False,
@@ -267,6 +269,13 @@ def get_research_workbench_svc():
     if _research_workbench_service is None:
         _research_workbench_service = get_research_workbench_service()
     return _research_workbench_service
+
+
+def get_shortline_service():
+    global _shortline_service
+    if _shortline_service is None:
+        _shortline_service = ShortlineService(DB_PATH)
+    return _shortline_service
 
 
 def _summarize_workbench(opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1682,6 +1691,73 @@ async def get_runtime_profile(request: Request):
     return profile
 
 
+# ==================== 短线执行层 ====================
+
+@router.get("/shortline", response_class=HTMLResponse)
+async def shortline_page(request: Request):
+    """短线执行层页面。"""
+    return templates.TemplateResponse("shortline.html", {"request": request})
+
+
+@router.get("/api/shortline/overview")
+async def shortline_overview(auto_refresh: bool = False):
+    """短线执行层概览。"""
+    svc = get_shortline_service()
+    if auto_refresh:
+        try:
+            svc.ensure_fresh_data(max_age_hours=8)
+        except Exception as exc:
+            print(f"shortline auto refresh failed: {exc}")
+    return svc.get_overview()
+
+
+@router.get("/api/shortline/events")
+async def shortline_events(limit: int = 30, theme: Optional[str] = None, auto_refresh: bool = False):
+    """短线事件列表。"""
+    svc = get_shortline_service()
+    if auto_refresh:
+        try:
+            svc.ensure_fresh_data(max_age_hours=8)
+        except Exception as exc:
+            print(f"shortline events auto refresh failed: {exc}")
+    items = svc.list_events(limit=limit, theme=theme)
+    return {"total": len(items), "items": items}
+
+
+@router.get("/api/shortline/candidates")
+async def shortline_candidates(
+    limit: int = 60,
+    priority: Optional[str] = None,
+    theme: Optional[str] = None,
+    market: Optional[str] = None,
+    auto_refresh: bool = False,
+):
+    """短线候选列表。"""
+    svc = get_shortline_service()
+    if auto_refresh:
+        try:
+            svc.ensure_fresh_data(max_age_hours=8)
+        except Exception as exc:
+            print(f"shortline candidates auto refresh failed: {exc}")
+    items = svc.list_candidates(limit=limit, priority=priority, theme=theme, market=market)
+    return {"total": len(items), "items": items}
+
+
+@router.get("/api/shortline/playbooks")
+async def shortline_playbooks():
+    """短线套利模板。"""
+    svc = get_shortline_service()
+    items = svc.list_playbooks()
+    return {"total": len(items), "items": items}
+
+
+@router.post("/api/shortline/refresh")
+async def shortline_refresh(include_official: bool = True, translate: bool = False):
+    """刷新短线执行层事件与候选。"""
+    svc = get_shortline_service()
+    return svc.refresh_pipeline(include_official=include_official, translate=translate)
+
+
 # ==================== 研究工作台 ====================
 
 @router.get("/research", response_class=HTMLResponse)
@@ -1709,6 +1785,8 @@ async def research_workbench_list(
     target_scope: Optional[str] = None,
     report_type: Optional[str] = None,
     query: Optional[str] = None,
+    bilingual_only: bool = False,
+    archived_only: bool = False,
 ):
     """研究工作台报告列表（支持筛选）。"""
     svc = get_research_workbench_svc()
@@ -1720,11 +1798,28 @@ async def research_workbench_list(
             target_scope=target_scope,
             report_type=report_type,
             query=query,
+            bilingual_only=bilingual_only,
+            archived_only=archived_only,
         )
         return {"total": len(items), "items": items}
     except Exception as exc:
         print(f"research_workbench_list失败: {exc}")
         return {"error": str(exc), "total": 0, "items": []}
+
+
+@router.get("/api/research/{report_key}/asset")
+async def research_workbench_asset(report_key: str):
+    """读取 Windows 已归档的研究原文。"""
+    svc = get_research_workbench_svc()
+    detail = svc.get_report_detail(report_key)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"report not found: {report_key}")
+    asset_path = detail.get("original_asset_path") or ""
+    if not asset_path or not os.path.exists(asset_path):
+        raise HTTPException(status_code=404, detail="archived asset not found")
+    filename = os.path.basename(asset_path)
+    media_type = "application/pdf" if filename.lower().endswith(".pdf") else "text/plain; charset=utf-8"
+    return FileResponse(asset_path, filename=filename, media_type=media_type)
 
 
 @router.get("/api/research/{report_key}")

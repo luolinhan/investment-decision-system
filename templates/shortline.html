@@ -619,7 +619,16 @@
 
     async function loadOverview() {
         try {
-            overviewData = await api('/investment/api/shortline/overview');
+            const raw = await api('/investment/api/shortline/overview');
+            overviewData = {
+                overnight_events_count: raw?.metrics?.overnight_events || 0,
+                p0_candidates: raw?.metrics?.candidate_p0 || 0,
+                p1_candidates: raw?.metrics?.candidate_p1 || 0,
+                mapped_industries: raw?.metrics?.sector_coverage || 0,
+                last_refreshed: raw?.metrics?.latest_refresh || raw?.generated_at || null,
+                themes: raw?.themes || [],
+                raw
+            };
         } catch (error) {
             console.error('Error loading overview:', error);
             overviewData = {
@@ -634,7 +643,22 @@
 
     async function loadCandidates() {
         try {
-            candidatesData = await api('/investment/api/shortline/candidates');
+            const raw = await api('/investment/api/shortline/candidates');
+            const items = raw?.items || raw?.data || raw || [];
+            candidatesData = items.map(item => ({
+                ...item,
+                name: item.cn_name || item.name || '未命名标的',
+                ticker: item.cn_symbol || item.ticker || '-',
+                industry: item.theme_label || item.theme || '-',
+                score: typeof item.execution_priority === 'number' ? item.execution_priority / 100 : (item.score || 0),
+                priority: item.priority || 'P2',
+                playbook: item.trade_playbook || item.playbook_key || '-',
+                relationType: item.relation_type || '-',
+                sourceTier: item.source_tier || 'T1',
+                sourceUrl: item.source_url || '',
+                trigger: item.headline || item.thesis || '-',
+                invalidCondition: item.invalid_condition || '-'
+            }));
         } catch (error) {
             console.error('Error loading candidates:', error);
             candidatesData = [];
@@ -643,7 +667,19 @@
 
     async function loadEvents() {
         try {
-            eventsData = await api('/investment/api/shortline/events');
+            const raw = await api('/investment/api/shortline/events');
+            const items = raw?.items || raw?.data || raw || [];
+            eventsData = items.map(item => ({
+                ...item,
+                title: item.headline_zh || item.headline || '未命名事件',
+                timestamp: item.event_time || item.timestamp || null,
+                source: item.source_symbol || item.source_name || 'US',
+                severity: item.urgency || item.severity || 'P2',
+                sourceTier: item.source_tier || 'T1',
+                evidenceUrl: item.source_url || '',
+                summary: item.summary || '',
+                themeLabel: item.theme_label || item.sector || '-'
+            }));
         } catch (error) {
             console.error('Error loading events:', error);
             eventsData = [];
@@ -652,7 +688,14 @@
 
     async function loadPlaybooks() {
         try {
-            playbooksData = await api('/investment/api/shortline/playbooks');
+            const raw = await api('/investment/api/shortline/playbooks');
+            const items = raw?.items || raw?.data || raw || [];
+            playbooksData = items.map(item => ({
+                ...item,
+                title: item.name || item.title || '未命名模板',
+                description: item.trigger_condition || item.entry_rule || '',
+                tags: [item.market_scope, item.theme, item.source_tier].filter(Boolean)
+            }));
         } catch (error) {
             console.error('Error loading playbooks:', error);
             playbooksData = [];
@@ -754,12 +797,33 @@
             severitySpan.className = `overnight-event-severity ${(event.severity || 'p2').toLowerCase()}`;
             severitySpan.textContent = (event.severity || 'p2').toUpperCase();
 
+            const tierSpan = document.createElement('span');
+            tierSpan.className = `overnight-event-severity ${String(event.sourceTier || 't1').toLowerCase() === 't0' ? 'p1' : 'p2'}`;
+            tierSpan.textContent = event.sourceTier || 'T1';
+
             meta.appendChild(timeSpan);
             meta.appendChild(sourceSpan);
             meta.appendChild(severitySpan);
+            meta.appendChild(tierSpan);
+            if (event.evidenceUrl) {
+                const evidenceLink = document.createElement('a');
+                evidenceLink.href = event.evidenceUrl;
+                evidenceLink.target = '_blank';
+                evidenceLink.rel = 'noreferrer';
+                evidenceLink.style.fontSize = '0.75rem';
+                evidenceLink.style.color = 'var(--accent-cyan)';
+                evidenceLink.innerHTML = `<i class="bi bi-link-45deg"></i> 原文`;
+                meta.appendChild(evidenceLink);
+            }
 
             div.appendChild(title);
             div.appendChild(meta);
+            if (event.summary) {
+                const summary = document.createElement('div');
+                summary.className = 'overnight-event-summary';
+                summary.textContent = event.summary;
+                div.appendChild(summary);
+            }
             fragment.appendChild(div);
         });
 
@@ -805,11 +869,25 @@
 
             const industry = document.createElement('div');
             industry.className = 'candidate-industry';
-            industry.textContent = candidate.industry || 'N/A';
+            industry.textContent = `${candidate.industry || 'N/A'} · ${candidate.playbook || '-'}`;
 
             info.appendChild(name);
             info.appendChild(ticker);
             info.appendChild(industry);
+
+            const metaLine = document.createElement('div');
+            metaLine.className = 'candidate-industry';
+            metaLine.style.marginTop = '0.25rem';
+            metaLine.textContent = `${candidate.relationType || '-'} · ${candidate.priority || '-'} · ${candidate.sourceTier || 'T1'}`;
+            info.appendChild(metaLine);
+
+            if (candidate.trigger) {
+                const trigger = document.createElement('div');
+                trigger.className = 'candidate-industry';
+                trigger.style.marginTop = '0.25rem';
+                trigger.textContent = candidate.trigger;
+                info.appendChild(trigger);
+            }
 
             const score = document.createElement('div');
             score.className = 'candidate-score';
@@ -830,18 +908,21 @@
         const countEl = document.getElementById('executionCount');
 
         loadingEl.style.display = 'none';
+        const boardData = (candidatesData || []).slice(0, 8);
+        countEl.textContent = boardData.length;
 
-        // Mock data for now - will come from API later
-        const mockData = [
-            { ticker: 'TSLA', position: '+100', status: 'open', pnl: '+3.2%' },
-            { ticker: 'AAPL', position: '+50', status: 'monitoring', pnl: '+1.5%' },
-            { ticker: 'META', position: '-75', status: 'closed', pnl: '-0.8%' }
-        ];
-
-        countEl.textContent = mockData.length;
+        if (!boardData.length) {
+            contentEl.innerHTML = `
+                <div class="shortline-empty-state">
+                    <i class="bi bi-grid"></i>
+                    <p>暂无执行清单</p>
+                </div>
+            `;
+            return;
+        }
 
         const fragment = document.createDocumentFragment();
-        mockData.forEach(item => {
+        boardData.forEach(item => {
             const div = document.createElement('div');
             div.className = 'execution-item';
 
@@ -851,20 +932,21 @@
 
             const position = document.createElement('div');
             position.className = 'execution-position';
-            position.textContent = item.position;
+            position.textContent = `${Math.round((item.score || 0) * 100)} 分`;
 
             const status = document.createElement('div');
-            status.className = `execution-status ${item.status.toLowerCase()}`;
-            status.textContent = item.status.toUpperCase();
+            const statusKey = (item.priority || 'P2').toLowerCase();
+            status.className = `execution-status ${statusKey === 'p0' ? 'open' : statusKey === 'p1' ? 'monitoring' : 'closed'}`;
+            status.textContent = (item.priority || 'P2').toUpperCase();
 
             const pnl = document.createElement('div');
-            pnl.className = `execution-pnl ${item.pnl.startsWith('+') ? 'positive' : item.pnl.startsWith('-') ? 'negative' : 'neutral'}`;
-            pnl.textContent = item.pnl;
+            pnl.className = 'execution-pnl neutral';
+            pnl.textContent = item.playbook || '-';
 
             const actions = document.createElement('div');
             actions.innerHTML = `
-                <button class="btn-icon" style="padding: 0.4rem;">
-                    <i class="bi bi-three-dots"></i>
+                <button class="btn-icon" style="padding: 0.4rem;" title="${item.invalidCondition || ''}">
+                    <i class="bi bi-shield-exclamation"></i>
                 </button>
             `;
 
@@ -880,9 +962,11 @@
         summary.style.paddingTop = '1rem';
         summary.style.borderTop = `1px solid var(--border-color)`;
         summary.style.textAlign = 'right';
+        const p0Count = boardData.filter(item => (item.priority || '').toUpperCase() === 'P0').length;
+        const p1Count = boardData.filter(item => (item.priority || '').toUpperCase() === 'P1').length;
         summary.innerHTML = `
-            <span style="color: var(--text-muted); font-size: 0.85rem;">总收益: </span>
-            <span style="color: var(--accent-green); font-weight: 600; font-size: 1rem;">+3.9%</span>
+            <span style="color: var(--text-muted); font-size: 0.85rem;">P0 / P1: </span>
+            <span style="color: var(--accent-cyan); font-weight: 600; font-size: 1rem;">${p0Count} / ${p1Count}</span>
         `;
         fragment.appendChild(summary);
 
@@ -951,36 +1035,59 @@
         const countEl = document.getElementById('evidenceCount');
 
         loadingEl.style.display = 'none';
+        const evidenceData = (candidatesData || []).slice(0, 8);
+        countEl.textContent = evidenceData.length;
 
-        // Mock data for now - will come from API later
-        const mockData = [
-            { title: '美联储议息会议纪要', source: 'Federal Reserve', time: '2026-04-24 18:30' },
-            { title: 'CPI数据超预期', source: 'BLS', time: '2026-04-24 14:00' },
-            { title: '原油库存下降', source: 'EIA', time: '2026-04-24 09:15' }
-        ];
-
-        countEl.textContent = mockData.length;
+        if (!evidenceData.length) {
+            contentEl.innerHTML = `
+                <div class="shortline-empty-state">
+                    <i class="bi bi-journal-text"></i>
+                    <p>暂无证据链</p>
+                </div>
+            `;
+            return;
+        }
 
         const fragment = document.createDocumentFragment();
-        mockData.forEach(item => {
+        evidenceData.forEach(item => {
             const div = document.createElement('div');
             div.className = 'evidence-item';
 
             const title = document.createElement('div');
             title.className = 'evidence-title';
-            title.textContent = item.title;
+            title.textContent = item.name || item.title;
 
             const source = document.createElement('div');
             source.className = 'evidence-source';
-            source.textContent = item.source;
+            if (item.sourceUrl) {
+                source.innerHTML = `<a href="${item.sourceUrl}" target="_blank" rel="noreferrer" style="color: var(--accent-cyan); text-decoration: none;"><i class="bi bi-link-45deg"></i> ${item.source || item.ticker || '原文'}</a> · ${item.sourceTier || ''}`;
+            } else {
+                source.textContent = `${item.source || item.ticker || 'US'} · ${item.sourceTier || ''}`;
+            }
 
             const time = document.createElement('div');
             time.className = 'evidence-time';
-            time.textContent = item.time;
+            time.textContent = `${item.relationType || '-'} · ${item.priority || '-'} · ${item.playbook || '-'}`;
 
             div.appendChild(title);
             div.appendChild(source);
             div.appendChild(time);
+            if (item.trigger) {
+                const summary = document.createElement('div');
+                summary.className = 'evidence-time';
+                summary.style.marginTop = '0.35rem';
+                summary.style.whiteSpace = 'normal';
+                summary.textContent = item.trigger;
+                div.appendChild(summary);
+            }
+            if (item.invalidCondition) {
+                const invalid = document.createElement('div');
+                invalid.className = 'evidence-time';
+                invalid.style.marginTop = '0.35rem';
+                invalid.style.color = 'var(--accent-red)';
+                invalid.textContent = `失效条件：${item.invalidCondition}`;
+                div.appendChild(invalid);
+            }
             fragment.appendChild(div);
         });
 
@@ -988,7 +1095,7 @@
         contentEl.appendChild(fragment);
     }
 
-    function refreshData() {
+    async function refreshData() {
         // Show loading spinners
         document.querySelectorAll('.shortline-spinner').forEach(el => {
             el.closest('.shortline-loading').style.display = 'flex';
@@ -1001,8 +1108,15 @@
             }
         });
 
-        loadData();
-        showToast('数据已刷新', 'success');
+        try {
+            await fetch('/investment/api/shortline/refresh', { method: 'POST' });
+            await loadData();
+            showToast('数据已刷新', 'success');
+        } catch (error) {
+            console.error('refresh failed', error);
+            await loadData();
+            showToast('刷新失败，已回退本地缓存', 'error');
+        }
     }
 
     function toggleSection(sectionId) {
