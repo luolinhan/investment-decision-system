@@ -1226,6 +1226,92 @@
         --hub-shadow: 0 14px 30px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
+    [data-theme="light"] {
+        --hub-surface-1: rgba(255, 255, 255, 0.95);
+        --hub-surface-2: rgba(241, 245, 249, 0.9);
+        --hub-surface-3: rgba(248, 250, 252, 0.98);
+        --hub-edge: rgba(100, 116, 139, 0.25);
+        --hub-edge-strong: rgba(2, 132, 199, 0.45);
+        --hub-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
+
+    [data-theme="light"] .page-header {
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(241, 245, 249, 0.7));
+    }
+
+    [data-theme="light"] .main-content::after {
+        background:
+            linear-gradient(rgba(2, 132, 199, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(2, 132, 199, 0.04) 1px, transparent 1px);
+    }
+
+    [data-theme="light"] .page-subtitle {
+        color: var(--text-secondary);
+    }
+
+    [data-theme="light"] .tab-btn:hover {
+        color: var(--text-primary);
+        background: rgba(241, 245, 249, 0.7);
+    }
+
+    [data-theme="light"] .tab-btn.active {
+        color: var(--accent-cyan);
+    }
+
+    [data-theme="light"] .stock-table th {
+        background: rgba(241, 245, 249, 0.7);
+    }
+
+    [data-theme="light"] .stock-table tr:nth-child(even) td {
+        background: rgba(248, 250, 252, 0.5);
+    }
+
+    [data-theme="light"] .stock-table tr:hover td {
+        background: rgba(2, 132, 199, 0.06);
+    }
+
+    [data-theme="light"] .matrix-item {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.85));
+    }
+
+    [data-theme="light"] .action-hint {
+        background: linear-gradient(165deg, rgba(248, 250, 252, 0.8), rgba(241, 245, 249, 0.7));
+    }
+
+    [data-theme="light"] .workflow-btn,
+    [data-theme="light"] .research-chip {
+        background: rgba(241, 245, 249, 0.7);
+    }
+
+    [data-theme="light"] .workflow-btn:hover,
+    [data-theme="light"] .research-chip:hover,
+    [data-theme="light"] .research-chip.active {
+        background: rgba(2, 132, 199, 0.1);
+    }
+
+    [data-theme="light"] .special-index {
+        background: linear-gradient(135deg, rgba(244, 63, 94, 0.08), rgba(239, 68, 68, 0.03));
+    }
+
+    [data-theme="light"] .fear-greed-indicator {
+        background: #f1f5f9;
+    }
+
+    [data-theme="light"] .risk-stat {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(248, 250, 252, 0.9));
+    }
+
+    [data-theme="light"] .chart-header {
+        border-bottom-color: rgba(100, 116, 139, 0.2);
+    }
+
+    [data-theme="light"] .rate-item,
+    [data-theme="light"] .signal-feed-item,
+    [data-theme="light"] .issue-item,
+    [data-theme="light"] .entry-rule-box {
+        border-color: rgba(100, 116, 139, 0.2);
+    }
+
     .main-content {
         position: relative;
     }
@@ -3756,6 +3842,7 @@
 
             const labels = data.data.map(d => d.date);
             const values = data.data.map(d => d.total_inflow);
+            const chartTheme = getChartTheme();
 
             charts['chartNorthMoney'] = new Chart(ctx, {
                 type: 'bar',
@@ -3773,8 +3860,8 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
-                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+                        x: { grid: { color: chartTheme.gridColor }, ticks: { color: chartTheme.tickColor, maxTicksLimit: 8 } },
+                        y: { grid: { color: chartTheme.gridColor }, ticks: { color: chartTheme.tickColor } }
                     }
                 }
             });
@@ -3809,6 +3896,7 @@
 
             const ctx = document.getElementById('chartRatesHistory').getContext('2d');
             if (charts['chartRatesHistory']) charts['chartRatesHistory'].destroy();
+            const chartTheme = getChartTheme();
 
             charts['chartRatesHistory'] = new Chart(ctx, {
                 type: 'bar',
@@ -3838,20 +3926,20 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top', labels: { color: '#94a3b8' } } },
+                    plugins: { legend: { display: true, position: 'top', labels: { color: chartTheme.legendColor } } },
                     scales: {
-                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 8 } },
+                        x: { grid: { color: chartTheme.gridColor }, ticks: { color: chartTheme.tickColor, maxTicksLimit: 8 } },
                         yNorth: {
                             type: 'linear',
                             position: 'left',
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#64748b' }
+                            grid: { color: chartTheme.gridColor },
+                            ticks: { color: chartTheme.tickColor }
                         },
                         yVix: {
                             type: 'linear',
                             position: 'right',
                             grid: { drawOnChartArea: false },
-                            ticks: { color: '#94a3b8' }
+                            ticks: { color: chartTheme.legendColor }
                         }
                     }
                 }
@@ -4715,6 +4803,7 @@
         }
         const labels = rows.map(item => item.trade_date || '');
         const values = rows.map(item => Number(item.win_rate || 0));
+        const chartTheme = getChartTheme();
         if (charts.evidenceTrendChart) {
             charts.evidenceTrendChart.destroy();
         }
@@ -4741,13 +4830,13 @@
                 scales: {
                     y: {
                         ticks: {
-                            color: '#94a3b8',
+                            color: chartTheme.tickColor,
                             callback: value => `${value}%`,
                         },
-                        grid: { color: 'rgba(148,163,184,0.15)' },
+                        grid: { color: chartTheme.gridColor },
                     },
                     x: {
-                        ticks: { color: '#94a3b8', maxTicksLimit: 6 },
+                        ticks: { color: chartTheme.tickColor, maxTicksLimit: 6 },
                         grid: { display: false },
                     }
                 }
@@ -4963,6 +5052,15 @@
     }
 
     // ==================== 图表渲染 ====================
+    function getChartTheme() {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        return {
+            gridColor: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+            tickColor: isLight ? '#475569' : '#64748b',
+            legendColor: isLight ? '#475569' : '#94a3b8',
+        };
+    }
+
     function renderLineChart(canvasId, data, label) {
         const ctx = document.getElementById(canvasId).getContext('2d');
 
@@ -4972,6 +5070,7 @@
 
         const labels = data.map(d => d.date);
         const values = data.map(d => d.close);
+        const chartTheme = getChartTheme();
 
         charts[canvasId] = new Chart(ctx, {
             type: 'line',
@@ -4998,16 +5097,16 @@
                 scales: {
                     x: {
                         display: true,
-                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        grid: { color: chartTheme.gridColor },
                         ticks: {
-                            color: '#64748b',
+                            color: chartTheme.tickColor,
                             maxTicksLimit: 6
                         }
                     },
                     y: {
                         display: true,
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#64748b' }
+                        grid: { color: chartTheme.gridColor },
+                        ticks: { color: chartTheme.tickColor }
                     }
                 },
                 interaction: {

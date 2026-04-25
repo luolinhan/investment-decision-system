@@ -39,7 +39,7 @@
         gap: 0.45rem;
         border: 1px solid var(--border-color);
         color: var(--text-secondary);
-        background: rgba(15, 23, 42, 0.68);
+        background: var(--bg-secondary);
         border-radius: 0.5rem;
         padding: 0.55rem 0.75rem;
         font-size: 0.78rem;
@@ -54,7 +54,7 @@
 
     .metric-box {
         border: 1px solid var(--border-color);
-        background: rgba(15, 23, 42, 0.72);
+        background: var(--bg-card);
         border-radius: 0.625rem;
         padding: 0.9rem 1rem;
     }
@@ -80,7 +80,7 @@
 
     .panel {
         border: 1px solid var(--border-color);
-        background: rgba(15, 23, 42, 0.72);
+        background: var(--bg-card);
         border-radius: 0.625rem;
         overflow: hidden;
     }
@@ -142,7 +142,7 @@
 
     .event-row:hover,
     .event-row.active {
-        background: rgba(56, 189, 248, 0.08);
+        background: var(--accent-cyan-dim);
     }
 
     .event-topline {
@@ -227,12 +227,23 @@
 
     .impact-box {
         border-left: 3px solid var(--accent-cyan);
-        background: rgba(56, 189, 248, 0.08);
+        background: var(--accent-cyan-dim);
         padding: 0.85rem 1rem;
         color: var(--text-primary);
         line-height: 1.65;
         border-radius: 0.4rem;
         margin-bottom: 1rem;
+    }
+
+    .panel-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .panel-subtitle {
+        font-size: 0.74rem;
+        color: var(--text-muted);
     }
 
     .section-label {
@@ -417,7 +428,10 @@
     <section class="intel-main-grid">
         <div class="panel">
             <div class="panel-head">
-                <div class="panel-title">事件队列</div>
+                <div class="panel-title-wrap">
+                    <div class="panel-title">事件队列</div>
+                    <div class="panel-subtitle">最新在上 · 默认按事件时间倒序</div>
+                </div>
                 <div class="filter-row" id="priorityFilters">
                     <button class="filter-btn active" data-priority="">全部</button>
                     <button class="filter-btn" data-priority="P0">P0</button>
@@ -471,6 +485,41 @@
         return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
 
+    function parseTimestamp(value) {
+        if (!value) return 0;
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function relativeTime(value) {
+        const ts = parseTimestamp(value);
+        if (!ts) return '';
+        const diff = Date.now() - ts;
+        if (diff < 60000) return '刚刚';
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins} 分钟前`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours} 小时前`;
+        const days = Math.floor(hours / 24);
+        if (days < 7) return `${days} 天前`;
+        return '';
+    }
+
+    function preciseTime(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 19);
+        const absolute = date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+        const rel = relativeTime(value);
+        return rel ? `${absolute}（${rel}）` : absolute;
+    }
+
     function escapeHtml(value) {
         return String(value || '')
             .replace(/&/g, '&amp;')
@@ -506,7 +555,11 @@
     }
 
     function renderEvents(events) {
-        currentEvents = events || [];
+        currentEvents = (events || []).slice().sort((a, b) => {
+            const aTs = parseTimestamp(a.event_time || a.last_seen_at || a.updated_at || a.created_at);
+            const bTs = parseTimestamp(b.event_time || b.last_seen_at || b.updated_at || b.created_at);
+            return bTs - aTs;
+        });
         const box = document.getElementById('eventList');
         if (!currentEvents.length) {
             box.innerHTML = '<div class="empty-state">暂无已入库事件。采集器会继续探听官方源和模型仓库。</div>';
@@ -523,7 +576,8 @@
                 <div class="event-summary">${bilingual(event.summary_zh, event.summary)}</div>
                 <div class="event-meta">
                     <span>${escapeHtml(event.verification_status || 'watching')}</span>
-                    <span>${shortDate(event.event_time || event.last_seen_at)}</span>
+                    <span>发生 ${shortDate(event.event_time)}</span>
+                    <span>观察 ${shortDate(event.last_seen_at || event.updated_at || event.event_time)}</span>
                     <span>${Number(event.impact_score || 0).toFixed(0)} impact</span>
                     <span>${event.source_count || 0} sources</span>
                 </div>
@@ -554,7 +608,11 @@
                     ${externalLink(event.primary_source_url, '主来源')}
                 </div>
                 <div class="detail-body">
-                    <div class="detail-kicker">${escapeHtml(event.priority)} · ${escapeHtml(event.verification_status || '')} · ${shortDate(event.event_time || event.last_seen_at)}</div>
+                    <div class="detail-kicker">${escapeHtml(event.priority)} · ${escapeHtml(event.verification_status || '')}</div>
+                    <div class="event-meta" style="margin-top:-0.25rem; margin-bottom:0.6rem;">
+                        <span>发生时间：${preciseTime(event.event_time)}</span>
+                        <span>最近观察：${preciseTime(event.last_seen_at || event.updated_at || event.event_time)}</span>
+                    </div>
                     <h3 class="detail-title">${bilingual(event.title_zh, event.title)}</h3>
                     <div class="detail-summary">${escapeHtml(event.summary_zh || event.summary || '')}</div>
                     ${event.summary && event.summary !== event.summary_zh ? `<div class="detail-summary-en">${escapeHtml(event.summary)}</div>` : ''}
