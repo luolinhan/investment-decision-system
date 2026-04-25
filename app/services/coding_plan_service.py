@@ -24,6 +24,13 @@ DAILY_BRIEF_SNAPSHOT_KEY = "investment.intelligence.daily_brief.v1"
 DAILY_BRIEF_TTL_SECONDS = 36 * 3600
 
 
+def _normalize_openai_base_url(value: str, default: str) -> str:
+    base_url = (value or default).strip().rstrip("/")
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[: -len("/chat/completions")]
+    return base_url
+
+
 class CodingPlanService:
     def __init__(
         self,
@@ -36,10 +43,21 @@ class CodingPlanService:
         self.db = db_service or DbService()
         self.news = news_service or FinancialNewsService()
 
-        self.api_key = os.getenv("BAILIAN_API_KEY", "").strip()
-        self.base_url = os.getenv("BAILIAN_BASE_URL", "https://coding.dashscope.aliyuncs.com/v1").rstrip("/")
-        self.model = os.getenv("BAILIAN_MODEL", "qwen3-coder-plus").strip()
-        self.timeout_seconds = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "25"))
+        self.api_key = (
+            os.getenv("BAILIAN_API_KEY", "").strip()
+            or os.getenv("DASHSCOPE_API_KEY", "").strip()
+        )
+        self.base_url = _normalize_openai_base_url(
+            os.getenv("BAILIAN_BASE_URL", "").strip()
+            or os.getenv("DASHSCOPE_BASE_URL", "").strip(),
+            "https://coding.dashscope.aliyuncs.com/v1",
+        )
+        self.model = (
+            os.getenv("BAILIAN_MODEL", "").strip()
+            or os.getenv("DASHSCOPE_MODEL", "").strip()
+            or "qwen3.6-plus"
+        )
+        self.timeout_seconds = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "60"))
 
     @staticmethod
     def _to_float(value: Any, default: float = 0.0) -> float:

@@ -2,17 +2,21 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import quote_plus
 
 import requests
 from dotenv import load_dotenv
+from xml.etree import ElementTree as ET
 
 from app.db import get_sqlite_connection
 from quant_workbench.service import QuantWorkbenchService
@@ -283,9 +287,80 @@ SEC_CATALYST_KEYWORDS = (
     "capex",
 )
 
+FDA_SPONSOR_ALIASES: Dict[str, List[str]] = {
+    "LLY": ["ELI LILLY", "LILLY"],
+    "NVO": ["NOVO NORDISK"],
+    "MRNA": ["MODERNA"],
+    "BNTX": ["BIONTECH"],
+}
+
+CLINICAL_TRIAL_SPONSOR_ALIASES: Dict[str, List[str]] = {
+    "LLY": ["Eli Lilly", "Lilly"],
+    "NVO": ["Novo Nordisk"],
+    "MRNA": ["Moderna"],
+    "BNTX": ["BioNTech"],
+}
+
+COMPANY_IR_SOURCES: List[Dict[str, str]] = [
+    {
+        "symbol": "NVDA",
+        "name": "NVIDIA",
+        "sector": "ai",
+        "url": "https://nvidianews.nvidia.com/releases.xml",
+        "label": "NVIDIA Newsroom",
+    },
+    {
+        "symbol": "AMD",
+        "name": "AMD",
+        "sector": "ai",
+        "url": "https://ir.amd.com/news-events/press-releases/rss",
+        "label": "AMD IR",
+    },
+    {
+        "symbol": "META",
+        "name": "Meta",
+        "sector": "ai",
+        "url": "https://about.fb.com/feed/",
+        "label": "Meta Newsroom",
+    },
+    {
+        "symbol": "MRNA",
+        "name": "Moderna",
+        "sector": "biotech",
+        "url": "https://investors.modernatx.com/feed/rss2",
+        "label": "Moderna IR",
+    },
+]
+
+COMPANY_IR_MATERIAL_KEYWORDS = (
+    "earnings",
+    "results",
+    "fiscal",
+    "quarter",
+    "guidance",
+    "outlook",
+    "partnership",
+    "collaboration",
+    "approval",
+    "launch",
+    "unveil",
+    "data center",
+    "blackwell",
+    "mi300",
+    "trial",
+    "phase 3",
+)
+
 
 def _utcnow_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
+
+
+def _normalize_openai_base_url(value: str, default: str) -> str:
+    base_url = (value or default).strip().rstrip("/")
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[: -len("/chat/completions")]
+    return base_url
 
 
 def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
@@ -323,17 +398,28 @@ class ShortlineService:
                 "Accept": "application/json",
             }
         )
-        self.bailian_api_key = os.getenv("BAILIAN_API_KEY", "").strip()
-        self.bailian_base_url = os.getenv("BAILIAN_BASE_URL", "https://coding.dashscope.aliyuncs.com/v1").rstrip("/")
-        self.bailian_model = os.getenv("BAILIAN_MODEL", "qwen3-coder-plus").strip()
-        self.bailian_timeout = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "25"))
+        self.bailian_api_key = (
+            os.getenv("BAILIAN_API_KEY", "").strip()
+            or os.getenv("DASHSCOPE_API_KEY", "").strip()
+        )
+        self.bailian_base_url = _normalize_openai_base_url(
+            os.getenv("BAILIAN_BASE_URL", "").strip()
+            or os.getenv("DASHSCOPE_BASE_URL", "").strip(),
+            "https://coding.dashscope.aliyuncs.com/v1",
+        )
+        self.bailian_model = (
+            os.getenv("BAILIAN_MODEL", "").strip()
+            or os.getenv("DASHSCOPE_MODEL", "").strip()
+            or "qwen3.6-plus"
+        )
+        self.bailian_timeout = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "60"))
         self._sec_ticker_cache: Optional[Dict[str, Dict[str, str]]] = None
         self._reference_seed_lock = threading.Lock()
         self.workbench = QuantWorkbenchService()
         self.ensure_tables()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = get_sqlite_connection(self.db_path)
+        conn = get_sqlite_connection(self.db_path, timeout=60, busy_timeout=60000)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -965,6 +1051,351 @@ class ShortlineService:
             "generated_at": _utcnow_iso(),
         }
 
+    def _watch_meta(self) -> Dict[str, Dict[str, Any]]:
+        return {item["symbol"]: item for item in US_WATCHLIST}
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        text = html.unescape(value or "")
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    @staticmethod
+    def _parse_datetime_value(value: Any) -> Optional[datetime]:
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(text[: len(fmt)], fmt)
+            except Exception:
+                continue
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            pass
+        try:
+            return parsedate_to_datetime(text).replace(tzinfo=None)
+        except Exception:
+            return None
+
+    def _fetch_openfda_recent_results(self, days: int = 30, limit: int = 100) -> List[Dict[str, Any]]:
+        cutoff = (datetime.now() - timedelta(days=max(1, int(days or 30)))).strftime("%Y%m%d")
+        params = {
+            "search": f"submissions.submission_status:AP AND submissions.submission_status_date:[{cutoff} TO *]",
+            "limit": max(20, min(int(limit or 100), 100)),
+        }
+        resp = self.session.get("https://api.fda.gov/drug/drugsfda.json", params=params, timeout=20)
+        resp.raise_for_status()
+        return list((resp.json().get("results") or []))
+
+    @staticmethod
+    def _match_symbol_by_alias(text: str, alias_map: Dict[str, List[str]]) -> Optional[str]:
+        haystack = (text or "").upper()
+        for symbol, aliases in alias_map.items():
+            if any(alias.upper() in haystack for alias in aliases):
+                return symbol
+        return None
+
+    @staticmethod
+    def _fda_event_meta(submission: Dict[str, Any]) -> tuple[str, str]:
+        submission_type = str(submission.get("submission_type") or "").upper()
+        class_desc = str(submission.get("submission_class_code_description") or "").lower()
+        if submission_type == "ORIG":
+            return "fda_approval", "P0"
+        if "priority" in class_desc or "efficacy" in class_desc:
+            return "fda_supplement_approval", "P0"
+        return "fda_supplement_approval", "P1"
+
+    def sync_fda_events(self, days: int = 30) -> Dict[str, Any]:
+        created = 0
+        failed: List[str] = []
+        sample_events: List[Dict[str, Any]] = []
+        watch_map = self._watch_meta()
+        cutoff = (datetime.now() - timedelta(days=max(1, int(days or 30)))).date()
+        try:
+            results = self._fetch_openfda_recent_results(days=days)
+        except Exception as exc:
+            return {"ok": False, "created": 0, "failed": [f"openfda:{exc}"], "sample_events": [], "generated_at": _utcnow_iso()}
+
+        with self._connect() as conn:
+            for record in results:
+                sponsor_name = str(record.get("sponsor_name") or "")
+                symbol = self._match_symbol_by_alias(sponsor_name, FDA_SPONSOR_ALIASES)
+                if not symbol or symbol not in watch_map:
+                    continue
+                product = (record.get("products") or [{}])[0]
+                product_name = str(product.get("brand_name") or product.get("generic_name") or record.get("application_number") or symbol)
+                for submission in record.get("submissions") or []:
+                    raw_date = str(submission.get("submission_status_date") or "")
+                    event_dt = self._parse_datetime_value(raw_date)
+                    if not event_dt or event_dt.date() < cutoff:
+                        continue
+                    if str(submission.get("submission_status") or "").upper() != "AP":
+                        continue
+                    event_type, urgency = self._fda_event_meta(submission)
+                    application_number = str(record.get("application_number") or "unknown")
+                    event_id = hashlib.md5(
+                        f"fda:{symbol}:{application_number}:{submission.get('submission_number')}:{raw_date}".encode("utf-8")
+                    ).hexdigest()[:20]
+                    source_url = (
+                        "https://api.fda.gov/drug/drugsfda.json?search="
+                        + quote_plus(f"application_number:{application_number}")
+                    )
+                    headline = f"FDA {symbol} {product_name} 审批进展"
+                    summary = (
+                        f"{watch_map[symbol]['name']} 对应 sponsor {sponsor_name} 出现 FDA 批准事件，"
+                        f"产品 {product_name}，类型 {submission.get('submission_type') or 'N/A'}。"
+                    )
+                    facts = {
+                        "application_number": application_number,
+                        "submission_number": submission.get("submission_number"),
+                        "submission_type": submission.get("submission_type"),
+                        "submission_status": submission.get("submission_status"),
+                        "submission_status_date": raw_date,
+                        "product_name": product_name,
+                        "sponsor_name": sponsor_name,
+                    }
+                    self._upsert_event(
+                        conn,
+                        event_id=event_id,
+                        source_symbol=symbol,
+                        source_name=watch_map[symbol]["name"],
+                        sector=watch_map[symbol]["sector"],
+                        event_type=event_type,
+                        event_time=event_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                        headline=headline,
+                        summary=summary,
+                        facts=facts,
+                        impact_direction="context",
+                        urgency=urgency,
+                        source_url=source_url,
+                        source_tier="T0",
+                    )
+                    created += 1
+                    if len(sample_events) < 8:
+                        sample_events.append({"symbol": symbol, "headline": headline})
+        return {"ok": True, "created": created, "failed": failed, "sample_events": sample_events, "generated_at": _utcnow_iso()}
+
+    def _fetch_clinical_trials_studies(self, sponsor_alias: str, page_size: int = 20) -> List[Dict[str, Any]]:
+        params = {"query.spons": sponsor_alias, "pageSize": max(1, min(int(page_size or 20), 100)), "format": "json"}
+        resp = self.session.get("https://clinicaltrials.gov/api/v2/studies", params=params, timeout=20)
+        resp.raise_for_status()
+        return list((resp.json().get("studies") or []))
+
+    def _clinical_trial_event_from_study(self, symbol: str, study: Dict[str, Any], cutoff: datetime.date) -> Optional[Dict[str, Any]]:
+        protocol = study.get("protocolSection") or {}
+        ident = protocol.get("identificationModule") or {}
+        sponsor_module = protocol.get("sponsorCollaboratorsModule") or {}
+        status_module = protocol.get("statusModule") or {}
+        lead_sponsor = ((sponsor_module.get("leadSponsor") or {}).get("name") or "")
+        org_name = ((ident.get("organization") or {}).get("fullName") or "")
+        alias_text = f"{lead_sponsor} {org_name}"
+        if symbol not in CLINICAL_TRIAL_SPONSOR_ALIASES:
+            return None
+        if not any(alias.lower() in alias_text.lower() for alias in CLINICAL_TRIAL_SPONSOR_ALIASES[symbol]):
+            return None
+
+        first_post = self._parse_datetime_value(((status_module.get("studyFirstPostDateStruct") or {}).get("date") or ""))
+        last_update = self._parse_datetime_value(((status_module.get("lastUpdatePostDateStruct") or {}).get("date") or ""))
+        event_type = None
+        event_dt = None
+        if first_post and first_post.date() >= cutoff:
+            event_type = "clinical_trial_new_study"
+            event_dt = first_post
+        elif last_update and last_update.date() >= cutoff:
+            event_type = "clinical_trial_update"
+            event_dt = last_update
+        if not event_type or not event_dt:
+            return None
+
+        phases = (protocol.get("designModule") or {}).get("phases") or []
+        phase_blob = " ".join(phases).upper()
+        overall_status = str(status_module.get("overallStatus") or "")
+        urgency = "P1"
+        if "PHASE3" in phase_blob or "PHASE4" in phase_blob:
+            urgency = "P0"
+        elif "PHASE2" in phase_blob:
+            urgency = "P1"
+        else:
+            urgency = "P2"
+        nct_id = str(ident.get("nctId") or "UNKNOWN")
+        brief_title = str(ident.get("briefTitle") or nct_id)
+        return {
+            "event_id": hashlib.md5(f"ct:{symbol}:{nct_id}:{event_type}:{event_dt.date().isoformat()}".encode("utf-8")).hexdigest()[:20],
+            "event_type": event_type,
+            "event_time": event_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "headline": f"ClinicalTrials {symbol} {brief_title}",
+            "summary": f"{lead_sponsor or symbol} 临床项目 {nct_id} 出现 {event_type}，当前状态 {overall_status or 'N/A'}。",
+            "facts": {
+                "nct_id": nct_id,
+                "brief_title": brief_title,
+                "lead_sponsor": lead_sponsor,
+                "overall_status": overall_status,
+                "phases": phases,
+            },
+            "source_url": f"https://clinicaltrials.gov/study/{nct_id}",
+            "urgency": urgency,
+        }
+
+    def sync_clinical_trials_events(self, days: int = 30) -> Dict[str, Any]:
+        created = 0
+        failed: List[str] = []
+        sample_events: List[Dict[str, Any]] = []
+        watch_map = self._watch_meta()
+        cutoff = (datetime.now() - timedelta(days=max(1, int(days or 30)))).date()
+        seen_ids: set[str] = set()
+
+        with self._connect() as conn:
+            for symbol in CLINICAL_TRIAL_SPONSOR_ALIASES:
+                if symbol not in watch_map:
+                    continue
+                alias = CLINICAL_TRIAL_SPONSOR_ALIASES[symbol][0]
+                try:
+                    studies = self._fetch_clinical_trials_studies(alias)
+                except Exception:
+                    failed.append(symbol)
+                    continue
+                for study in studies:
+                    event = self._clinical_trial_event_from_study(symbol, study, cutoff)
+                    if not event or event["event_id"] in seen_ids:
+                        continue
+                    seen_ids.add(event["event_id"])
+                    self._upsert_event(
+                        conn,
+                        event_id=event["event_id"],
+                        source_symbol=symbol,
+                        source_name=watch_map[symbol]["name"],
+                        sector=watch_map[symbol]["sector"],
+                        event_type=event["event_type"],
+                        event_time=event["event_time"],
+                        headline=event["headline"],
+                        summary=event["summary"],
+                        facts=event["facts"],
+                        impact_direction="context",
+                        urgency=event["urgency"],
+                        source_url=event["source_url"],
+                        source_tier="T0",
+                    )
+                    created += 1
+                    if len(sample_events) < 8:
+                        sample_events.append({"symbol": symbol, "headline": event["headline"]})
+        return {"ok": True, "created": created, "failed": failed, "sample_events": sample_events, "generated_at": _utcnow_iso()}
+
+    def _fetch_company_ir_feed(self, url: str) -> bytes:
+        resp = self.session.get(url, timeout=20)
+        resp.raise_for_status()
+        return resp.content
+
+    def _parse_company_ir_feed(self, payload: bytes, source: Dict[str, str], cutoff: datetime) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        try:
+            root = ET.fromstring(payload)
+        except Exception:
+            return results
+
+        def local_name(tag: str) -> str:
+            return tag.split("}", 1)[-1].lower()
+
+        def find_text(node: ET.Element, names: Iterable[str]) -> str:
+            wanted = {name.lower() for name in names}
+            for child in node.iter():
+                if local_name(child.tag) in wanted:
+                    return self._normalize_text(child.text or "")
+            return ""
+
+        entries = [node for node in root.iter() if local_name(node.tag) in {"item", "entry"}]
+        for entry in entries:
+            title = find_text(entry, {"title"})
+            summary = find_text(entry, {"description", "summary", "content"})
+            published = find_text(entry, {"pubdate", "published", "updated"})
+            link = ""
+            for child in entry.iter():
+                if local_name(child.tag) != "link":
+                    continue
+                link = child.get("href") or self._normalize_text(child.text or "")
+                if link:
+                    break
+            published_dt = self._parse_datetime_value(published)
+            if not title or not link or not published_dt or published_dt < cutoff:
+                continue
+            text_blob = f"{title} {summary}".lower()
+            if not any(keyword in text_blob for keyword in COMPANY_IR_MATERIAL_KEYWORDS):
+                continue
+            event_type = "company_ir_release"
+            urgency = "P1"
+            if any(token in text_blob for token in ("earnings", "results", "fiscal", "quarter", "guidance", "outlook")):
+                event_type = "company_ir_earnings"
+                urgency = "P0"
+            elif any(token in text_blob for token in ("partnership", "collaboration", "approval")):
+                event_type = "company_ir_strategic"
+            event_id = hashlib.md5(
+                f"ir:{source['symbol']}:{link}:{published_dt.date().isoformat()}".encode("utf-8")
+            ).hexdigest()[:20]
+            results.append(
+                {
+                    "event_id": event_id,
+                    "source_symbol": source["symbol"],
+                    "source_name": source["name"],
+                    "sector": source["sector"],
+                    "event_type": event_type,
+                    "event_time": published_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                    "headline": title,
+                    "summary": summary or title,
+                    "facts": {"label": source["label"], "feed_url": source["url"], "published_at": published_dt.isoformat()},
+                    "impact_direction": "context",
+                    "urgency": urgency,
+                    "source_url": link,
+                    "source_tier": "T0",
+                }
+            )
+        return results
+
+    def sync_company_ir_events(self, lookback_hours: int = 120, max_items_per_source: int = 6) -> Dict[str, Any]:
+        created = 0
+        failed: List[str] = []
+        sample_events: List[Dict[str, Any]] = []
+        cutoff = datetime.now() - timedelta(hours=max(24, int(lookback_hours or 120)))
+
+        with self._connect() as conn:
+            for source in COMPANY_IR_SOURCES:
+                try:
+                    payload = self._fetch_company_ir_feed(source["url"])
+                    events = self._parse_company_ir_feed(payload, source, cutoff)
+                except Exception:
+                    failed.append(source["symbol"])
+                    continue
+                for event in events[: max(1, int(max_items_per_source or 6))]:
+                    self._upsert_event(conn, **event)
+                    created += 1
+                    if len(sample_events) < 8:
+                        sample_events.append({"symbol": event["source_symbol"], "headline": event["headline"]})
+        return {"ok": True, "created": created, "failed": failed, "sample_events": sample_events, "generated_at": _utcnow_iso()}
+
+    def sync_official_events(
+        self,
+        days: int = 30,
+        lookback_hours: int = 120,
+        max_sec_companies: int = 12,
+        max_company_ir_items: int = 6,
+    ) -> Dict[str, Any]:
+        sec = self.sync_sec_filings(days=days, max_companies=max_sec_companies)
+        fda = self.sync_fda_events(days=days)
+        clinical_trials = self.sync_clinical_trials_events(days=days)
+        company_ir = self.sync_company_ir_events(lookback_hours=lookback_hours, max_items_per_source=max_company_ir_items)
+        return {
+            "ok": all(item.get("ok", True) for item in [sec, fda, clinical_trials, company_ir]),
+            "generated_at": _utcnow_iso(),
+            "sec": sec,
+            "fda": fda,
+            "clinical_trials": clinical_trials,
+            "company_ir": company_ir,
+            "created_total": sum(int(item.get("created", 0) or 0) for item in [sec, fda, clinical_trials, company_ir]),
+        }
+
     def translate_recent_events(self, limit: int = 20, source_tier: str = "T0") -> Dict[str, Any]:
         if not self.bailian_api_key:
             return {"ok": False, "translated": 0, "reason": "missing_bailian_api_key"}
@@ -1007,6 +1438,7 @@ class ShortlineService:
                         row["event_id"],
                     ),
                 )
+                conn.commit()
                 updated += 1
         return {"ok": True, "translated": updated, "generated_at": _utcnow_iso()}
 
@@ -1022,7 +1454,7 @@ class ShortlineService:
                 json={
                     "model": self.bailian_model,
                     "temperature": 0.1,
-                    "max_tokens": 1000,
+                    "max_tokens": 400,
                     "messages": [
                         {
                             "role": "system",
@@ -1063,6 +1495,16 @@ class ShortlineService:
             "etf_breakout": 10.0,
             "adr_signal": 14.0,
             "sector_rotation": 8.0,
+            "official_filing": 14.0,
+            "guidance_update": 16.0,
+            "strategic_update": 14.0,
+            "fda_approval": 22.0,
+            "fda_supplement_approval": 16.0,
+            "clinical_trial_new_study": 16.0,
+            "clinical_trial_update": 12.0,
+            "company_ir_earnings": 18.0,
+            "company_ir_strategic": 16.0,
+            "company_ir_release": 12.0,
         }
         urgency_bonus_map = {"P0": 12.0, "P1": 6.0, "P2": 0.0}
         return min(100.0, base + volume_bonus + type_bonus_map.get(event.get("event_type"), 0.0) + urgency_bonus_map.get(event.get("urgency"), 0.0))
@@ -1071,9 +1513,9 @@ class ShortlineService:
         key = "us_etf_theme_rotation"
         if relation_type in {"adr_to_hk", "same_entity"} and market == "HK":
             key = "adr_hk_gap_repair"
-        elif event_type == "earnings_spillover":
+        elif event_type in {"earnings_spillover", "company_ir_earnings", "guidance_update"}:
             key = "us_earnings_spillover"
-        elif theme == "biotech":
+        elif theme == "biotech" or event_type in {"fda_approval", "fda_supplement_approval", "clinical_trial_new_study", "clinical_trial_update"}:
             key = "fda_readout_follow"
         elif theme == "robotics":
             key = "robotics_chain_follow"
@@ -1213,7 +1655,7 @@ class ShortlineService:
 
     def refresh_pipeline(self, include_official: bool = True, translate: bool = False) -> Dict[str, Any]:
         sync_result = self.sync_us_market_events()
-        official_result = self.sync_sec_filings() if include_official else {"ok": True, "skipped": True}
+        official_result = self.sync_official_events() if include_official else {"ok": True, "skipped": True}
         translate_result = self.translate_recent_events(limit=20) if translate else {"ok": True, "skipped": True}
         candidate_result = self.build_candidates()
         return {

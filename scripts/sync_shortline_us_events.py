@@ -16,15 +16,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Sync US shortline events.")
     parser.add_argument("--db-path", default=os.getenv("INVESTMENT_DB_PATH", os.path.join(BASE_DIR, "data", "investment.db")))
     parser.add_argument("--build-candidates", action="store_true", help="Also build CN candidates after syncing events.")
-    parser.add_argument("--include-official", action="store_true", help="Also sync SEC official filing events.")
+    parser.add_argument("--include-official", action="store_true", help="Also sync SEC/FDA/ClinicalTrials/Company IR official events.")
     parser.add_argument("--translate", action="store_true", help="Translate latest T0 events with Bailian after syncing.")
     parser.add_argument("--max-items", type=int, default=24)
+    parser.add_argument("--official-days", type=int, default=30, help="Lookback days for SEC/FDA/ClinicalTrials official events.")
+    parser.add_argument("--official-hours", type=int, default=120, help="Lookback hours for Company IR official feeds.")
     args = parser.parse_args()
 
     service = ShortlineService(args.db_path)
     result = service.sync_us_market_events(max_items=max(8, int(args.max_items or 24)))
     if args.include_official:
-        result["official"] = service.sync_sec_filings()
+        result["official"] = service.sync_official_events(days=max(7, int(args.official_days or 30)), lookback_hours=max(24, int(args.official_hours or 120)))
     if args.translate:
         result["translate"] = service.translate_recent_events(limit=20)
     if args.build_candidates:

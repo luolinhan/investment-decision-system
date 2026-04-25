@@ -83,3 +83,98 @@ def test_sync_sec_filings(tmp_path: Path, monkeypatch):
 
     events = service.list_events(limit=10)
     assert any(item["source_symbol"] == "AMD" and item["source_tier"] == "T0" for item in events)
+
+
+def test_sync_fda_events(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "shortline.db"
+    service = ShortlineService(db_path)
+
+    monkeypatch.setattr(
+        service,
+        "_fetch_openfda_recent_results",
+        lambda days=30, limit=100: [
+            {
+                "application_number": "123456",
+                "sponsor_name": "ELI LILLY AND COMPANY",
+                "products": [{"brand_name": "Zepbound"}],
+                "submissions": [
+                    {
+                        "submission_type": "ORIG",
+                        "submission_number": "1",
+                        "submission_status": "AP",
+                        "submission_status_date": "20260420",
+                    }
+                ],
+            }
+        ],
+    )
+
+    result = service.sync_fda_events(days=30)
+    assert result["ok"] is True
+    assert result["created"] == 1
+
+    events = service.list_events(limit=10)
+    assert any(item["source_symbol"] == "LLY" and item["event_type"] == "fda_approval" for item in events)
+
+
+def test_sync_clinical_trials_events(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "shortline.db"
+    service = ShortlineService(db_path)
+
+    monkeypatch.setattr(
+        service,
+        "_fetch_clinical_trials_studies",
+        lambda sponsor_alias, page_size=20: [
+            {
+                "protocolSection": {
+                    "identificationModule": {
+                        "nctId": "NCT12345678",
+                        "briefTitle": "Moderna Phase 3 Flu Vaccine Study",
+                        "organization": {"fullName": "ModernaTX, Inc."},
+                    },
+                    "sponsorCollaboratorsModule": {
+                        "leadSponsor": {"name": "ModernaTX, Inc."},
+                    },
+                    "statusModule": {
+                        "overallStatus": "RECRUITING",
+                        "studyFirstPostDateStruct": {"date": "2026-04-20"},
+                        "lastUpdatePostDateStruct": {"date": "2026-04-22"},
+                    },
+                    "designModule": {"phases": ["PHASE3"]},
+                }
+            }
+        ],
+    )
+
+    result = service.sync_clinical_trials_events(days=30)
+    assert result["ok"] is True
+    assert result["created"] >= 1
+
+    events = service.list_events(limit=10)
+    assert any(item["source_symbol"] == "MRNA" and item["event_type"].startswith("clinical_trial_") for item in events)
+
+
+def test_sync_company_ir_events(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "shortline.db"
+    service = ShortlineService(db_path)
+
+    rss_payload = b"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+    <rss version=\"2.0\">
+      <channel>
+        <item>
+          <title>AMD Reports Fiscal First Quarter 2026 Results</title>
+          <link>https://ir.amd.com/news-events/press-releases/detail/1288/amd-reports-fiscal-first-quarter-2026-results</link>
+          <pubDate>Wed, 22 Apr 2026 16:15:00 -0400</pubDate>
+          <description>AMD reported quarterly results and updated guidance for AI data center products.</description>
+        </item>
+      </channel>
+    </rss>"""
+
+    monkeypatch.setattr(service, "_fetch_company_ir_feed", lambda url: rss_payload)
+
+    result = service.sync_company_ir_events(lookback_hours=9999, max_items_per_source=2)
+    assert result["ok"] is True
+    assert result["created"] >= 1
+
+    events = service.list_events(limit=20)
+    assert any(item["source_symbol"] == "AMD" and item["event_type"] == "company_ir_earnings" for item in events)
