@@ -14,7 +14,7 @@
     .hero-main {
         padding: 1.5rem 1.6rem;
         border: 1px solid var(--border-color);
-        background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(17, 24, 39, 0.85));
+        background: linear-gradient(180deg, var(--bg-card), var(--bg-secondary));
         border-radius: 0.9rem;
     }
 
@@ -49,7 +49,7 @@
         padding: 1rem 1.1rem;
         border: 1px solid var(--border-color);
         border-radius: 0.9rem;
-        background: rgba(15, 23, 42, 0.82);
+        background: var(--bg-card);
     }
 
     .summary-label {
@@ -84,7 +84,7 @@
         padding: 1.25rem 1.3rem;
         border: 1px solid var(--border-color);
         border-radius: 0.9rem;
-        background: rgba(15, 23, 42, 0.86);
+        background: var(--bg-card);
     }
 
     .panel-header {
@@ -110,7 +110,7 @@
         min-width: 86px;
         padding: 0.45rem 0.6rem;
         border-radius: 999px;
-        background: rgba(56, 189, 248, 0.14);
+        background: var(--accent-cyan-dim);
         color: var(--accent-cyan);
         text-align: center;
         font-family: var(--font-mono);
@@ -129,7 +129,7 @@
         grid-template-columns: 1fr auto;
         gap: 1rem;
         padding-bottom: 0.7rem;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        border-bottom: 1px solid var(--border-color);
     }
 
     .driver-label {
@@ -152,7 +152,7 @@
     .chart-card {
         margin-top: 0.75rem;
         padding-top: 0.85rem;
-        border-top: 1px solid rgba(148, 163, 184, 0.12);
+        border-top: 1px solid var(--border-color);
     }
 
     .chart-title {
@@ -170,9 +170,9 @@
     .pizza-dashboard {
         margin-bottom: 1rem;
         padding: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.12);
+        border: 1px solid var(--border-color);
         border-radius: 0.85rem;
-        background: rgba(15, 23, 42, 0.45);
+        background: var(--bg-secondary);
     }
 
     .pizza-meter-top {
@@ -312,7 +312,7 @@
         padding: 1rem 1.05rem;
         border: 1px solid var(--border-color);
         border-radius: 0.85rem;
-        background: rgba(15, 23, 42, 0.8);
+        background: var(--bg-card);
     }
 
     .thesis-top {
@@ -332,6 +332,19 @@
         margin-top: 0.25rem;
         color: var(--text-muted);
         font-size: 0.8rem;
+    }
+
+    .thesis-priority {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-top: 0.45rem;
+        padding: 0.22rem 0.48rem;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--accent-cyan);
+        font-size: 0.72rem;
+        font-weight: 600;
     }
 
     .thesis-score {
@@ -369,6 +382,69 @@
         background: rgba(148, 163, 184, 0.12);
         color: var(--text-secondary);
         font-size: 0.78rem;
+    }
+
+    .thesis-tag.positive {
+        background: rgba(34, 197, 94, 0.12);
+        color: #86efac;
+    }
+
+    .thesis-tag.pending {
+        background: rgba(251, 191, 36, 0.14);
+        color: #fde68a;
+    }
+
+    .thesis-tag.risk {
+        background: rgba(239, 68, 68, 0.14);
+        color: #fca5a5;
+    }
+
+    .guide-list {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .guide-card {
+        padding: 0.95rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.8rem;
+        background: var(--bg-card);
+    }
+
+    .guide-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.65rem;
+    }
+
+    .guide-name {
+        font-size: 0.92rem;
+        font-weight: 600;
+    }
+
+    .guide-value {
+        font-family: var(--font-mono);
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--accent-cyan);
+        text-align: right;
+    }
+
+    .guide-meta {
+        margin-top: 0.25rem;
+        color: var(--text-muted);
+        font-size: 0.76rem;
+        line-height: 1.55;
+    }
+
+    .guide-copy {
+        display: grid;
+        gap: 0.35rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        line-height: 1.6;
     }
 
     .triple-grid {

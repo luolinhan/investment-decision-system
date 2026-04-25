@@ -8,12 +8,15 @@ overseas collector; the storage target remains the Windows SQLite database.
 import argparse
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 import requests
@@ -27,9 +30,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from app.db import get_sqlite_connection  # noqa: E402
     from app.services.intelligence_service import IntelligenceService  # noqa: E402
+    from app.services.public_research import PublicResearchService  # noqa: E402
 except Exception:
     get_sqlite_connection = None
     IntelligenceService = None
+    PublicResearchService = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.getenv("INVESTMENT_DB_PATH", os.path.join(BASE_DIR, "data", "investment.db"))
@@ -415,6 +420,261 @@ SOURCES: List[Dict[str, Any]] = [
     },
 ]
 
+PUBLIC_RESEARCH_SOURCE_CATALOG: List[Dict[str, Any]] = [
+    {
+        "source_key": "public_goldman_china",
+        "public_source_id": "goldman-sachs",
+        "name": "Goldman Sachs Greater China Insights",
+        "source_type": "public_bank",
+        "url": "https://www.goldmansachs.com/worldwide/greater-china/insights",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "sellside",
+        "cadence_minutes": 720,
+        "notes": "Public China and sector insight articles/PDFs from Goldman Sachs.",
+    },
+    {
+        "source_key": "public_jpmorgan_china",
+        "public_source_id": "jpmorgan",
+        "name": "JPMorgan China Insights",
+        "source_type": "public_bank",
+        "url": "https://www.jpmorgan.com/insights/international/china",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "sellside",
+        "cadence_minutes": 720,
+        "notes": "Public China insights and PDF guide material from JPMorgan.",
+    },
+    {
+        "source_key": "public_ubs_china",
+        "public_source_id": "ubs",
+        "name": "UBS Spotlight on China",
+        "source_type": "public_bank",
+        "url": "https://www.ubs.com/global/en/investment-bank/insights-and-data/spotlight-on-china.html",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "sellside",
+        "cadence_minutes": 720,
+        "notes": "Public China thematic insights from UBS.",
+    },
+    {
+        "source_key": "public_morgan_stanley_china",
+        "public_source_id": "morgan-stanley",
+        "name": "Morgan Stanley Ideas / China",
+        "source_type": "public_bank",
+        "url": "https://www.morganstanley.com/ideas",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "sellside",
+        "cadence_minutes": 720,
+        "notes": "Public ideas articles and selected PDF material from Morgan Stanley.",
+    },
+    {
+        "source_key": "public_imf_china",
+        "public_source_id": "imf",
+        "name": "IMF China Country Research",
+        "source_type": "macro_publication",
+        "url": "https://www.imf.org/en/Countries/CHN",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "official",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "official",
+        "cadence_minutes": 1440,
+        "notes": "Public IMF China macro reports and Article IV materials.",
+    },
+    {
+        "source_key": "public_world_bank_china",
+        "public_source_id": "world-bank",
+        "name": "World Bank China Research",
+        "source_type": "macro_publication",
+        "url": "https://www.worldbank.org/en/country/china",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "official",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "official",
+        "cadence_minutes": 1440,
+        "notes": "Public World Bank China research and economic memorandum materials.",
+    },
+    {
+        "source_key": "public_oecd_china",
+        "public_source_id": "oecd",
+        "name": "OECD China Research",
+        "source_type": "macro_publication",
+        "url": "https://www.oecd.org/china/",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "official",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "official",
+        "cadence_minutes": 1440,
+        "notes": "Public OECD China economic survey materials.",
+    },
+    {
+        "source_key": "public_bis_china",
+        "public_source_id": "bis",
+        "name": "BIS China / Asia Financial Research",
+        "source_type": "macro_publication",
+        "url": "https://www.bis.org/topic/china.htm",
+        "category": "research_library",
+        "priority": 1,
+        "credibility": "official",
+        "collection_method": "curated_public_research",
+        "publisher_region": "overseas",
+        "source_tier": "official",
+        "cadence_minutes": 1440,
+        "notes": "Public BIS papers relevant to China and Asia financial conditions.",
+    },
+]
+
+DOMESTIC_RESEARCH_FOCUS_SOURCES: List[Dict[str, Any]] = [
+    {
+        "source_key": "eastmoney_focus_semi",
+        "name": "Eastmoney Public Research - 芯片半导体",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["688981", "603501", "603986"],
+        "query_keyword": "半导体",
+        "focus_area": "芯片半导体",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side research around semiconductor and chip themes.",
+    },
+    {
+        "source_key": "eastmoney_focus_ai",
+        "name": "Eastmoney Public Research - AI",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["002230", "688111", "300308"],
+        "query_keyword": "人工智能",
+        "focus_area": "AI",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side AI research.",
+    },
+    {
+        "source_key": "eastmoney_focus_robotics",
+        "name": "Eastmoney Public Research - 机器人",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["300024", "002747", "002050"],
+        "query_keyword": "机器人",
+        "focus_area": "机器人",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side robotics research.",
+    },
+    {
+        "source_key": "eastmoney_focus_biotech",
+        "name": "Eastmoney Public Research - 创新药",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["600276", "688235", "600196"],
+        "query_keyword": "创新药",
+        "focus_area": "创新药",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side innovative drug research.",
+    },
+    {
+        "source_key": "eastmoney_focus_pv",
+        "name": "Eastmoney Public Research - 光伏",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["601012", "600438", "002459"],
+        "query_keyword": "光伏",
+        "focus_area": "光伏",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side PV research.",
+    },
+    {
+        "source_key": "eastmoney_focus_nuclear",
+        "name": "Eastmoney Public Research - 核电",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["601985", "601611", "002130"],
+        "query_keyword": "核电",
+        "focus_area": "核电",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side nuclear power research.",
+    },
+    {
+        "source_key": "eastmoney_focus_hog",
+        "name": "Eastmoney Public Research - 养猪",
+        "source_type": "broker_feed",
+        "url": "https://reportapi.eastmoney.com/report/list",
+        "category": "domestic_research",
+        "priority": 1,
+        "credibility": "sellside_public",
+        "collection_method": "akshare_stock_bucket",
+        "symbols": ["002714", "002567", "002840"],
+        "query_keyword": "生猪养殖",
+        "focus_area": "养猪",
+        "publisher_region": "domestic",
+        "source_tier": "sellside",
+        "target_scope": "industry",
+        "cadence_minutes": 240,
+        "notes": "Public domestic sell-side hog cycle research.",
+    },
+]
+
+SOURCES.extend(PUBLIC_RESEARCH_SOURCE_CATALOG)
+SOURCES.extend(DOMESTIC_RESEARCH_FOCUS_SOURCES)
+
 
 BOOTSTRAP_DOCUMENTS: List[Dict[str, Any]] = [
     {
@@ -489,8 +749,64 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+FOCUS_AREA_KEYWORDS: Dict[str, Tuple[str, ...]] = {
+    "芯片半导体": ("半导体", "芯片", "semiconductor", "chip", "foundry", "wafer", "asml", "tsmc", "nvidia", "gpu"),
+    "AI": ("ai", "artificial intelligence", "llm", "model", "agent", "inference", "gpu", "datacenter", "data center", "cloud"),
+    "机器人": ("机器人", "robot", "robotics", "automation", "humanoid", "industrial robot", "physical ai"),
+    "创新药": ("创新药", "biotech", "drug", "therapy", "clinical", "fda", "nda", "bla", "bd deal", "licensing"),
+    "光伏": ("光伏", "solar", "pv", "photovoltaic", "module", "wafer", "cell"),
+    "核电": ("核电", "nuclear", "uranium", "reactor", "small modular reactor", "smr"),
+    "养猪": ("养猪", "生猪", "母猪", "猪价", "hog", "swine", "pork"),
+}
+
+MACRO_SCOPE_TERMS = ("macro", "economy", "article iv", "country economic memorandum", "economic survey", "financial conditions")
+COMPANY_SCOPE_TERMS = ("focus list", "stock", "company", "holdings", "评级", "buy", "overweight")
+POLICY_SCOPE_TERMS = ("policy", "governance", "regulation", "regulatory", "article iv", "survey")
+
+
 def content_hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
+
+
+def safe_json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False) if value not in (None, "") else ""
+
+
+def dedupe_strings(values: Iterable[str]) -> List[str]:
+    seen = set()
+    ordered: List[str] = []
+    for value in values:
+        item = normalize_text(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
+def detect_focus_areas(*parts: Any) -> List[str]:
+    haystack = normalize_text(" ".join(str(part or "") for part in parts)).lower()
+    hits: List[str] = []
+    for focus_area, keywords in FOCUS_AREA_KEYWORDS.items():
+        if any(keyword.lower() in haystack for keyword in keywords):
+            hits.append(focus_area)
+    return dedupe_strings(hits)
+
+
+def infer_target_scope(*parts: Any) -> str:
+    haystack = normalize_text(" ".join(str(part or "") for part in parts)).lower()
+    if any(term in haystack for term in MACRO_SCOPE_TERMS):
+        return "macro"
+    if any(term in haystack for term in POLICY_SCOPE_TERMS):
+        return "policy"
+    if any(term in haystack for term in COMPANY_SCOPE_TERMS):
+        return "company"
+    return "industry"
+
+
+def sanitize_filename(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", normalize_text(value or "")).strip("-._")
+    return cleaned[:96] or fallback
 
 
 def extract_date_from_text(text: str) -> str:
@@ -799,6 +1115,193 @@ def fetch_search_proxy(session: requests.Session, source: Dict[str, Any]) -> Lis
     return docs
 
 
+def fetch_curated_public_research(_session: requests.Session, source: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if PublicResearchService is None:
+        return []
+    service = PublicResearchService()
+    payload = service.get_public_research_hub()
+    source_id = source.get("public_source_id") or ""
+    docs: List[Dict[str, Any]] = []
+    for item in payload.get("items") or []:
+        if source_id and item.get("source_id") != source_id:
+            continue
+        title = normalize_text(item.get("title") or "")
+        if not title:
+            continue
+        tags = [str(tag) for tag in item.get("tags") or [] if str(tag).strip()]
+        original_url = item.get("url") or ""
+        asset_url = item.get("pdf_url") or original_url
+        summary = normalize_text(item.get("summary") or "")
+        raw_text = normalize_text(" ".join([title, summary, " ".join(tags)]))
+        docs.append(
+            {
+                "source_key": source["source_key"],
+                "url": asset_url or original_url,
+                "canonical_url": original_url or asset_url,
+                "title": title,
+                "published_at": item.get("published_at") or "",
+                "summary": summary,
+                "raw_text": raw_text,
+                "metadata": {
+                    "language": "en",
+                    "content_type": item.get("format") or "article",
+                    "original_url": original_url,
+                    "asset_url": asset_url,
+                    "public_source_id": source_id,
+                    "tags": tags,
+                    "source_group": item.get("source_group"),
+                    "category": item.get("category"),
+                },
+            }
+        )
+    return docs
+
+
+def fetch_eastmoney_keyword(session: requests.Session, source: Dict[str, Any]) -> List[Dict[str, Any]]:
+    params = {
+        "cb": "datatable",
+        "industryCode": "*",
+        "pageSize": int(source.get("page_size", 20) or 20),
+        "industry": "*",
+        "rating": "*",
+        "ratingChange": "*",
+        "beginTime": "",
+        "endTime": "",
+        "pageNo": 1,
+        "fields": "",
+        "qType": "0",
+        "orgCode": "",
+        "code": "",
+        "rcode": "10",
+        "keywords": source.get("query_keyword") or "",
+        "_": int(datetime.now().timestamp() * 1000),
+    }
+    resp = session.get(source["url"], params=params, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    text = resp.text.strip()
+    if text.startswith("datatable(") and text.endswith(");"):
+        text = text[len("datatable("):-2]
+    elif text.startswith("datatable(") and text.endswith(")"):
+        text = text[len("datatable("):-1]
+    payload = json.loads(text)
+    docs: List[Dict[str, Any]] = []
+    for item in (payload.get("data") or [])[: int(source.get("result_limit", 16) or 16)]:
+        if not isinstance(item, dict):
+            continue
+        info_code = str(item.get("infoCode") or "").strip()
+        title = normalize_text(item.get("title") or "")
+        if not title:
+            continue
+        summary = normalize_text(item.get("abstract") or "")
+        pdf_url = f"https://pdf.dfcfw.com/pdf/H3_{info_code}_1.pdf" if info_code else ""
+        stock_code = normalize_text(item.get("stockCode") or "")
+        stock_name = normalize_text(item.get("stockName") or "")
+        institution = normalize_text(item.get("orgSName") or "")
+        author = normalize_text(item.get("researcher") or "")
+        rating = normalize_text(item.get("emRatingName") or "")
+        report_page = f"https://data.eastmoney.com/report/info/{info_code}.html" if info_code else pdf_url
+        docs.append(
+            {
+                "source_key": source["source_key"],
+                "url": pdf_url or report_page,
+                "canonical_url": report_page or pdf_url,
+                "title": title,
+                "published_at": str(item.get("publishDate") or "")[:10],
+                "summary": summary,
+                "raw_text": normalize_text(" ".join([title, summary, stock_name, institution, author, rating, source.get("focus_area") or ""])),
+                "metadata": {
+                    "language": "zh",
+                    "content_type": "pdf" if pdf_url else "article",
+                    "original_url": report_page or pdf_url,
+                    "asset_url": pdf_url or report_page,
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "institution": institution,
+                    "author": author,
+                    "rating": rating,
+                    "focus_area": source.get("focus_area"),
+                    "raw": item,
+                },
+            }
+        )
+    return docs
+
+
+def fetch_akshare_stock_bucket(_session: requests.Session, source: Dict[str, Any]) -> List[Dict[str, Any]]:
+    try:
+        import akshare as ak  # type: ignore
+    except Exception:
+        return []
+
+    docs: List[Dict[str, Any]] = []
+    seen = set()
+    per_symbol_limit = int(source.get("per_symbol_limit", 8) or 8)
+    for symbol in source.get("symbols") or []:
+        try:
+            frame = ak.stock_research_report_em(symbol=str(symbol))
+        except Exception:
+            continue
+        if frame is None or getattr(frame, "empty", True):
+            continue
+        columns = set(str(col) for col in frame.columns)
+        for _, row in frame.head(per_symbol_limit).iterrows():
+            title = normalize_text(str(row.get("报告名称") or row.get("研报标题") or row.get("标题") or ""))
+            pdf_url = normalize_text(str(row.get("报告PDF链接") or row.get("PDF链接") or ""))
+            trade_date = normalize_text(str(row.get("日期") or row.get("发布时间") or ""))
+            stock_code = normalize_text(str(row.get("股票代码") or symbol))
+            stock_name = normalize_text(str(row.get("股票简称") or row.get("股票名称") or ""))
+            institution = normalize_text(str(row.get("机构") or row.get("研究机构") or ""))
+            rating = normalize_text(str(row.get("东财评级") or row.get("评级") or ""))
+            industry = normalize_text(str(row.get("行业") or source.get("focus_area") or ""))
+            if not title:
+                continue
+            unique_key = pdf_url or f"{stock_code}|{trade_date}|{title}"
+            if unique_key in seen:
+                continue
+            seen.add(unique_key)
+            docs.append(
+                {
+                    "source_key": source["source_key"],
+                    "url": pdf_url or f"https://data.eastmoney.com/report/{stock_code}.html",
+                    "canonical_url": pdf_url or f"https://data.eastmoney.com/report/{stock_code}.html",
+                    "title": title,
+                    "published_at": trade_date[:10],
+                    "summary": normalize_text(" ".join(filter(None, [stock_name, institution, rating, industry]))),
+                    "raw_text": normalize_text(
+                        " ".join(
+                            filter(
+                                None,
+                                [
+                                    title,
+                                    stock_code,
+                                    stock_name,
+                                    institution,
+                                    rating,
+                                    industry,
+                                    str(row.get("2025-盈利预测-收益") or ""),
+                                    str(row.get("2026-盈利预测-收益") or ""),
+                                ],
+                            )
+                        )
+                    ),
+                    "metadata": {
+                        "language": "zh",
+                        "content_type": "pdf" if pdf_url else "table_row",
+                        "asset_url": pdf_url,
+                        "original_url": pdf_url,
+                        "stock_code": stock_code,
+                        "stock_name": stock_name,
+                        "institution": institution,
+                        "rating": rating,
+                        "industry": industry,
+                        "focus_area": source.get("focus_area"),
+                        "columns": sorted(columns),
+                    },
+                }
+            )
+    return docs
+
+
 def source_runs_on_current_collector(source: Dict[str, Any]) -> bool:
     if not int(source.get("enabled", 1)):
         return False
@@ -980,6 +1483,11 @@ RESEARCH_SIGNAL_TERMS = (
     "transformer",
     "mixture of experts",
     "gpu",
+    "研报",
+    "评级",
+    "盈利预测",
+    "景气",
+    "拐点",
 )
 
 FDA_SIGNAL_TERMS = (
@@ -1290,6 +1798,21 @@ RESEARCH_ONLY_SOURCE_KEYS = {
     "brookings_ai_research",
     "cset_ai_publications",
     "rand_ai_research",
+    "public_goldman_china",
+    "public_jpmorgan_china",
+    "public_ubs_china",
+    "public_morgan_stanley_china",
+    "public_imf_china",
+    "public_world_bank_china",
+    "public_oecd_china",
+    "public_bis_china",
+    "eastmoney_focus_semi",
+    "eastmoney_focus_ai",
+    "eastmoney_focus_robotics",
+    "eastmoney_focus_biotech",
+    "eastmoney_focus_pv",
+    "eastmoney_focus_nuclear",
+    "eastmoney_focus_hog",
 }
 
 RESEARCH_CONTEXT_TERMS = (
@@ -1311,12 +1834,224 @@ RESEARCH_CONTEXT_TERMS = (
     "safety",
     "risk",
     "strategy",
+    "半导体",
+    "芯片",
+    "人工智能",
+    "机器人",
+    "创新药",
+    "光伏",
+    "核电",
+    "生猪",
+    "养殖",
 )
+
+RESEARCH_ASSET_DIR = os.getenv(
+    "INTELLIGENCE_RESEARCH_ASSET_DIR",
+    os.path.join(BASE_DIR, "data", "research_assets"),
+)
+RESEARCH_ARCHIVE_MAX_PER_RUN = int(os.getenv("INTELLIGENCE_RESEARCH_ARCHIVE_MAX_PER_RUN", "6"))
+RESEARCH_ARCHIVE_TIMEOUT_SECONDS = int(os.getenv("INTELLIGENCE_RESEARCH_ARCHIVE_TIMEOUT_SECONDS", "8"))
+RESEARCH_ARCHIVE_ATTEMPTS = 0
+
+
+def default_publisher_region(source: Dict[str, Any]) -> str:
+    return str(source.get("publisher_region") or ("domestic" if "eastmoney" in source.get("source_key", "") else "overseas"))
+
+
+def default_source_tier(source: Dict[str, Any]) -> str:
+    value = normalize_text(str(source.get("source_tier") or ""))
+    if value:
+        return value
+    credibility = str(source.get("credibility") or "")
+    if "sellside" in credibility:
+        return "sellside"
+    if credibility in {"official", "regulatory"}:
+        return "official"
+    return "research"
+
+
+def extract_key_points(*parts: Any, max_points: int = 4) -> List[Dict[str, str]]:
+    text = normalize_text(" ".join(str(part or "") for part in parts))
+    if not text:
+        return []
+    segments = re.split(r"(?<=[\.\!\?。；;])\s+", text)
+    points: List[Dict[str, str]] = []
+    seen = set()
+    for segment in segments:
+        item = normalize_text(segment).strip(" -")
+        if len(item) < 18 or item.lower() in seen:
+            continue
+        seen.add(item.lower())
+        points.append({"zh": "", "en": item[:220]})
+        if len(points) >= max_points:
+            break
+    return points
+
+
+def normalize_key_points(value: Any, max_points: int = 6) -> List[Dict[str, str]]:
+    points: List[Dict[str, str]] = []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            value = []
+    if not isinstance(value, list):
+        return points
+    for item in value:
+        if isinstance(item, dict):
+            zh = normalize_text(str(item.get("zh") or ""))
+            en = normalize_text(str(item.get("en") or ""))
+        else:
+            zh = ""
+            en = normalize_text(str(item or ""))
+        if zh or en:
+            points.append({"zh": zh, "en": en})
+        if len(points) >= max_points:
+            break
+    return points
+
+
+def merge_key_points(existing: Any, incoming: Any, max_points: int = 6) -> List[Dict[str, str]]:
+    existing_points = normalize_key_points(existing, max_points=max_points)
+    incoming_points = normalize_key_points(incoming, max_points=max_points)
+    if not existing_points:
+        return incoming_points
+    merged: List[Dict[str, str]] = []
+    seen = set()
+    for idx, old_point in enumerate(existing_points):
+        new_point = incoming_points[idx] if idx < len(incoming_points) else {}
+        zh = old_point.get("zh") or new_point.get("zh") or ""
+        en = old_point.get("en") or new_point.get("en") or ""
+        if not zh and not en:
+            continue
+        dedupe_key = f"{zh.lower()}|{en.lower()}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        merged.append({"zh": zh, "en": en})
+        if len(merged) >= max_points:
+            return merged
+    for point in incoming_points:
+        zh = point.get("zh") or ""
+        en = point.get("en") or ""
+        if not zh and not en:
+            continue
+        dedupe_key = f"{zh.lower()}|{en.lower()}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        merged.append({"zh": zh, "en": en})
+        if len(merged) >= max_points:
+            break
+    return merged
+
+
+def archive_research_asset(report: Dict[str, Any], existing_path: str = "") -> Dict[str, str]:
+    global RESEARCH_ARCHIVE_ATTEMPTS
+    asset_url = normalize_text(report.get("original_url") or report.get("url") or "")
+    if existing_path and os.path.exists(existing_path) and os.path.getsize(existing_path) > 0:
+        suffix = Path(existing_path).suffix.lower()
+        return {
+            "original_url": asset_url,
+            "original_asset_path": existing_path,
+            "original_asset_type": "pdf" if suffix == ".pdf" else ("snapshot" if suffix in {".md", ".txt"} else suffix.lstrip(".")),
+            "original_asset_status": "archived",
+            "original_downloaded_at": now_iso(),
+        }
+    if not asset_url.startswith(("http://", "https://")):
+        return {
+            "original_url": asset_url,
+            "original_asset_path": existing_path or "",
+            "original_asset_type": "",
+            "original_asset_status": "missing_url",
+            "original_downloaded_at": "",
+        }
+    if RESEARCH_ARCHIVE_MAX_PER_RUN >= 0 and RESEARCH_ARCHIVE_ATTEMPTS >= RESEARCH_ARCHIVE_MAX_PER_RUN:
+        return {
+            "original_url": asset_url,
+            "original_asset_path": existing_path or "",
+            "original_asset_type": "",
+            "original_asset_status": "queued",
+            "original_downloaded_at": "",
+        }
+
+    source_key = sanitize_filename(report.get("source_key") or "unknown", "unknown")
+    month_key = (report.get("published_at") or report.get("fetched_at") or now_iso())[:7] or "undated"
+    base_name = sanitize_filename(report.get("report_key") or report.get("title") or content_hash(asset_url)[:12], "research")
+    target_dir = Path(RESEARCH_ASSET_DIR) / source_key / month_key
+    target_dir.mkdir(parents=True, exist_ok=True)
+    session = get_session()
+    RESEARCH_ARCHIVE_ATTEMPTS += 1
+
+    def _write_bytes(ext: str, content: bytes) -> str:
+        target_path = target_dir / f"{base_name}{ext}"
+        target_path.write_bytes(content)
+        return str(target_path)
+
+    def _write_text(ext: str, text: str) -> str:
+        target_path = target_dir / f"{base_name}{ext}"
+        target_path.write_text(text, encoding="utf-8")
+        return str(target_path)
+
+    try:
+        resp = session.get(asset_url, timeout=RESEARCH_ARCHIVE_TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        path_ext = Path(unquote(urlparse(asset_url).path)).suffix.lower()
+        guessed_ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or path_ext or ""
+        if "pdf" in content_type or path_ext == ".pdf" or resp.content[:4] == b"%PDF":
+            local_path = _write_bytes(".pdf", resp.content)
+            asset_type = "pdf"
+        else:
+            if guessed_ext not in {".html", ".htm", ".txt", ".md"}:
+                guessed_ext = ".html"
+            local_path = _write_text(guessed_ext, resp.text)
+            asset_type = "snapshot"
+        return {
+            "original_url": asset_url,
+            "original_asset_path": local_path,
+            "original_asset_type": asset_type,
+            "original_asset_status": "archived",
+            "original_downloaded_at": now_iso(),
+        }
+    except Exception as exc:
+        if SEARCH_PROXY_URL:
+            try:
+                payload = fetch_search_proxy_body(session, asset_url, 18000)
+                content = normalize_text(payload.get("content") or "")
+                if content:
+                    snapshot_text = "\n".join(
+                        [
+                            f"# {report.get('title') or report.get('report_key') or 'Research Snapshot'}",
+                            "",
+                            f"Source URL: {asset_url}",
+                            "",
+                            content,
+                        ]
+                    )
+                    local_path = _write_text(".md", snapshot_text)
+                    return {
+                        "original_url": asset_url,
+                        "original_asset_path": local_path,
+                        "original_asset_type": "snapshot",
+                        "original_asset_status": "archived_via_proxy",
+                        "original_downloaded_at": now_iso(),
+                    }
+            except Exception:
+                pass
+        return {
+            "original_url": asset_url,
+            "original_asset_path": existing_path or "",
+            "original_asset_type": "",
+            "original_asset_status": f"failed:{str(exc)[:80]}",
+            "original_downloaded_at": "",
+        }
 
 
 def research_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     source_key = doc.get("source_key") or ""
     source = source_meta_for_key(source_key)
+    metadata = doc.get("metadata") or {}
     if source_key not in RESEARCH_ONLY_SOURCE_KEYS and source.get("category") != "ai_research":
         return None
 
@@ -1335,10 +2070,41 @@ def research_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any
     source_name = source.get("name") or source_key
     published_at = doc.get("published_at") or extract_date_from_text(doc.get("summary") or "") or extract_date_from_text(doc.get("raw_text") or "")
     summary = clean_doc_summary(doc, title, max_len=640)
-    thesis = source.get("thesis_template") or "Use as a medium-term validation input for AI capability, adoption, compute demand and policy path."
-    thesis_zh = source.get("thesis_template_zh") or "作为 AI 能力、采用率、算力需求和政策路径的中期验证输入。"
-    relevance = source.get("investment_relevance") or "AI infrastructure, cloud, semiconductors, software, data center power"
-    relevance_zh = source.get("investment_relevance_zh") or "AI 基础设施、云、半导体、软件、数据中心电力"
+    focus_areas = detect_focus_areas(
+        source.get("focus_area"),
+        title,
+        summary,
+        doc.get("raw_text"),
+        " ".join(metadata.get("tags") or []),
+    )
+    if source.get("focus_area") and source.get("focus_area") not in focus_areas:
+        focus_areas.insert(0, str(source.get("focus_area")))
+    tags = dedupe_strings(
+        list(metadata.get("tags") or [])
+        + [source.get("category") or "", metadata.get("category") or "", metadata.get("source_group") or ""]
+        + focus_areas
+    )
+    target_scope = str(source.get("target_scope") or infer_target_scope(title, summary, doc.get("raw_text"), metadata.get("category")))
+    publisher_region = default_publisher_region(source)
+    source_tier = default_source_tier(source)
+    best_link = doc.get("canonical_url") or doc.get("url") or ""
+    original_asset_url = metadata.get("asset_url") or metadata.get("original_url") or doc.get("url") or best_link
+    if source_key.startswith("eastmoney_focus_"):
+        focus_line = focus_areas[0] if focus_areas else (source.get("focus_area") or "行业")
+        thesis = source.get("thesis_template") or f"Use as public domestic sell-side tracking for {focus_line}; focus on earnings revisions, rating changes and catalyst validation."
+        thesis_zh = source.get("thesis_template_zh") or f"作为 {focus_line} 的公开卖方跟踪材料，重点看盈利预测、评级变化和催化验证。"
+        relevance = source.get("investment_relevance") or f"{focus_line}, earnings revision, valuation rerating, leading companies and catalyst calendar"
+        relevance_zh = source.get("investment_relevance_zh") or f"{focus_line}、盈利预测修正、估值重估、龙头公司与催化日历"
+    elif source.get("category") == "research_library":
+        thesis = source.get("thesis_template") or "Use as a public macro and thematic validation input for China assets, policy path and sector rotation."
+        thesis_zh = source.get("thesis_template_zh") or "作为中国资产、政策路径和行业轮动的公开宏观/主题验证材料。"
+        relevance = source.get("investment_relevance") or "China macro, policy, cross-border liquidity, sector rotation, valuation context"
+        relevance_zh = source.get("investment_relevance_zh") or "中国宏观、政策、跨境流动性、行业轮动与估值背景"
+    else:
+        thesis = source.get("thesis_template") or "Use as a medium-term validation input for AI capability, adoption, compute demand and policy path."
+        thesis_zh = source.get("thesis_template_zh") or "作为 AI 能力、采用率、算力需求和政策路径的中期验证输入。"
+        relevance = source.get("investment_relevance") or "AI infrastructure, cloud, semiconductors, software, data center power"
+        relevance_zh = source.get("investment_relevance_zh") or "AI 基础设施、云、半导体、软件、数据中心电力"
 
     evidence: List[Tuple[str, str, str]] = [
         ("Source", source_name, doc.get("url") or ""),
@@ -1353,8 +2119,11 @@ def research_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any
         "title_zh": doc.get("title_zh") or "",
         "source_key": source_key,
         "source_name": source_name,
-        "url": doc.get("url") or "",
+        "url": best_link,
         "report_type": source.get("report_type") or "research",
+        "publisher_region": publisher_region,
+        "source_tier": source_tier,
+        "target_scope": target_scope,
         "published_at": published_at,
         "language": (doc.get("metadata") or {}).get("language", "en"),
         "summary": summary,
@@ -1363,6 +2132,11 @@ def research_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any
         "thesis_zh": thesis_zh,
         "relevance": relevance,
         "relevance_zh": relevance_zh,
+        "focus_areas": focus_areas,
+        "tags": tags,
+        "tickers": dedupe_strings([metadata.get("stock_code") or ""]),
+        "key_points": extract_key_points(summary, thesis, relevance),
+        "original_url": original_asset_url,
         "evidence": evidence,
     }
 
@@ -1456,15 +2230,50 @@ def event_payload_for_document(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report: Dict[str, Any]) -> bool:
-    existing = conn.execute("SELECT id FROM research_reports WHERE report_key = ?", (report["report_key"],)).fetchone()
+    existing = conn.execute(
+        """
+        SELECT id, original_asset_path, original_asset_status,
+               title_zh, summary_zh, thesis_zh, relevance_zh, key_points_json
+        FROM research_reports
+        WHERE report_key = ?
+        """,
+        (report["report_key"],),
+    ).fetchone()
+    existing_path = existing[1] if existing and len(existing) > 1 else ""
+    existing_title_zh = existing[3] if existing and len(existing) > 3 else ""
+    existing_summary_zh = existing[4] if existing and len(existing) > 4 else ""
+    existing_thesis_zh = existing[5] if existing and len(existing) > 5 else ""
+    existing_relevance_zh = existing[6] if existing and len(existing) > 6 else ""
+    existing_key_points_json = existing[7] if existing and len(existing) > 7 else ""
+    merged_key_points = merge_key_points(existing_key_points_json, report.get("key_points") or [])
+    archive_info = archive_research_asset(report, existing_path=existing_path or "")
+    report = {
+        **report,
+        **archive_info,
+        "publisher_region": report.get("publisher_region") or "overseas",
+        "source_tier": report.get("source_tier") or "research",
+        "target_scope": report.get("target_scope") or "industry",
+        "title_zh": report.get("title_zh") or existing_title_zh or "",
+        "summary_zh": report.get("summary_zh") or existing_summary_zh or "",
+        "thesis_zh": report.get("thesis_zh") or existing_thesis_zh or "",
+        "relevance_zh": report.get("relevance_zh") or existing_relevance_zh or "",
+        "focus_areas_json": safe_json_dumps(report.get("focus_areas") or []),
+        "tags_json": safe_json_dumps(report.get("tags") or []),
+        "tickers_json": safe_json_dumps(report.get("tickers") or []),
+        "key_points_json": safe_json_dumps(merged_key_points),
+    }
     if existing:
         report_id = int(existing[0])
         conn.execute(
             """
             UPDATE research_reports
             SET title=?, title_zh=?, source_key=?, source_name=?, url=?, report_type=?,
+                publisher_region=?, source_tier=?, target_scope=?,
                 published_at=?, fetched_at=?, language=?, summary=?, summary_zh=?,
-                thesis=?, thesis_zh=?, relevance=?, relevance_zh=?, status='active'
+                thesis=?, thesis_zh=?, relevance=?, relevance_zh=?,
+                focus_areas_json=?, tags_json=?, tickers_json=?, key_points_json=?,
+                original_url=?, original_asset_path=?, original_asset_type=?,
+                original_asset_status=?, original_downloaded_at=?, status='active'
             WHERE id=?
             """,
             (
@@ -1474,6 +2283,9 @@ def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report
                 report.get("source_name"),
                 report.get("url"),
                 report.get("report_type", "research"),
+                report.get("publisher_region"),
+                report.get("source_tier"),
+                report.get("target_scope"),
                 report.get("published_at"),
                 now_iso(),
                 report.get("language", "en"),
@@ -1483,6 +2295,15 @@ def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report
                 report.get("thesis_zh"),
                 report.get("relevance"),
                 report.get("relevance_zh"),
+                report.get("focus_areas_json"),
+                report.get("tags_json"),
+                report.get("tickers_json"),
+                report.get("key_points_json"),
+                report.get("original_url"),
+                report.get("original_asset_path"),
+                report.get("original_asset_type"),
+                report.get("original_asset_status"),
+                report.get("original_downloaded_at"),
                 report_id,
             ),
         )
@@ -1492,8 +2313,13 @@ def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report
             """
             INSERT INTO research_reports
             (report_key, title, title_zh, source_key, source_name, url, report_type,
-             published_at, fetched_at, language, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+             publisher_region, source_tier, target_scope,
+             published_at, fetched_at, language, summary, summary_zh,
+             thesis, thesis_zh, relevance, relevance_zh,
+             focus_areas_json, tags_json, tickers_json, key_points_json,
+             original_url, original_asset_path, original_asset_type,
+             original_asset_status, original_downloaded_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
             """,
             (
                 report["report_key"],
@@ -1503,6 +2329,9 @@ def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report
                 report.get("source_name"),
                 report.get("url"),
                 report.get("report_type", "research"),
+                report.get("publisher_region"),
+                report.get("source_tier"),
+                report.get("target_scope"),
                 report.get("published_at"),
                 now_iso(),
                 report.get("language", "en"),
@@ -1512,6 +2341,15 @@ def upsert_research_report(conn: sqlite3.Connection, doc: Dict[str, Any], report
                 report.get("thesis_zh"),
                 report.get("relevance"),
                 report.get("relevance_zh"),
+                report.get("focus_areas_json"),
+                report.get("tags_json"),
+                report.get("tickers_json"),
+                report.get("key_points_json"),
+                report.get("original_url"),
+                report.get("original_asset_path"),
+                report.get("original_asset_type"),
+                report.get("original_asset_status"),
+                report.get("original_downloaded_at"),
             ),
         )
         report_id = int(cursor.lastrowid)
@@ -1658,6 +2496,14 @@ def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, An
     research = bundle.get("research")
     if research:
         source = source_meta_for_key(doc["source_key"])
+        metadata = doc.get("metadata") or {}
+        focus_areas = detect_focus_areas(
+            source.get("focus_area"),
+            doc.get("title"),
+            doc.get("summary"),
+            research.get("relevance"),
+            research.get("thesis"),
+        )
         upsert_research_report(
             conn,
             doc,
@@ -1667,8 +2513,11 @@ def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, An
                 "title_zh": doc.get("title_zh") or "",
                 "source_key": doc["source_key"],
                 "source_name": source.get("name") or doc["source_key"],
-                "url": doc["url"],
+                "url": doc.get("canonical_url") or doc["url"],
                 "report_type": research.get("report_type", "research"),
+                "publisher_region": default_publisher_region(source),
+                "source_tier": default_source_tier(source),
+                "target_scope": infer_target_scope(doc.get("title"), research.get("relevance"), research.get("thesis")),
                 "published_at": doc.get("published_at"),
                 "language": (doc.get("metadata") or {}).get("language", "en"),
                 "summary": doc.get("summary") or bundle.get("summary"),
@@ -1677,6 +2526,11 @@ def upsert_event_bundle(conn: sqlite3.Connection, doc_id: int, doc: Dict[str, An
                 "thesis_zh": research.get("thesis_zh") or "",
                 "relevance": research.get("relevance"),
                 "relevance_zh": research.get("relevance_zh") or "",
+                "focus_areas": focus_areas,
+                "tags": dedupe_strings(focus_areas + [bundle.get("category") or "", source.get("category") or ""]),
+                "tickers": dedupe_strings([metadata.get("stock_code") or ""]),
+                "key_points": extract_key_points(doc.get("summary"), research.get("thesis"), research.get("relevance")),
+                "original_url": metadata.get("asset_url") or metadata.get("original_url") or doc["url"],
                 "evidence": [
                     ("Event", bundle["title"], doc["url"]),
                     ("Source", source.get("name") or doc["source_key"], doc["url"]),
@@ -1748,6 +2602,12 @@ def collect_documents(include_bootstrap: bool = BOOTSTRAP_SEED) -> Tuple[Dict[st
                 docs = fetch_feed(session, source)
             elif source["collection_method"] == "search_proxy":
                 docs = fetch_search_proxy(session, source)
+            elif source["collection_method"] == "curated_public_research":
+                docs = fetch_curated_public_research(session, source)
+            elif source["collection_method"] == "eastmoney_keyword":
+                docs = fetch_eastmoney_keyword(session, source)
+            elif source["collection_method"] == "akshare_stock_bucket":
+                docs = fetch_akshare_stock_bucket(session, source)
             else:
                 docs = []
             documents_by_source.setdefault(source["source_key"], []).extend(docs)

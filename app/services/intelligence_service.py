@@ -45,6 +45,12 @@ class IntelligenceService:
     def _rows_to_dicts(cls, rows: Iterable[sqlite3.Row]) -> List[Dict[str, Any]]:
         return [cls._row_to_dict(row) for row in rows]
 
+    def _normalize_research_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        for field in ("focus_areas_json", "tags_json", "tickers_json", "key_points_json"):
+            if field in item:
+                item[field.replace("_json", "")] = self._json_loads(item.get(field), [])
+        return item
+
     def ensure_tables(self) -> None:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with get_sqlite_connection(self.db_path) as conn:
@@ -175,6 +181,9 @@ class IntelligenceService:
                     source_name TEXT,
                     url TEXT NOT NULL,
                     report_type TEXT DEFAULT 'research',
+                    publisher_region TEXT DEFAULT 'overseas',
+                    source_tier TEXT DEFAULT 'research',
+                    target_scope TEXT DEFAULT 'industry',
                     published_at TEXT,
                     fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     language TEXT DEFAULT 'en',
@@ -184,6 +193,15 @@ class IntelligenceService:
                     thesis_zh TEXT,
                     relevance TEXT,
                     relevance_zh TEXT,
+                    focus_areas_json TEXT,
+                    tags_json TEXT,
+                    tickers_json TEXT,
+                    key_points_json TEXT,
+                    original_url TEXT,
+                    original_asset_path TEXT,
+                    original_asset_type TEXT,
+                    original_asset_status TEXT DEFAULT 'pending',
+                    original_downloaded_at TEXT,
                     status TEXT DEFAULT 'active'
                 );
 
@@ -216,6 +234,18 @@ class IntelligenceService:
             self._ensure_column(conn, "research_reports", "summary_zh", "TEXT")
             self._ensure_column(conn, "research_reports", "thesis_zh", "TEXT")
             self._ensure_column(conn, "research_reports", "relevance_zh", "TEXT")
+            self._ensure_column(conn, "research_reports", "publisher_region", "TEXT")
+            self._ensure_column(conn, "research_reports", "source_tier", "TEXT")
+            self._ensure_column(conn, "research_reports", "target_scope", "TEXT")
+            self._ensure_column(conn, "research_reports", "focus_areas_json", "TEXT")
+            self._ensure_column(conn, "research_reports", "tags_json", "TEXT")
+            self._ensure_column(conn, "research_reports", "tickers_json", "TEXT")
+            self._ensure_column(conn, "research_reports", "key_points_json", "TEXT")
+            self._ensure_column(conn, "research_reports", "original_url", "TEXT")
+            self._ensure_column(conn, "research_reports", "original_asset_path", "TEXT")
+            self._ensure_column(conn, "research_reports", "original_asset_type", "TEXT")
+            self._ensure_column(conn, "research_reports", "original_asset_status", "TEXT")
+            self._ensure_column(conn, "research_reports", "original_downloaded_at", "TEXT")
             conn.commit()
 
     @staticmethod
@@ -310,7 +340,6 @@ class IntelligenceService:
             FROM intelligence_events
             WHERE {' AND '.join(clauses)}
             ORDER BY
-                CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 ELSE 2 END,
                 COALESCE(event_time, last_seen_at, first_seen_at) DESC,
                 id DESC
             LIMIT ?
@@ -386,7 +415,10 @@ class IntelligenceService:
                 conn.execute(
                     """
                     SELECT report_key, title, title_zh, source_name, url, report_type,
-                           published_at, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh
+                           publisher_region, source_tier, target_scope,
+                           published_at, summary, summary_zh, thesis, thesis_zh, relevance, relevance_zh,
+                           focus_areas_json, tags_json, tickers_json, key_points_json,
+                           original_url, original_asset_path, original_asset_type, original_asset_status, original_downloaded_at
                     FROM research_reports
                     WHERE status = 'active'
                       AND (
@@ -400,17 +432,21 @@ class IntelligenceService:
                     (event.get("title", "")[:24], event.get("title", "")[:24], event_key.split("_")[0]),
                 ).fetchall()
             )
+            event["research"] = [self._normalize_research_item(item) for item in event["research"]]
             return event
 
     def list_research(self, limit: int = 50) -> List[Dict[str, Any]]:
         limit = max(1, min(int(limit or 50), 200))
         with self._connect() as conn:
-            return self._rows_to_dicts(
+            rows = self._rows_to_dicts(
                 conn.execute(
                     """
                     SELECT report_key, title, title_zh, source_name, source_key, url,
-                           report_type, published_at, fetched_at, language, summary,
-                           summary_zh, thesis, thesis_zh, relevance, relevance_zh
+                           report_type, publisher_region, source_tier, target_scope,
+                           published_at, fetched_at, language, summary,
+                           summary_zh, thesis, thesis_zh, relevance, relevance_zh,
+                           focus_areas_json, tags_json, tickers_json, key_points_json,
+                           original_url, original_asset_path, original_asset_type, original_asset_status, original_downloaded_at
                     FROM research_reports
                     WHERE status = 'active'
                     ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
@@ -419,6 +455,7 @@ class IntelligenceService:
                     (limit,),
                 ).fetchall()
             )
+        return [self._normalize_research_item(item) for item in rows]
 
     def list_sources(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:

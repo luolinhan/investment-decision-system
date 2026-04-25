@@ -1,44 +1,34 @@
-"""Research workbench service for filtering, aggregating, and viewing research reports."""
+"""Research workbench aggregator for research_reports / research_evidence."""
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, Iterable, List, Optional
 
 from app.db import get_sqlite_connection
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "investment.db")
+DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "data",
+    "investment.db",
+)
 
 
-def _detect_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    """Return the set of column names for *table* via PRAGMA table_info."""
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return {row[1] for row in rows}
-
-
-def _has_col(columns: set[str], name: str) -> bool:
-    return name in columns
-
-
-def _safe_div(num: float, den: float, fallback: float = 0.0) -> float:
-    return num / den if den != 0 else fallback
-
-
-_EMPTY_OVERVIEW = {
-    "total": 0,
-    "active": 0,
-    "overseas": 0,
-    "domestic": 0,
-    "bilingual_coverage": {"title_zh": 0, "title_zh_pct": 0.0, "summary_zh": 0, "summary_zh_pct": 0.0},
-    "archive_coverage": {"total": 0, "active": 0, "archived": 0, "archive_pct": 0.0},
-    "focus_distribution": [],
-    "source_distribution": [],
-    "latest_updated_at": None,
-}
+FOCUS_AREAS = (
+    "芯片半导体",
+    "AI",
+    "机器人",
+    "创新药",
+    "光伏",
+    "核电",
+    "养猪",
+)
 
 
 class ResearchWorkbenchService:
-    """Read-only aggregator for research_reports / research_evidence."""
+    """Read-only workbench over the persistent research library."""
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
@@ -54,151 +44,173 @@ class ResearchWorkbenchService:
             "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name=?",
             (table,),
         ).fetchone()
-        return (row["cnt"] if row else 0) > 0
+        return bool(row and row["cnt"])
+
+    @staticmethod
+    def _detect_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    @staticmethod
+    def _json_loads(value: Any, default: Any) -> Any:
+        if value in (None, ""):
+            return default
+        try:
+            return json.loads(value)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _safe_pct(numerator: float, denominator: float) -> float:
+        if not denominator:
+            return 0.0
+        return round((numerator / denominator) * 100.0, 1)
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         return {key: row[key] for key in row.keys()}
 
-    @classmethod
-    def _rows_to_dicts(cls, rows) -> List[Dict[str, Any]]:
-        return [cls._row_to_dict(r) for r in rows]
+    def _normalize_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        focus_areas = self._json_loads(item.get("focus_areas_json"), [])
+        tags = self._json_loads(item.get("tags_json"), [])
+        tickers = self._json_loads(item.get("tickers_json"), [])
+        key_points = self._json_loads(item.get("key_points_json"), [])
 
-    # ------------------------------------------------------------------
-    # Overview
-    # ------------------------------------------------------------------
+        item["focus_areas"] = [str(value) for value in focus_areas if str(value).strip()]
+        item["tags"] = [str(value) for value in tags if str(value).strip()]
+        item["tickers"] = [str(value) for value in tickers if str(value).strip()]
+        item["key_points"] = [
+            {
+                "zh": str(point.get("zh") or "").strip(),
+                "en": str(point.get("en") or "").strip(),
+            }
+            for point in key_points
+            if isinstance(point, dict) and (point.get("zh") or point.get("en"))
+        ]
+        item["has_translation"] = bool(
+            (item.get("title_zh") and item.get("title_zh") != item.get("title"))
+            or (item.get("summary_zh") and item.get("summary_zh") != item.get("summary"))
+            or any(point.get("zh") for point in item["key_points"])
+        )
+        item["archived"] = str(item.get("original_asset_status") or "").startswith("archived")
+        item["display_title"] = item.get("title_zh") or item.get("title") or "-"
+        item["display_summary"] = item.get("summary_zh") or item.get("summary") or item.get("thesis_zh") or item.get("thesis") or ""
+        item["detail_intro"] = item.get("thesis_zh") or item.get("thesis") or ""
+        item["sort_time"] = item.get("published_at") or item.get("fetched_at") or ""
+        item["primary_focus"] = item["focus_areas"][0] if item["focus_areas"] else ""
+        return item
 
-    def get_overview(self) -> Dict[str, Any]:
-        """Aggregate summary: totals, bilingual coverage, source distribution, etc."""
+    def _fetch_reports(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             if not self._table_exists(conn, "research_reports"):
-                return dict(_EMPTY_OVERVIEW)
-            columns = _detect_columns(conn, "research_reports")
-
-            # Basic counts
-            row = conn.execute(
-                "SELECT COUNT(*) AS total FROM research_reports"
-            ).fetchone()
-            total = row["total"] if row else 0
-
-            # Active vs archived
-            if _has_col(columns, "status"):
-                row = conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM research_reports WHERE status = 'active'"
-                ).fetchone()
-                active = row["cnt"] if row else 0
-                archived = total - active
-            else:
-                active = total
-                archived = 0
-
-            # Region split (publisher_region / language heuristic)
-            overseas_expr = self._overseas_filter(columns)
-            if overseas_expr:
-                row = conn.execute(
-                    f"SELECT COUNT(*) AS cnt FROM research_reports WHERE {overseas_expr}"
-                ).fetchone()
-                overseas = row["cnt"] if row else 0
-            else:
-                overseas = 0
-            domestic = total - overseas
-
-            # Bilingual coverage
-            if _has_col(columns, "title_zh"):
-                row = conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM research_reports WHERE title_zh IS NOT NULL AND title_zh != ''"
-                ).fetchone()
-                zh_title = row["cnt"] if row else 0
-            else:
-                zh_title = 0
-
-            if _has_col(columns, "summary_zh"):
-                row = conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM research_reports WHERE summary_zh IS NOT NULL AND summary_zh != ''"
-                ).fetchone()
-                zh_summary = row["cnt"] if row else 0
-            else:
-                zh_summary = 0
-
-            # Source distribution
-            source_rows = conn.execute(
-                """
-                SELECT source_name, source_key, COUNT(*) AS cnt
+                return []
+            columns = self._detect_columns(conn, "research_reports")
+            selected = [
+                "id",
+                "report_key",
+                "title",
+                "title_zh",
+                "source_key",
+                "source_name",
+                "url",
+                "report_type",
+                "publisher_region",
+                "source_tier",
+                "target_scope",
+                "published_at",
+                "fetched_at",
+                "language",
+                "summary",
+                "summary_zh",
+                "thesis",
+                "thesis_zh",
+                "relevance",
+                "relevance_zh",
+                "focus_areas_json",
+                "tags_json",
+                "tickers_json",
+                "key_points_json",
+                "original_url",
+                "original_asset_path",
+                "original_asset_type",
+                "original_asset_status",
+                "original_downloaded_at",
+                "status",
+            ]
+            selected = [col for col in selected if col in columns]
+            rows = conn.execute(
+                f"""
+                SELECT {', '.join(selected)}
                 FROM research_reports
-                GROUP BY COALESCE(source_name, source_key)
-                ORDER BY cnt DESC
-                LIMIT 20
+                WHERE COALESCE(status, 'active') = 'active'
+                ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
                 """
             ).fetchall()
-            source_distribution = [
-                {"name": r["source_name"] or r["source_key"], "count": r["cnt"]}
-                for r in source_rows
+        return [self._normalize_item(self._row_to_dict(row)) for row in rows]
+
+    @staticmethod
+    def _matches_query(item: Dict[str, Any], query: str) -> bool:
+        needle = query.strip().lower()
+        if not needle:
+            return True
+        haystack = " ".join(
+            [
+                str(item.get("title") or ""),
+                str(item.get("title_zh") or ""),
+                str(item.get("summary") or ""),
+                str(item.get("summary_zh") or ""),
+                str(item.get("thesis") or ""),
+                str(item.get("thesis_zh") or ""),
+                " ".join(item.get("focus_areas") or []),
+                " ".join(item.get("tags") or []),
+                " ".join(item.get("tickers") or []),
+                str(item.get("source_name") or ""),
             ]
+        ).lower()
+        return needle in haystack
 
-            # Focus area distribution (fallback to report_type)
-            if _has_col(columns, "focus_area"):
-                fa_rows = conn.execute(
-                    """
-                    SELECT focus_area, COUNT(*) AS cnt
-                    FROM research_reports
-                    WHERE focus_area IS NOT NULL AND focus_area != ''
-                    GROUP BY focus_area
-                    ORDER BY cnt DESC
-                    LIMIT 20
-                    """
-                ).fetchall()
-                focus_distribution = [
-                    {"area": r["focus_area"], "count": r["cnt"]} for r in fa_rows
-                ]
-            else:
-                rt_rows = conn.execute(
-                    """
-                    SELECT report_type, COUNT(*) AS cnt
-                    FROM research_reports
-                    WHERE report_type IS NOT NULL
-                    GROUP BY report_type
-                    ORDER BY cnt DESC
-                    LIMIT 20
-                    """
-                ).fetchall()
-                focus_distribution = [
-                    {"area": r["report_type"], "count": r["cnt"]} for r in rt_rows
-                ]
+    def get_overview(self) -> Dict[str, Any]:
+        reports = self._fetch_reports()
+        total = len(reports)
+        domestic = sum(1 for item in reports if item.get("publisher_region") == "domestic")
+        overseas = sum(1 for item in reports if item.get("publisher_region") == "overseas")
+        archived = sum(1 for item in reports if item.get("archived"))
+        bilingual = sum(1 for item in reports if item.get("has_translation"))
 
-            # Latest update time
-            row = conn.execute(
-                "SELECT MAX(COALESCE(published_at, fetched_at)) AS latest FROM research_reports"
-            ).fetchone()
-            latest = row["latest"] if row else None
+        focus_distribution: List[Dict[str, Any]] = []
+        for focus in FOCUS_AREAS:
+            count = sum(1 for item in reports if focus in (item.get("focus_areas") or []))
+            focus_distribution.append({"focus_area": focus, "count": count})
+        focus_distribution = [item for item in focus_distribution if item["count"] > 0]
 
-        bilingual_coverage = {
-            "title_zh": zh_title,
-            "title_zh_pct": round(_safe_div(zh_title * 100, max(1, total)), 1),
-            "summary_zh": zh_summary,
-            "summary_zh_pct": round(_safe_div(zh_summary * 100, max(1, total)), 1),
-        }
-        archive_coverage = {
-            "total": total,
-            "active": active,
-            "archived": archived,
-            "archive_pct": round(_safe_div(archived * 100, max(1, total)), 1),
-        }
+        source_counts: Dict[str, int] = {}
+        for item in reports:
+            key = item.get("source_name") or item.get("source_key") or "unknown"
+            source_counts[key] = source_counts.get(key, 0) + 1
+        source_distribution = [
+            {"name": name, "count": count}
+            for name, count in sorted(source_counts.items(), key=lambda pair: pair[1], reverse=True)[:12]
+        ]
+
+        latest_updated_at = None
+        if reports:
+            latest_updated_at = max(item.get("sort_time") or "" for item in reports) or None
 
         return {
-            "total": total,
-            "active": active,
-            "overseas": overseas,
-            "domestic": domestic,
-            "bilingual_coverage": bilingual_coverage,
-            "archive_coverage": archive_coverage,
+            "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+            "summary": {
+                "total_reports": total,
+                "domestic_reports": domestic,
+                "overseas_reports": overseas,
+                "bilingual_reports": bilingual,
+                "bilingual_pct": self._safe_pct(bilingual, total),
+                "archived_reports": archived,
+                "archived_pct": self._safe_pct(archived, total),
+                "latest_updated_at": latest_updated_at,
+            },
             "focus_distribution": focus_distribution,
             "source_distribution": source_distribution,
-            "latest_updated_at": latest,
+            "recent_reports": reports[:8],
         }
-
-    # ------------------------------------------------------------------
-    # List
-    # ------------------------------------------------------------------
 
     def list_reports(
         self,
@@ -208,151 +220,58 @@ class ResearchWorkbenchService:
         target_scope: Optional[str] = None,
         report_type: Optional[str] = None,
         query: Optional[str] = None,
+        bilingual_only: bool = False,
+        archived_only: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Return a filtered list of research reports."""
-        limit = max(1, min(int(limit or 50), 500))
-        with self._connect() as conn:
-            if not self._table_exists(conn, "research_reports"):
-                return []
-            columns = _detect_columns(conn, "research_reports")
-
-            clauses = ["1=1"]
-            params: list = []
-
-            if focus_area and _has_col(columns, "focus_area"):
-                clauses.append("focus_area = ?")
-                params.append(focus_area)
-
-            if publisher_region:
-                if _has_col(columns, "publisher_region"):
-                    clauses.append("publisher_region = ?")
-                    params.append(publisher_region)
-                else:
-                    clauses.append(self._region_filter_sql(publisher_region, columns))
-
-            if target_scope and _has_col(columns, "target_scope"):
-                clauses.append("target_scope = ?")
-                params.append(target_scope)
-
-            if report_type:
-                if _has_col(columns, "report_type"):
-                    clauses.append("report_type = ?")
-                    params.append(report_type)
-
-            if query:
-                parts = [
-                    "title LIKE ?",
-                    "COALESCE(summary, '') LIKE ?",
-                ]
-                if _has_col(columns, "title_zh"):
-                    parts.append("title_zh LIKE ?")
-                if _has_col(columns, "summary_zh"):
-                    parts.append("summary_zh LIKE ?")
-                if _has_col(columns, "thesis"):
-                    parts.append("thesis LIKE ?")
-                like = f"%{query}%"
-                for _ in parts:
-                    params.append(like)
-                clauses.append(f"({' OR '.join(parts)})")
-
-            where = " AND ".join(clauses)
-
-            select_cols = [
-                "id", "report_key", "title", "title_zh",
-                "source_key", "source_name", "url", "report_type",
-                "published_at", "fetched_at", "language",
-                "summary", "summary_zh",
-            ]
-            for extra in ("thesis", "thesis_zh", "relevance", "relevance_zh",
-                          "focus_area", "publisher_region", "target_scope", "status"):
-                if _has_col(columns, extra):
-                    select_cols.append(extra)
-
-            sql = f"""
-                SELECT {', '.join(select_cols)}
-                FROM research_reports
-                WHERE {where}
-                ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
-                LIMIT ?
-            """
-            params.append(limit)
-            return self._rows_to_dicts(conn.execute(sql, params).fetchall())
-
-    # ------------------------------------------------------------------
-    # Detail
-    # ------------------------------------------------------------------
+        items = self._fetch_reports()
+        if focus_area:
+            items = [item for item in items if focus_area in (item.get("focus_areas") or [])]
+        if publisher_region:
+            items = [item for item in items if item.get("publisher_region") == publisher_region]
+        if target_scope:
+            items = [item for item in items if item.get("target_scope") == target_scope]
+        if report_type:
+            items = [item for item in items if item.get("report_type") == report_type]
+        if bilingual_only:
+            items = [item for item in items if item.get("has_translation")]
+        if archived_only:
+            items = [item for item in items if item.get("archived")]
+        if query:
+            items = [item for item in items if self._matches_query(item, query)]
+        return items[: max(1, min(int(limit or 50), 400))]
 
     def get_report_detail(self, report_key: str) -> Optional[Dict[str, Any]]:
-        """Return full report + evidence list by report_key."""
         with self._connect() as conn:
             if not self._table_exists(conn, "research_reports"):
                 return None
-
             row = conn.execute(
                 "SELECT * FROM research_reports WHERE report_key = ?",
                 (report_key,),
             ).fetchone()
             if not row:
                 return None
-
-            report = self._row_to_dict(row)
+            report = self._normalize_item(self._row_to_dict(row))
             report_id = report["id"]
-
-            # Evidence
-            ev_columns = _detect_columns(conn, "research_evidence") if self._table_exists(conn, "research_evidence") else set()
-            ev_select = ["id", "report_id", "label", "value", "source_url", "sort_order"]
-            for extra in ("evidence_type", "confidence", "metadata_json"):
-                if _has_col(ev_columns, extra):
-                    ev_select.append(extra)
-
+            evidence_rows: Iterable[sqlite3.Row] = []
             if self._table_exists(conn, "research_evidence"):
                 evidence_rows = conn.execute(
-                    f"""
-                    SELECT {', '.join(ev_select)}
+                    """
+                    SELECT label, value, source_url, sort_order
                     FROM research_evidence
                     WHERE report_id = ?
                     ORDER BY COALESCE(sort_order, 100) ASC, id ASC
                     """,
                     (report_id,),
                 ).fetchall()
-            else:
-                evidence_rows = []
-            report["evidence"] = self._rows_to_dicts(evidence_rows)
+            report["evidence"] = [self._row_to_dict(row) for row in evidence_rows]
             return report
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _overseas_filter(columns: set[str]) -> Optional[str]:
-        """Return a SQL WHERE fragment for overseas reports, or None."""
-        if _has_col(columns, "publisher_region"):
-            return "publisher_region = 'overseas'"
-        if _has_col(columns, "language"):
-            return "language = 'en'"
-        return None
-
-    @staticmethod
-    def _region_filter_sql(region: str, columns: set[str]) -> str:
-        """Best-effort region filter when publisher_region column is absent."""
-        r = region.lower()
-        if r in ("overseas", "海外", "international", "global"):
-            if _has_col(columns, "language"):
-                return "language = 'en'"
-            return "(COALESCE(source_key, '') IN ('sec', 'reuters', 'bloomberg', 'wsj', 'ft', 'economist', 'ap', 'afp', 'nytimes', 'techcrunch', 'venturebeat') OR source_key LIKE '%global%')"
-        if r in ("domestic", "国内", "cn", "china"):
-            if _has_col(columns, "language"):
-                return "COALESCE(language, 'zh') != 'en'"
-            return "(COALESCE(source_key, '') NOT IN ('sec', 'reuters', 'bloomberg', 'wsj', 'ft', 'economist', 'ap', 'afp', 'nytimes', 'techcrunch', 'venturebeat'))"
-        return "1=1"
-
-
-_research_workbench_service: Optional[ResearchWorkbenchService] = None
+_service: Optional[ResearchWorkbenchService] = None
 
 
 def get_research_workbench_service(db_path: str = DB_PATH) -> ResearchWorkbenchService:
-    global _research_workbench_service
-    if _research_workbench_service is None:
-        _research_workbench_service = ResearchWorkbenchService(db_path=db_path)
-    return _research_workbench_service
+    global _service
+    if _service is None:
+        _service = ResearchWorkbenchService(db_path=db_path)
+    return _service
