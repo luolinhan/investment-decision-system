@@ -127,6 +127,37 @@
             z-index: 100;
         }
 
+        .sidebar-nav {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 0.35rem;
+            margin-right: -0.35rem;
+        }
+
+        .sidebar-footer {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .sidebar-footer-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 0.6rem;
+        }
+
+        .sidebar-runtime {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
         .logo {
             margin-bottom: 2.5rem;
             padding-bottom: 1.5rem;
@@ -635,6 +666,8 @@
             margin-top: 0.9rem;
             width: 100%;
             justify-content: center;
+            font-weight: 600;
+            min-height: 2.9rem;
         }
 
         .theme-toggle i {
@@ -664,6 +697,12 @@
                 height: auto;
                 position: relative;
                 padding: 1rem;
+            }
+
+            .sidebar-nav {
+                overflow: visible;
+                padding-right: 0;
+                margin-right: 0;
             }
 
             .main-content {
@@ -714,7 +753,7 @@
             <div class="tagline">Research Intelligence</div>
         </div>
 
-        <nav>
+        <nav class="sidebar-nav">
             <div class="nav-section">
                 <div class="nav-section-title">决策</div>
                 <a class="nav-link {% if request.url.path == '/investment/' %}active{% endif %}" href="/investment/" style="border: 1px solid var(--border-glow);">
@@ -764,11 +803,12 @@
             </div>
         </nav>
 
-        <div style="margin-top: auto; padding-top: 2rem; border-top: 1px solid var(--border-color);">
-            <div style="display: flex; align-items: center; gap: 0.75rem; color: var(--text-muted); font-size: 0.8rem;">
+        <div class="sidebar-footer">
+            <div class="sidebar-runtime">
                 <i class="bi bi-clock"></i>
                 <span>每日 06:00 自动更新</span>
             </div>
+            <div class="sidebar-footer-title">界面主题</div>
             <button id="themeToggle" class="btn btn-secondary theme-toggle" type="button" aria-label="切换主题">
                 <i id="themeToggleIcon" class="bi bi-moon-stars"></i>
                 <span id="themeToggleText">切换主题</span>
