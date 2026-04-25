@@ -34,8 +34,16 @@ Primary goals:
 - `investment-codex` owns architecture, task split, integration, tests, deploy, and final acceptance.
 - `investment-worker-a` handles routine code production, scripts, and test fill-in.
 - `investment-worker-b` handles heavier refactors and harder debugging.
+- `investment-worker-c` handles frontend, templates, route wiring, and UI-facing patches.
+- `investment-worker-d` handles tests, fixtures, migrations, repetitive edits, and boilerplate-heavy tasks.
 - Workers must not edit the same file set in the same task.
 - Workers do not push, deploy, or widen scope on their own.
+
+Preferred execution policy:
+
+- Keep Codex on architecture, prioritization, debugging, review, and production acceptance.
+- Push code volume to Bailian workers whenever the task is bounded and file ownership is clear.
+- Default parallelism target is `1 + 3`; burst to `1 + 4` for large tasks.
 
 Task card template:
 - `/Users/lhluo/agent-workspaces/templates/investment-worker-task.md`

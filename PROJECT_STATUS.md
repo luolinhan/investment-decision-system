@@ -24,6 +24,13 @@ Expected workflow:
 - use worker agents only for bounded implementation tasks
 - keep acceptance, deployment, and production verification in the control repo
 
+Current recommended agent mix:
+- Codex controller
+- Worker A for ETL/backend volume
+- Worker B for hard implementation
+- Worker C for frontend/template volume
+- Worker D for tests/migrations/repetitive execution
+
 ## Current Stable Facts
 
 - Windows is the only production runtime for UI, API, and SQLite/DuckDB state
@@ -61,4 +68,6 @@ Workers:
 ```bash
 investment-worker-a
 investment-worker-b
+investment-worker-c
+investment-worker-d
 ```
