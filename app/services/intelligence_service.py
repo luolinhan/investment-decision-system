@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.db import get_sqlite_connection
@@ -44,6 +45,43 @@ class IntelligenceService:
     @classmethod
     def _rows_to_dicts(cls, rows: Iterable[sqlite3.Row]) -> List[Dict[str, Any]]:
         return [cls._row_to_dict(row) for row in rows]
+
+    @staticmethod
+    def _parse_time_value(value: Any) -> Optional[datetime]:
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return None
+            dt = None
+            iso_candidates = [text]
+            if text.endswith("Z"):
+                iso_candidates.append(f"{text[:-1]}+00:00")
+            for candidate in iso_candidates:
+                try:
+                    dt = datetime.fromisoformat(candidate)
+                    break
+                except ValueError:
+                    continue
+            if dt is None:
+                try:
+                    dt = parsedate_to_datetime(text)
+                except (TypeError, ValueError):
+                    return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    @classmethod
+    def _time_sort_value(cls, *values: Any) -> float:
+        for value in values:
+            parsed = cls._parse_time_value(value)
+            if parsed is not None:
+                return parsed.timestamp()
+        return 0.0
 
     def _normalize_research_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         for field in ("focus_areas_json", "tags_json", "tickers_json", "key_points_json"):
@@ -331,7 +369,6 @@ class IntelligenceService:
         if category:
             clauses.append("category = ?")
             params.append(category)
-        params.append(limit)
         sql = f"""
             SELECT event_key, title, title_zh, category, priority, confidence,
                    first_seen_at, last_seen_at, event_time, summary, summary_zh,
@@ -339,13 +376,18 @@ class IntelligenceService:
                    primary_source_url
             FROM intelligence_events
             WHERE {' AND '.join(clauses)}
-            ORDER BY
-                COALESCE(event_time, last_seen_at, first_seen_at) DESC,
-                id DESC
-            LIMIT ?
+            ORDER BY id DESC
         """
         with self._connect() as conn:
-            return self._rows_to_dicts(conn.execute(sql, params).fetchall())
+            events = self._rows_to_dicts(conn.execute(sql, params).fetchall())
+        events.sort(
+            key=lambda item: (
+                self._time_sort_value(item.get("event_time"), item.get("last_seen_at"), item.get("first_seen_at")),
+                str(item.get("event_key") or ""),
+            ),
+            reverse=True,
+        )
+        return events[:limit]
 
     def get_event(self, event_key: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -449,13 +491,19 @@ class IntelligenceService:
                            original_url, original_asset_path, original_asset_type, original_asset_status, original_downloaded_at
                     FROM research_reports
                     WHERE status = 'active'
-                    ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
-                    LIMIT ?
+                    ORDER BY id DESC
                     """,
-                    (limit,),
                 ).fetchall()
             )
-        return [self._normalize_research_item(item) for item in rows]
+        items = [self._normalize_research_item(item) for item in rows]
+        items.sort(
+            key=lambda item: (
+                self._time_sort_value(item.get("published_at"), item.get("fetched_at")),
+                str(item.get("report_key") or ""),
+            ),
+            reverse=True,
+        )
+        return items[:limit]
 
     def list_sources(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:
