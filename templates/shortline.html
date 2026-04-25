@@ -1,0 +1,1046 @@
+{% extends "base.html" %}
+
+{% block title %}投资短线执行板{% endblock %}
+
+{% block extra_css %}
+<style>
+    .shortline-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .shortline-stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        position: relative;
+        overflow: hidden;
+        transition: var(--transition-smooth);
+    }
+
+    .shortline-stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+        opacity: 0;
+        transition: var(--transition-smooth);
+    }
+
+    .shortline-stat-card:hover {
+        border-color: var(--border-glow);
+        transform: translateY(-2px);
+    }
+
+    .shortline-stat-card:hover::before {
+        opacity: 1;
+    }
+
+    .shortline-stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .shortline-stat-icon.cyan { background: var(--accent-cyan-dim); color: var(--accent-cyan); }
+    .shortline-stat-icon.green { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); }
+    .shortline-stat-icon.gold { background: rgba(251, 191, 36, 0.15); color: var(--accent-gold); }
+    .shortline-stat-icon.blue { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+
+    .shortline-stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        letter-spacing: -0.02em;
+        line-height: 1;
+        margin-bottom: 0.25rem;
+    }
+
+    .shortline-stat-label {
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .shortline-stat-subtext {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+        font-family: var(--font-mono);
+    }
+
+    /* Section Layout */
+    .shortline-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        margin-bottom: 1.5rem;
+        transition: var(--transition-smooth);
+    }
+
+    .shortline-section:hover {
+        border-color: var(--border-glow);
+    }
+
+    .shortline-section-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+
+    .shortline-section-header i {
+        margin-right: 0.5rem;
+        color: var(--accent-cyan);
+        font-size: 1rem;
+    }
+
+    .shortline-section-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .shortline-section-actions .btn-icon {
+        padding: 0.5rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.625rem;
+        cursor: pointer;
+        transition: var(--transition-fast);
+        color: var(--text-secondary);
+    }
+
+    .shortline-section-actions .btn-icon:hover {
+        background: var(--accent-cyan-dim);
+        border-color: var(--border-glow);
+        color: var(--accent-cyan);
+    }
+
+    .shortline-section-body {
+        padding: 1.5rem;
+    }
+
+    .shortline-section-body p {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    /* Two-column layout for main sections */
+    .shortline-main-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Overnight Events */
+    .overnight-event {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .overnight-event:last-child {
+        border-bottom: none;
+    }
+
+    .overnight-event-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .overnight-event-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+
+    .overnight-event-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+    }
+
+    .overnight-event-time {
+        color: var(--accent-cyan);
+        font-weight: 500;
+    }
+
+    .overnight-event-severity {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 0.375rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .overnight-event-severity.p0 {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--accent-red);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .overnight-event-severity.p1 {
+        background: rgba(251, 191, 36, 0.15);
+        color: var(--accent-gold);
+        border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .overnight-event-severity.p2 {
+        background: rgba(96, 165, 250, 0.15);
+        color: #60a5fa;
+        border: 1px solid rgba(96, 165, 250, 0.3);
+    }
+
+    /* Mapping Candidates */
+    .candidate-card {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .candidate-card:last-child {
+        border-bottom: none;
+    }
+
+    .candidate-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .candidate-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+
+    .candidate-ticker {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+    }
+
+    .candidate-industry {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+
+    .candidate-score {
+        background: var(--accent-cyan-dim);
+        color: var(--accent-cyan);
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--border-glow);
+    }
+
+    /* Execution Board */
+    .execution-item {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr auto;
+        gap: 1rem;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        align-items: center;
+    }
+
+    .execution-item:last-child {
+        border-bottom: none;
+    }
+
+    .execution-ticker {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+    }
+
+    .execution-position {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .execution-status {
+        font-size: 0.8rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        text-align: center;
+    }
+
+    .execution-status.open {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--accent-green);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .execution-status.closed {
+        background: rgba(100, 116, 139, 0.15);
+        color: var(--text-muted);
+        border: 1px solid var(--border-color);
+    }
+
+    .execution-status.monitoring {
+        background: rgba(251, 191, 36, 0.15);
+        color: var(--accent-gold);
+        border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .execution-pnl {
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-align: right;
+    }
+
+    .execution-pnl.positive {
+        color: var(--accent-green);
+    }
+
+    .execution-pnl.negative {
+        color: var(--accent-red);
+    }
+
+    .execution-pnl.neutral {
+        color: var(--text-secondary);
+    }
+
+    /* Playbooks */
+    .playbook-item {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .playbook-item:last-child {
+        border-bottom: none;
+    }
+
+    .playbook-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+
+    .playbook-desc {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+    }
+
+    .playbook-tags {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+
+    .playbook-tag {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 0.375rem;
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+
+    /* Evidence Drawer */
+    .evidence-item {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .evidence-item:last-child {
+        border-bottom: none;
+    }
+
+    .evidence-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .evidence-source {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+    }
+
+    .evidence-time {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-style: italic;
+    }
+
+    /* Empty State */
+    .shortline-empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-muted);
+    }
+
+    .shortline-empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .shortline-empty-state p {
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Loading Spinner */
+    .shortline-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem;
+    }
+
+    .shortline-spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--border-color);
+        border-top-color: var(--accent-cyan);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+        .shortline-stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .shortline-main-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 768px) {
+        .shortline-stats-grid { grid-template-columns: 1fr; }
+        .execution-item {
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+        .execution-pnl {
+            text-align: left;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="bi bi-speedometer2 me-2"></i>短线执行板</h1>
+        <div class="page-subtitle">Shortline Execution Dashboard</div>
+    </div>
+    <div>
+        <button class="btn btn-primary" onclick="refreshData()">
+            <i class="bi bi-arrow-clockwise"></i>
+            刷新
+        </button>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="shortline-stats-grid" id="statsGrid">
+    <!-- Will be populated by JS -->
+</div>
+
+<!-- Main Content Grid -->
+<div class="shortline-main-grid">
+    <!-- Left Column: Overnight Lead + China Mapping + Execution Board -->
+    <div>
+        <!-- Overnight Lead -->
+        <div class="shortline-section" id="overnightSection">
+            <div class="shortline-section-header">
+                <span><i class="bi bi-moon-stars"></i>Overnight Lead</span>
+                <div class="shortline-section-actions">
+                    <span class="shortline-event-count" id="overnightCount">0</span>
+                    <button class="btn-icon" onclick="toggleSection('overnightEvents')">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="shortline-section-body" id="overnightEvents">
+                <div class="shortline-loading" id="overnightLoading">
+                    <div class="shortline-spinner"></div>
+                </div>
+                <div id="overnightList"></div>
+            </div>
+        </div>
+
+        <!-- China Mapping Candidates -->
+        <div class="shortline-section" id="candidatesSection">
+            <div class="shortline-section-header">
+                <span><i class="bi bi-geo-alt"></i>China Mapping Candidates</span>
+                <div class="shortline-section-actions">
+                    <span class="shortline-event-count" id="candidateCount">0</span>
+                    <button class="btn-icon" onclick="toggleSection('candidatesList')">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="shortline-section-body" id="candidatesList">
+                <div class="shortline-loading" id="candidatesLoading">
+                    <div class="shortline-spinner"></div>
+                </div>
+                <div id="candidatesContent"></div>
+            </div>
+        </div>
+
+        <!-- Execution Board -->
+        <div class="shortline-section" id="executionSection">
+            <div class="shortline-section-header">
+                <span><i class="bi bi-graph-up"></i>Execution Board</span>
+                <div class="shortline-section-actions">
+                    <span class="shortline-event-count" id="executionCount">0</span>
+                    <button class="btn-icon" onclick="toggleSection('executionList')">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="shortline-section-body" id="executionList">
+                <div class="shortline-loading" id="executionLoading">
+                    <div class="shortline-spinner"></div>
+                </div>
+                <div id="executionContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Playbooks + Evidence Drawer -->
+    <div>
+        <!-- Playbooks -->
+        <div class="shortline-section" id="playbooksSection">
+            <div class="shortline-section-header">
+                <span><i class="bi bi-file-earmark-text"></i>Playbooks</span>
+                <div class="shortline-section-actions">
+                    <span class="shortline-event-count" id="playbookCount">0</span>
+                    <button class="btn-icon" onclick="toggleSection('playbooksList')">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="shortline-section-body" id="playbooksList">
+                <div class="shortline-loading" id="playbooksLoading">
+                    <div class="shortline-spinner"></div>
+                </div>
+                <div id="playbooksContent"></div>
+            </div>
+        </div>
+
+        <!-- Evidence Drawer -->
+        <div class="shortline-section" id="evidenceSection">
+            <div class="shortline-section-header">
+                <span><i class="bi bi-folder"></i>Evidence Drawer</span>
+                <div class="shortline-section-actions">
+                    <span class="shortline-event-count" id="evidenceCount">0</span>
+                    <button class="btn-icon" onclick="toggleSection('evidenceList')">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="shortline-section-body" id="evidenceList">
+                <div class="shortline-loading" id="evidenceLoading">
+                    <div class="shortline-spinner"></div>
+                </div>
+                <div id="evidenceContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let overviewData = null;
+    let candidatesData = null;
+    let eventsData = null;
+    let playbooksData = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        loadData();
+        // Auto-refresh every 5 minutes
+        setInterval(refreshData, 5 * 60 * 1000);
+    });
+
+    async function loadData() {
+        try {
+            await Promise.all([
+                loadOverview(),
+                loadCandidates(),
+                loadEvents(),
+                loadPlaybooks()
+            ]);
+            renderAll();
+        } catch (error) {
+            console.error('Error loading data:', error);
+            showToast('数据加载失败', 'error');
+        }
+    }
+
+    async function loadOverview() {
+        try {
+            overviewData = await api('/investment/api/shortline/overview');
+        } catch (error) {
+            console.error('Error loading overview:', error);
+            overviewData = {
+                overnight_events_count: 0,
+                p0_candidates: 0,
+                p1_candidates: 0,
+                mapped_industries: 0,
+                last_refreshed: null
+            };
+        }
+    }
+
+    async function loadCandidates() {
+        try {
+            candidatesData = await api('/investment/api/shortline/candidates');
+        } catch (error) {
+            console.error('Error loading candidates:', error);
+            candidatesData = [];
+        }
+    }
+
+    async function loadEvents() {
+        try {
+            eventsData = await api('/investment/api/shortline/events');
+        } catch (error) {
+            console.error('Error loading events:', error);
+            eventsData = [];
+        }
+    }
+
+    async function loadPlaybooks() {
+        try {
+            playbooksData = await api('/investment/api/shortline/playbooks');
+        } catch (error) {
+            console.error('Error loading playbooks:', error);
+            playbooksData = [];
+        }
+    }
+
+    function renderAll() {
+        renderStatsGrid();
+        renderOvernightEvents();
+        renderCandidates();
+        renderExecutionBoard();
+        renderPlaybooks();
+        renderEvidenceDrawer();
+    }
+
+    function renderStatsGrid() {
+        const grid = document.getElementById('statsGrid');
+        const data = overviewData || {};
+
+        const now = new Date();
+        const lastRefreshed = data.last_refreshed ? new Date(data.last_refreshed) : null;
+        const refreshTime = lastRefreshed ? formatTimeAgo(lastRefreshed) : 'N/A';
+
+        grid.innerHTML = `
+            <div class="shortline-stat-card">
+                <div class="shortline-stat-icon cyan">
+                    <i class="bi bi-bell"></i>
+                </div>
+                <div class="shortline-stat-value">${(data.overnight_events_count || 0).toLocaleString()}</div>
+                <div class="shortline-stat-label">隔夜事件数</div>
+                <div class="shortline-stat-subtext">Overnight Events</div>
+            </div>
+            <div class="shortline-stat-card">
+                <div class="shortline-stat-icon gold">
+                    <i class="bi bi-star-fill"></i>
+                </div>
+                <div class="shortline-stat-value">${(data.p0_candidates || 0)}/${(data.p1_candidates || 0)}</div>
+                <div class="shortline-stat-label">P0/P1 候选数</div>
+                <div class="shortline-stat-subtext">Priority Candidates</div>
+            </div>
+            <div class="shortline-stat-card">
+                <div class="shortline-stat-icon green">
+                    <i class="bi bi-diagram-3"></i>
+                </div>
+                <div class="shortline-stat-value">${(data.mapped_industries || 0)}</div>
+                <div class="shortline-stat-label">映射覆盖行业数</div>
+                <div class="shortline-stat-subtext">Mapped Industries</div>
+            </div>
+            <div class="shortline-stat-card">
+                <div class="shortline-stat-icon blue">
+                    <i class="bi bi-clock-history"></i>
+                </div>
+                <div class="shortline-stat-value">${refreshTime}</div>
+                <div class="shortline-stat-label">最新刷新时间</div>
+                <div class="shortline-stat-subtext">${lastRefreshed ? lastRefreshed.toLocaleTimeString('zh-CN') : 'N/A'}</div>
+            </div>
+        `;
+    }
+
+    function renderOvernightEvents() {
+        const listEl = document.getElementById('overnightList');
+        const loadingEl = document.getElementById('overnightLoading');
+        const countEl = document.getElementById('overnightCount');
+
+        loadingEl.style.display = 'none';
+
+        if (!eventsData || eventsData.length === 0) {
+            listEl.innerHTML = `
+                <div class="shortline-empty-state">
+                    <i class="bi bi-moon-stars"></i>
+                    <p>暂无隔夜事件</p>
+                </div>
+            `;
+            countEl.textContent = '0';
+            return;
+        }
+
+        countEl.textContent = eventsData.length;
+
+        const fragment = document.createDocumentFragment();
+        eventsData.forEach(event => {
+            const div = document.createElement('div');
+            div.className = 'overnight-event';
+
+            const title = document.createElement('div');
+            title.className = 'overnight-event-title';
+            title.textContent = event.title || 'N/A';
+
+            const meta = document.createElement('div');
+            meta.className = 'overnight-event-meta';
+
+            const timeSpan = document.createElement('span');
+            timeSpan.innerHTML = `<i class="bi bi-clock"></i> <span class="overnight-event-time">${formatTime(event.timestamp)}</span>`;
+
+            const sourceSpan = document.createElement('span');
+            sourceSpan.innerHTML = `<i class="bi bi-globe"></i> ${event.source || 'N/A'}`;
+
+            const severitySpan = document.createElement('span');
+            severitySpan.className = `overnight-event-severity ${(event.severity || 'p2').toLowerCase()}`;
+            severitySpan.textContent = (event.severity || 'p2').toUpperCase();
+
+            meta.appendChild(timeSpan);
+            meta.appendChild(sourceSpan);
+            meta.appendChild(severitySpan);
+
+            div.appendChild(title);
+            div.appendChild(meta);
+            fragment.appendChild(div);
+        });
+
+        listEl.innerHTML = '';
+        listEl.appendChild(fragment);
+    }
+
+    function renderCandidates() {
+        const contentEl = document.getElementById('candidatesContent');
+        const loadingEl = document.getElementById('candidatesLoading');
+        const countEl = document.getElementById('candidateCount');
+
+        loadingEl.style.display = 'none';
+
+        if (!candidatesData || candidatesData.length === 0) {
+            contentEl.innerHTML = `
+                <div class="shortline-empty-state">
+                    <i class="bi bi-list-stars"></i>
+                    <p>暂无候选标的</p>
+                </div>
+            `;
+            countEl.textContent = '0';
+            return;
+        }
+
+        countEl.textContent = candidatesData.length;
+
+        const fragment = document.createDocumentFragment();
+        candidatesData.forEach(candidate => {
+            const div = document.createElement('div');
+            div.className = 'candidate-card';
+
+            const info = document.createElement('div');
+            info.className = 'candidate-info';
+
+            const name = document.createElement('div');
+            name.className = 'candidate-name';
+            name.textContent = candidate.name || 'N/A';
+
+            const ticker = document.createElement('div');
+            ticker.className = 'candidate-ticker';
+            ticker.textContent = candidate.ticker || 'N/A';
+
+            const industry = document.createElement('div');
+            industry.className = 'candidate-industry';
+            industry.textContent = candidate.industry || 'N/A';
+
+            info.appendChild(name);
+            info.appendChild(ticker);
+            info.appendChild(industry);
+
+            const score = document.createElement('div');
+            score.className = 'candidate-score';
+            score.textContent = Math.round((candidate.score || 0) * 100);
+
+            div.appendChild(info);
+            div.appendChild(score);
+            fragment.appendChild(div);
+        });
+
+        contentEl.innerHTML = '';
+        contentEl.appendChild(fragment);
+    }
+
+    function renderExecutionBoard() {
+        const contentEl = document.getElementById('executionContent');
+        const loadingEl = document.getElementById('executionLoading');
+        const countEl = document.getElementById('executionCount');
+
+        loadingEl.style.display = 'none';
+
+        // Mock data for now - will come from API later
+        const mockData = [
+            { ticker: 'TSLA', position: '+100', status: 'open', pnl: '+3.2%' },
+            { ticker: 'AAPL', position: '+50', status: 'monitoring', pnl: '+1.5%' },
+            { ticker: 'META', position: '-75', status: 'closed', pnl: '-0.8%' }
+        ];
+
+        countEl.textContent = mockData.length;
+
+        const fragment = document.createDocumentFragment();
+        mockData.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'execution-item';
+
+            const ticker = document.createElement('div');
+            ticker.className = 'execution-ticker';
+            ticker.textContent = item.ticker;
+
+            const position = document.createElement('div');
+            position.className = 'execution-position';
+            position.textContent = item.position;
+
+            const status = document.createElement('div');
+            status.className = `execution-status ${item.status.toLowerCase()}`;
+            status.textContent = item.status.toUpperCase();
+
+            const pnl = document.createElement('div');
+            pnl.className = `execution-pnl ${item.pnl.startsWith('+') ? 'positive' : item.pnl.startsWith('-') ? 'negative' : 'neutral'}`;
+            pnl.textContent = item.pnl;
+
+            const actions = document.createElement('div');
+            actions.innerHTML = `
+                <button class="btn-icon" style="padding: 0.4rem;">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+            `;
+
+            div.appendChild(ticker);
+            div.appendChild(position);
+            div.appendChild(status);
+            div.appendChild(pnl);
+            div.appendChild(actions);
+            fragment.appendChild(div);
+        });
+
+        const summary = document.createElement('div');
+        summary.style.paddingTop = '1rem';
+        summary.style.borderTop = `1px solid var(--border-color)`;
+        summary.style.textAlign = 'right';
+        summary.innerHTML = `
+            <span style="color: var(--text-muted); font-size: 0.85rem;">总收益: </span>
+            <span style="color: var(--accent-green); font-weight: 600; font-size: 1rem;">+3.9%</span>
+        `;
+        fragment.appendChild(summary);
+
+        contentEl.innerHTML = '';
+        contentEl.appendChild(fragment);
+    }
+
+    function renderPlaybooks() {
+        const contentEl = document.getElementById('playbooksContent');
+        const loadingEl = document.getElementById('playbooksLoading');
+        const countEl = document.getElementById('playbookCount');
+
+        loadingEl.style.display = 'none';
+
+        if (!playbooksData || playbooksData.length === 0) {
+            contentEl.innerHTML = `
+                <div class="shortline-empty-state">
+                    <i class="bi bi-file-earmark-text"></i>
+                    <p>暂无策略模板</p>
+                </div>
+            `;
+            countEl.textContent = '0';
+            return;
+        }
+
+        countEl.textContent = playbooksData.length;
+
+        const fragment = document.createDocumentFragment();
+        playbooksData.forEach(playbook => {
+            const div = document.createElement('div');
+            div.className = 'playbook-item';
+
+            const title = document.createElement('div');
+            title.className = 'playbook-title';
+            title.textContent = playbook.title || 'N/A';
+
+            const desc = document.createElement('div');
+            desc.className = 'playbook-desc';
+            desc.textContent = playbook.description || '';
+
+            div.appendChild(title);
+            div.appendChild(desc);
+
+            if (playbook.tags && playbook.tags.length > 0) {
+                const tags = document.createElement('div');
+                tags.className = 'playbook-tags';
+                playbook.tags.forEach(tag => {
+                    const tagEl = document.createElement('span');
+                    tagEl.className = 'playbook-tag';
+                    tagEl.textContent = tag;
+                    tags.appendChild(tagEl);
+                });
+                div.appendChild(tags);
+            }
+
+            fragment.appendChild(div);
+        });
+
+        contentEl.innerHTML = '';
+        contentEl.appendChild(fragment);
+    }
+
+    function renderEvidenceDrawer() {
+        const contentEl = document.getElementById('evidenceContent');
+        const loadingEl = document.getElementById('evidenceLoading');
+        const countEl = document.getElementById('evidenceCount');
+
+        loadingEl.style.display = 'none';
+
+        // Mock data for now - will come from API later
+        const mockData = [
+            { title: '美联储议息会议纪要', source: 'Federal Reserve', time: '2026-04-24 18:30' },
+            { title: 'CPI数据超预期', source: 'BLS', time: '2026-04-24 14:00' },
+            { title: '原油库存下降', source: 'EIA', time: '2026-04-24 09:15' }
+        ];
+
+        countEl.textContent = mockData.length;
+
+        const fragment = document.createDocumentFragment();
+        mockData.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'evidence-item';
+
+            const title = document.createElement('div');
+            title.className = 'evidence-title';
+            title.textContent = item.title;
+
+            const source = document.createElement('div');
+            source.className = 'evidence-source';
+            source.textContent = item.source;
+
+            const time = document.createElement('div');
+            time.className = 'evidence-time';
+            time.textContent = item.time;
+
+            div.appendChild(title);
+            div.appendChild(source);
+            div.appendChild(time);
+            fragment.appendChild(div);
+        });
+
+        contentEl.innerHTML = '';
+        contentEl.appendChild(fragment);
+    }
+
+    function refreshData() {
+        // Show loading spinners
+        document.querySelectorAll('.shortline-spinner').forEach(el => {
+            el.closest('.shortline-loading').style.display = 'flex';
+        });
+
+        // Clear content
+        document.querySelectorAll('[id$="List"], [id$="Content"]').forEach(el => {
+            if (!el.id.includes('Loading')) {
+                el.innerHTML = '';
+            }
+        });
+
+        loadData();
+        showToast('数据已刷新', 'success');
+    }
+
+    function toggleSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            const isHidden = section.style.display === 'none';
+            section.style.display = isHidden ? '' : 'none';
+
+            // Update icon
+            const btn = event.target.closest('.btn-icon');
+            if (btn) {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = isHidden ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+                }
+            }
+        }
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return '-';
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatTimeAgo(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return '刚刚';
+        if (diffMins < 60) return `${diffMins}分钟前`;
+        if (diffHours < 24) return `${diffHours}小时前`;
+        if (diffDays === 1) return '昨天';
+        if (diffDays < 7) return `${diffDays}天前`;
+        return date.toLocaleDateString('zh-CN');
+    }
+</script>
+{% endblock %}
