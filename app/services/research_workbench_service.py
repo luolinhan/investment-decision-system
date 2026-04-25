@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.db import get_sqlite_connection
@@ -69,6 +70,43 @@ class ResearchWorkbenchService:
     def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         return {key: row[key] for key in row.keys()}
 
+    @staticmethod
+    def _parse_time_value(value: Any) -> Optional[datetime]:
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return None
+            dt = None
+            iso_candidates = [text]
+            if text.endswith("Z"):
+                iso_candidates.append(f"{text[:-1]}+00:00")
+            for candidate in iso_candidates:
+                try:
+                    dt = datetime.fromisoformat(candidate)
+                    break
+                except ValueError:
+                    continue
+            if dt is None:
+                try:
+                    dt = parsedate_to_datetime(text)
+                except (TypeError, ValueError):
+                    return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    @classmethod
+    def _time_sort_value(cls, *values: Any) -> float:
+        for value in values:
+            parsed = cls._parse_time_value(value)
+            if parsed is not None:
+                return parsed.timestamp()
+        return 0.0
+
     def _normalize_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         focus_areas = self._json_loads(item.get("focus_areas_json"), [])
         tags = self._json_loads(item.get("tags_json"), [])
@@ -96,6 +134,7 @@ class ResearchWorkbenchService:
         item["display_summary"] = item.get("summary_zh") or item.get("summary") or item.get("thesis_zh") or item.get("thesis") or ""
         item["detail_intro"] = item.get("thesis_zh") or item.get("thesis") or ""
         item["sort_time"] = item.get("published_at") or item.get("fetched_at") or ""
+        item["sort_timestamp"] = self._time_sort_value(item.get("published_at"), item.get("fetched_at"))
         item["primary_focus"] = item["focus_areas"][0] if item["focus_areas"] else ""
         return item
 
@@ -142,10 +181,15 @@ class ResearchWorkbenchService:
                 SELECT {', '.join(selected)}
                 FROM research_reports
                 WHERE COALESCE(status, 'active') = 'active'
-                ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
+                ORDER BY id DESC
                 """
             ).fetchall()
-        return [self._normalize_item(self._row_to_dict(row)) for row in rows]
+        items = [self._normalize_item(self._row_to_dict(row)) for row in rows]
+        items.sort(
+            key=lambda item: (float(item.get("sort_timestamp") or 0.0), str(item.get("report_key") or "")),
+            reverse=True,
+        )
+        return items
 
     @staticmethod
     def _matches_query(item: Dict[str, Any], query: str) -> bool:
@@ -191,9 +235,7 @@ class ResearchWorkbenchService:
             for name, count in sorted(source_counts.items(), key=lambda pair: pair[1], reverse=True)[:12]
         ]
 
-        latest_updated_at = None
-        if reports:
-            latest_updated_at = max(item.get("sort_time") or "" for item in reports) or None
+        latest_updated_at = reports[0].get("sort_time") if reports else None
 
         return {
             "generated_at": datetime.now().replace(microsecond=0).isoformat(),

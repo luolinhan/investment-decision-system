@@ -6,6 +6,7 @@ import tempfile
 import pytest
 
 from app.services.intelligence_service import IntelligenceService
+from app.services.research_workbench_service import ResearchWorkbenchService
 
 
 @pytest.fixture()
@@ -33,6 +34,17 @@ def insert_event(conn, event_key, title, category, priority, event_time, last_se
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0.5)
         """,
         (event_key, title, category, priority, event_time, last_seen_at, last_seen_at),
+    )
+
+
+def insert_report(conn, report_key, title, published_at, fetched_at=None):
+    conn.execute(
+        """
+        INSERT INTO research_reports (
+            report_key, title, url, source_key, source_name, published_at, fetched_at, status
+        ) VALUES (?, ?, ?, 'test_source', 'Test Source', ?, ?, 'active')
+        """,
+        (report_key, title, f"https://example.com/{report_key}", published_at, fetched_at or published_at),
     )
 
 
@@ -92,6 +104,32 @@ class TestListEventsSorting:
 
         events = svc.list_events()
         assert events[0]["event_key"] == "evt_no_time_new"
+
+    def test_sorts_mixed_time_formats_by_actual_timestamp(self, svc):
+        conn = sqlite3.connect(svc.db_path)
+        insert_event(
+            conn,
+            "evt_apr_22",
+            "Apr 22 Event",
+            "macro",
+            "P1",
+            "Wed, 22 Apr 2026 12:00:00 +0000",
+            "2026-04-22T12:00:00+00:00",
+        )
+        insert_event(
+            conn,
+            "evt_mar_25",
+            "Mar 25 Event",
+            "macro",
+            "P1",
+            "Wed, 25 Mar 2026 11:24:47 EDT",
+            "2026-03-25T15:24:47+00:00",
+        )
+        conn.commit()
+        conn.close()
+
+        events = svc.list_events()
+        assert [item["event_key"] for item in events[:2]] == ["evt_apr_22", "evt_mar_25"]
 
 
 class TestListEventsFiltering:
@@ -173,3 +211,29 @@ class TestListEventsLimits:
 
         events = svc.list_events(limit=5)
         assert len(events) == 5
+
+
+class TestResearchSorting:
+    """Verify research surfaces sort mixed date formats chronologically."""
+
+    def test_intelligence_research_list_sorts_mixed_formats(self, svc):
+        conn = sqlite3.connect(svc.db_path)
+        insert_report(conn, "report_apr_22", "April Report", "Wed, 22 Apr 2026 12:00:00 +0000")
+        insert_report(conn, "report_mar_25", "March Report", "Wed, 25 Mar 2026 11:24:47 EDT")
+        conn.commit()
+        conn.close()
+
+        reports = svc.list_research(limit=2)
+        assert [item["report_key"] for item in reports] == ["report_apr_22", "report_mar_25"]
+
+    def test_research_workbench_sorts_mixed_formats(self, tmp_db):
+        svc = IntelligenceService(db_path=tmp_db)
+        conn = sqlite3.connect(tmp_db)
+        insert_report(conn, "workbench_apr_22", "April Report", "Wed, 22 Apr 2026 12:00:00 +0000")
+        insert_report(conn, "workbench_mar_25", "March Report", "Wed, 25 Mar 2026 11:24:47 EDT")
+        conn.commit()
+        conn.close()
+
+        workbench = ResearchWorkbenchService(db_path=tmp_db)
+        reports = workbench.list_reports(limit=2)
+        assert [item["report_key"] for item in reports] == ["workbench_apr_22", "workbench_mar_25"]
