@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -327,10 +328,9 @@ class ShortlineService:
         self.bailian_model = os.getenv("BAILIAN_MODEL", "qwen3-coder-plus").strip()
         self.bailian_timeout = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "25"))
         self._sec_ticker_cache: Optional[Dict[str, Dict[str, str]]] = None
+        self._reference_seed_lock = threading.Lock()
         self.workbench = QuantWorkbenchService()
         self.ensure_tables()
-        self.seed_playbooks()
-        self.seed_mappings()
 
     def _connect(self) -> sqlite3.Connection:
         conn = get_sqlite_connection(self.db_path)
@@ -440,6 +440,31 @@ class ShortlineService:
             columns = set(self._get_table_columns(conn, "cross_market_signal_events"))
             if "summary_zh" not in columns:
                 conn.execute("ALTER TABLE cross_market_signal_events ADD COLUMN summary_zh TEXT")
+
+    def ensure_reference_data(self, allow_locked: bool = False) -> Dict[str, int]:
+        with self._reference_seed_lock:
+            with self._connect() as conn:
+                mapping_count = int(
+                    conn.execute("SELECT COUNT(1) FROM cross_market_mapping_master").fetchone()[0] or 0
+                )
+                playbook_count = int(
+                    conn.execute("SELECT COUNT(1) FROM cross_market_playbooks").fetchone()[0] or 0
+                )
+
+            result = {"mappings_seeded": 0, "playbooks_seeded": 0}
+            if mapping_count == 0:
+                try:
+                    result["mappings_seeded"] = self.seed_mappings()
+                except sqlite3.OperationalError:
+                    if not allow_locked:
+                        raise
+            if playbook_count == 0:
+                try:
+                    result["playbooks_seeded"] = self.seed_playbooks()
+                except sqlite3.OperationalError:
+                    if not allow_locked:
+                        raise
+            return result
 
     @staticmethod
     def _mapping_id(item: Dict[str, Any]) -> str:
@@ -1093,6 +1118,7 @@ class ShortlineService:
         return "P2"
 
     def build_candidates(self, max_age_hours: int = 36) -> Dict[str, Any]:
+        self.ensure_reference_data()
         cutoff = (datetime.now() - timedelta(hours=max(1, int(max_age_hours or 36)))).replace(microsecond=0).isoformat()
         now = _utcnow_iso()
         created = 0
@@ -1222,6 +1248,7 @@ class ShortlineService:
         return {key: row[key] for key in row.keys()}
 
     def list_playbooks(self) -> List[Dict[str, Any]]:
+        self.ensure_reference_data(allow_locked=True)
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM cross_market_playbooks ORDER BY playbook_key"
@@ -1291,6 +1318,7 @@ class ShortlineService:
         return result
 
     def get_overview(self) -> Dict[str, Any]:
+        self.ensure_reference_data(allow_locked=True)
         with self._connect() as conn:
             event_stats = conn.execute(
                 """
