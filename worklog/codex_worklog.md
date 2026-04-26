@@ -64,8 +64,15 @@
 
 ### 剩余
 
-- 跑全量测试。
 - 在 Windows 生产库备份后执行 V3 migrations。
 - Windows 重启服务并 smoke。
 - GitHub 提交与生产目录对齐。
 - 回写长期知识库。
+
+### 阶段 5：生产迁移排障记录
+
+- Windows 执行迁移时首次遇到 `sqlite3.OperationalError: database is locked`。
+- 定位到后台 `scripts\\translate_intelligence.py` 持有 Python 进程，终止后迁移成功。
+- 生产 smoke 发现 `/investment/api/lead-lag/opportunity-universe` 在 GET 路径里尝试 seed 写库，服务运行时可能再次遇到 SQLite 锁。
+- 修复：registry/dossier API 优先只读已迁移表，缺表时才初始化。
+- 修复后本地 `python3 -m pytest -q`：60 passed，5 warnings。

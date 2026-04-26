@@ -2156,28 +2156,107 @@ class LeadLagService:
         return self.report_center(**kwargs)
 
     def opportunity_universe_registry(self, **_: Any) -> Dict[str, Any]:
+        readonly = self._opportunity_universe_summary_readonly()
+        if readonly.get("counts", {}).get("sector_registry"):
+            return readonly
         if OpportunityUniverseRegistry is None:
             return {"registry_version": None, "counts": {}, "sectors": [], "status": "unavailable"}
-        registry = OpportunityUniverseRegistry(db_path=self.db_path)
         try:
+            registry = OpportunityUniverseRegistry(db_path=self.db_path)
             registry.seed_defaults()
-            return registry.registry_summary()
+            return self._opportunity_universe_summary_readonly() or registry.registry_summary()
         except Exception as exc:
             return {"registry_version": None, "counts": {}, "sectors": [], "status": "error", "error": str(exc)}
 
     def get_opportunity_universe_registry(self, **kwargs: Any) -> Dict[str, Any]:
         return self.opportunity_universe_registry(**kwargs)
 
+    def _opportunity_universe_summary_readonly(self) -> Dict[str, Any]:
+        if not self.db_path.exists():
+            return {"registry_version": "v3.0.0", "counts": {}, "sectors": [], "status": "missing_db"}
+        tables = [
+            "sector_registry",
+            "theme_registry",
+            "entity_registry",
+            "instrument_registry",
+            "mapping_registry",
+            "model_registry",
+            "thesis_registry",
+            "event_template_registry",
+        ]
+        try:
+            with sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                existing = {
+                    row["name"]
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                }
+                if not set(tables).issubset(existing):
+                    return {"registry_version": "v3.0.0", "counts": {}, "sectors": [], "status": "not_initialized"}
+                counts = {table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] for table in tables}
+                sectors = [
+                    dict(row)
+                    for row in conn.execute("SELECT sector_id, name_zh, enabled FROM sector_registry ORDER BY sector_id").fetchall()
+                ]
+            return {"registry_version": "v3.0.0", "counts": counts, "sectors": sectors, "status": "ready"}
+        except Exception as exc:
+            return {"registry_version": "v3.0.0", "counts": {}, "sectors": [], "status": "error", "error": str(exc)}
+
+    def _registry_table_row(self, table: str, key_field: str, key_value: str) -> Dict[str, Any]:
+        if not self.db_path.exists():
+            return {}
+        try:
+            with sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                exists = conn.execute(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()[0]
+                if not exists:
+                    return {}
+                row = conn.execute(f"SELECT * FROM {table} WHERE {key_field} = ?", (key_value,)).fetchone()
+                return dict(row) if row else {}
+        except Exception:
+            return {}
+
+    def _registry_table_rows(self, table: str, where: str = "", params: tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
+        if not self.db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                exists = conn.execute(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()[0]
+                if not exists:
+                    return []
+                sql = f"SELECT * FROM {table} {where}"
+                return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        except Exception:
+            return []
+
     def sector_dossier(self, sector_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
         registry_payload = self.opportunity_universe_registry()
-        sector = {}
-        if OpportunityUniverseRegistry is not None:
-            try:
-                registry = OpportunityUniverseRegistry(db_path=self.db_path)
-                sectors = registry.list_sectors(enabled_only=False)
-                sector = next((item for item in sectors if item.get("sector_id") == sector_id), {})
-            except Exception:
-                sector = {}
+        sector = self._registry_table_row("sector_registry", "sector_id", sector_id)
+        if sector:
+            for key in (
+                "lead_assets",
+                "bridge_assets",
+                "local_assets",
+                "proxy_assets",
+                "upstream_nodes",
+                "downstream_nodes",
+                "key_metrics",
+                "key_events",
+                "default_invalidation_rules",
+                "replay_horizons",
+                "source_requirements",
+            ):
+                try:
+                    sector[key] = json.loads(sector.get(key) or "[]")
+                except Exception:
+                    sector[key] = []
         queue = self.opportunity_queue(limit=max(limit, 10), sector=sector_id, include_sample=True)
         reports = self.report_center(q=sector.get("name_zh") or sector_id, limit=limit)
         return {
@@ -2197,24 +2276,14 @@ class LeadLagService:
         }
 
     def entity_dossier(self, entity_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
-        entity: Dict[str, Any] = {}
-        instruments: List[Dict[str, Any]] = []
-        if OpportunityUniverseRegistry is not None:
-            try:
-                registry = OpportunityUniverseRegistry(db_path=self.db_path)
-                registry.seed_defaults()
-                with registry.connect() as conn:
-                    entity_row = conn.execute("SELECT * FROM entity_registry WHERE entity_id = ?", (entity_id,)).fetchone()
-                    if entity_row:
-                        entity = dict(entity_row)
-                    instrument_rows = conn.execute(
-                        "SELECT * FROM instrument_registry WHERE entity_id = ? ORDER BY market, ticker",
-                        (entity_id,),
-                    ).fetchall()
-                    instruments = [dict(row) for row in instrument_rows]
-            except Exception:
-                entity = {}
-                instruments = []
+        if not self._opportunity_universe_summary_readonly().get("counts", {}).get("entity_registry"):
+            self.opportunity_universe_registry()
+        entity = self._registry_table_row("entity_registry", "entity_id", entity_id)
+        instruments = self._registry_table_rows(
+            "instrument_registry",
+            "WHERE entity_id = ? ORDER BY market, ticker",
+            (entity_id,),
+        )
         query = entity.get("name_zh") or entity_id
         reports = self.report_center(q=query, limit=limit)
         evidence = []
@@ -2239,25 +2308,15 @@ class LeadLagService:
         }
 
     def instrument_dossier(self, instrument_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
-        instrument: Dict[str, Any] = {}
-        entity: Dict[str, Any] = {}
-        if OpportunityUniverseRegistry is not None:
-            try:
-                registry = OpportunityUniverseRegistry(db_path=self.db_path)
-                registry.seed_defaults()
-                with registry.connect() as conn:
-                    instrument_row = conn.execute(
-                        "SELECT * FROM instrument_registry WHERE instrument_id = ? OR ticker = ?",
-                        (instrument_id, instrument_id),
-                    ).fetchone()
-                    if instrument_row:
-                        instrument = dict(instrument_row)
-                        entity_row = conn.execute("SELECT * FROM entity_registry WHERE entity_id = ?", (instrument.get("entity_id"),)).fetchone()
-                        if entity_row:
-                            entity = dict(entity_row)
-            except Exception:
-                instrument = {}
-                entity = {}
+        if not self._opportunity_universe_summary_readonly().get("counts", {}).get("instrument_registry"):
+            self.opportunity_universe_registry()
+        instrument_rows = self._registry_table_rows(
+            "instrument_registry",
+            "WHERE instrument_id = ? OR ticker = ? ORDER BY instrument_id LIMIT 1",
+            (instrument_id, instrument_id),
+        )
+        instrument = instrument_rows[0] if instrument_rows else {}
+        entity = self._registry_table_row("entity_registry", "entity_id", str(instrument.get("entity_id") or ""))
         ticker = instrument.get("ticker") or instrument_id
         queue = self.opportunity_queue(limit=50, include_sample=True)
         related_cards = []
