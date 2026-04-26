@@ -76,3 +76,27 @@
 - 生产 smoke 发现 `/investment/api/lead-lag/opportunity-universe` 在 GET 路径里尝试 seed 写库，服务运行时可能再次遇到 SQLite 锁。
 - 修复：registry/dossier API 优先只读已迁移表，缺表时才初始化。
 - 修复后本地 `python3 -m pytest -q`：60 passed，5 warnings。
+
+### 阶段 6：Lead-Lag 前台实战布局整合
+
+- 将 `/investment/lead-lag` 从单页纵向堆叠改为 6 个任务标签页：
+  - 决策总览
+  - 机会与证据
+  - 事件与变化
+  - 诊断与回放
+  - 证据库/报告
+  - 宇宙与下钻
+- 前台接入 V3 `parent_thesis_cards`，默认展示母 thesis + 子载体，避免同一 thesis 平铺重复卡。
+- 机会卡新增 Evidence Checklist、Evidence Panel、原始数据点、引用/归档摘要和子载体 Dossier 下钻按钮。
+- 前台接入：
+  - `/investment/api/lead-lag/source-quality-lineage`
+  - `/investment/api/lead-lag/report-center`
+  - `/investment/api/lead-lag/opportunity-universe`
+  - `/investment/api/lead-lag/dossier/{sector|entity|instrument}`
+- 新增 family、live-only、archived-only、显示样例/回退数据等实战过滤控件。
+- 本地验证：
+  - `node --check static/js/lead_lag.js`：通过。
+  - `python3 -m pytest -q tests/test_lead_lag_api.py tests/test_lead_lag_v3.py tests/test_lead_lag_v2_schema.py tests/test_lead_lag_event_relevance.py`：12 passed，5 warnings。
+  - `python3 -m pytest -q`：60 passed，5 warnings。
+  - Playwright 桌面烟测：6 个 tab 可切换，机会、Source Quality、Universe 均加载，console errors 为空。
+  - Playwright 移动端烟测：6 个 tab 可切换，25 个 sector registry 卡可见，Dossier 点击可加载，console errors 为空。

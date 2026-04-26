@@ -11,6 +11,9 @@
             replayDiagnostics: `${API_PREFIX}/replay-diagnostics`,
             memoryActions: `${API_PREFIX}/research-memory/actions`,
             sectorEvidence: `${API_PREFIX}/sector-evidence`,
+            sourceQualityLineage: `${API_PREFIX}/source-quality-lineage`,
+            reportCenter: `${API_PREFIX}/report-center`,
+            opportunityUniverse: `${API_PREFIX}/opportunity-universe`,
         },
         v1: {
             overview: `${API_PREFIX}/overview`,
@@ -31,8 +34,12 @@
             as_of: '',
             region: 'all',
             regime: 'all',
+            family: 'all',
             q: '',
             include_research_facing: false,
+            include_sample: false,
+            live_only: false,
+            archived_only: false,
         },
         data: {},
         v2Fallbacks: new Set(),
@@ -99,6 +106,33 @@
         bridge: '桥接资产',
         local_mapping: '本地映射',
         proxy: '同赛道代理',
+        hedge: '对冲',
+        live_official: '官方 live',
+        live_public: '公开 live',
+        live_media: '媒体 live',
+        user_curated: '人工整理',
+        generated_inference: '模型推断',
+        sample_demo: '样例数据',
+        fallback_placeholder: '回退占位',
+        cross_market_mapping: '跨市场映射',
+        industry_transmission: '产业传导',
+        customer_capex_spillover: '客户资本开支外溢',
+        price_spread_pass_through: '价差传导',
+        inventory_destocking_cycle: '库存周期',
+        policy_credit_fiscal: '政策/信用/财政',
+        external_liquidity_bridge: '外部流动性桥',
+        earnings_revision: '业绩修正',
+        event_calendar: '事件日历',
+        clinical_approval_bd: '临床/审批/BD',
+        crowding_short_squeeze: '拥挤/挤空',
+        valuation_gap: '估值差',
+        seasonal_calendar: '季节性',
+        entity_specific_dislocation: '个体错位',
+        confirmed: '已确认',
+        partial: '部分确认',
+        missing: '缺失',
+        stale: '陈旧',
+        sample_only: '样例',
     };
 
     const CHAIN_LABELS = [
@@ -168,7 +202,7 @@
         const normalized = String(value || '').toLowerCase();
         if (/(actionable|positive|bull|long|up|high|supportive|confirm|green|强|多|正|good|excellent|balanced|aggressive)/.test(normalized)) return 'positive';
         if (/(watch|warning|mixed|neutral|flat|mid|medium|pre_trigger|validating|balanced|中|平|观望|acceptable)/.test(normalized)) return 'warning';
-        if (/(insufficient|invalidated|negative|bear|short|down|risk|red|weak|poor|crowded|conservative|no_new_risk|弱|空|负)/.test(normalized)) return 'negative';
+        if (/(insufficient|invalidated|negative|bear|short|down|risk|red|weak|poor|crowded|conservative|no_new_risk|missing|stale|弱|空|负)/.test(normalized)) return 'negative';
         return 'neutral';
     }
 
@@ -680,12 +714,214 @@
         `).join('');
     }
 
-    function renderOpportunityQueue() {
-        const rows = asArray(state.data.opportunityQueue);
-        setText('opportunityQueueSubtitle', rows.length ? `当前 ${rows.length} 张机会卡，按“结果-思路-策略-依据-数据”展开` : '缺少验证：机会队列未返回机会卡');
-        setText('opportunityQueueCount', rows.length);
-        if (!rows.length) return renderEmpty('opportunityQueue');
-        document.getElementById('opportunityQueue').innerHTML = rows.map((item) => {
+    function opportunityCardIndex() {
+        const index = new Map();
+        asArray(state.data.opportunityQueue).forEach((card) => {
+            if (hasValue(card.id)) index.set(String(card.id), card);
+        });
+        return index;
+    }
+
+    function sourceCardsForParent(parent, index) {
+        return asArray(parent.source_card_ids).map((id) => index.get(String(id))).filter(Boolean);
+    }
+
+    function renderChecklist(checklist, summary = {}) {
+        const rows = asArray(checklist);
+        if (rows.length) {
+            return `
+                <div class="evidence-checklist">
+                    ${rows.map((item) => `
+                        <div class="checklist-item checklist-${toneClass(item.status)}">
+                            <span>${escapeHtml(item.label || item.key)}</span>
+                            <b>${escapeHtml(displayLabel(item.status))}</b>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        const confirmed = asArray(summary.confirmed);
+        const missing = asArray(summary.missing);
+        const sampleOnly = asArray(summary.sample_only);
+        if (!confirmed.length && !missing.length && !sampleOnly.length) return renderMissing(['缺少验证：Evidence Checklist 未返回']);
+        return `
+            <div class="evidence-checklist">
+                ${confirmed.map((item) => `<div class="checklist-item checklist-positive"><span>${escapeHtml(item)}</span><b>已确认</b></div>`).join('')}
+                ${missing.map((item) => `<div class="checklist-item checklist-negative"><span>${escapeHtml(item)}</span><b>缺失</b></div>`).join('')}
+                ${sampleOnly.map((item) => `<div class="checklist-item checklist-warning"><span>${escapeHtml(item)}</span><b>样例</b></div>`).join('')}
+            </div>
+        `;
+    }
+
+    function renderDataSummary(rows) {
+        const items = asArray(rows);
+        if (!items.length) return renderMissing(['缺少验证：原始数据点未返回']);
+        return `
+            <div class="raw-data-grid">
+                ${items.slice(0, 8).map((item) => `
+                    <div class="raw-data-item">
+                        <div class="raw-data-label">${escapeHtml(item.metric_name || item.label || item.title || '数据点')}</div>
+                        <div class="raw-data-value">${escapeHtml(scoreValue(item.latest_value, item.value, item.metric_value))}</div>
+                        <div class="raw-data-meta">
+                            ${hasValue(item.previous_value) ? `上期 ${escapeHtml(item.previous_value)}` : ''}
+                            ${hasValue(item.delta) ? ` / 变化 ${escapeHtml(item.delta)}` : ''}
+                        </div>
+                        <div class="raw-data-source">${escapeHtml([formatDate(item.as_of), item.source_name, item.citation_count ? `引用 ${item.citation_count}` : '', item.archived_link_count ? `归档 ${item.archived_link_count}` : ''].filter(hasValue).join(' / '))}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderEvidencePanel(rows) {
+        const items = asArray(rows);
+        if (!items.length) return renderMissing(['缺少验证：Evidence Panel 未返回']);
+        return `
+            <div class="evidence-panel-grid">
+                ${items.slice(0, 6).map((item) => `
+                    <div class="evidence-panel-item">
+                        <div class="card-title-row">
+                            <div>
+                                <div class="evidence-title">${escapeHtml(item.title || item.source_name || '证据')}</div>
+                                <div class="card-kicker">${escapeHtml([displayLabel(item.data_source_class), item.source_name, item.source_type].filter(hasValue).join(' / '))}</div>
+                            </div>
+                            ${renderStatusChip(item.archive_status || (item.local_archive_path ? 'confirmed' : 'missing'))}
+                        </div>
+                        <div class="raw-data-grid evidence-values">
+                            ${renderBuilderMetric('最新值', scoreValue(item.latest_value, item.metric_value))}
+                            ${renderBuilderMetric('上期', item.previous_value)}
+                            ${renderBuilderMetric('变化', item.delta)}
+                            ${renderBuilderMetric('时间', formatDate(item.as_of || item.published_at || item.fetched_at))}
+                        </div>
+                        ${hasValue(item.summary) ? `<div class="card-copy">${escapeHtml(item.summary)}</div>` : ''}
+                        ${hasValue(item.quote_text) ? `<blockquote class="evidence-quote">${escapeHtml(item.quote_text)}</blockquote>` : ''}
+                        <div class="evidence-links">
+                            ${hasValue(item.original_link) ? `<a class="memory-link" href="${escapeHtml(item.original_link)}" target="_blank" rel="noreferrer">原始链接</a>` : ''}
+                            ${hasValue(item.local_archive_path) ? `<span class="archive-path">本地归档：${escapeHtml(item.local_archive_path)}</span>` : '<span class="archive-path archive-missing">本地归档缺失</span>'}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderChildVariants(variants) {
+        const rows = asArray(variants);
+        if (!rows.length) return renderMissing(['缺少验证：子载体列表未返回']);
+        return `
+            <details class="variant-details" open>
+                <summary>子载体列表（${rows.length}）</summary>
+                <div class="variant-table">
+                    <div class="stock-pool-head">名称/代码</div>
+                    <div class="stock-pool-head">角色</div>
+                    <div class="stock-pool-head">交易质量</div>
+                    <div class="stock-pool-head">风险/操作</div>
+                    ${rows.map((item) => {
+                        const factor = item.local_factor_snapshot || {};
+                        return `
+                            <div class="stock-cell">
+                                <div class="stock-name">${escapeHtml(item.name || item.ticker)}</div>
+                                <div class="stock-sub">${escapeHtml([displayLabel(item.market), item.ticker].filter(hasValue).join(' / '))}</div>
+                            </div>
+                            <div class="stock-cell">${escapeHtml(item.role_zh || displayLabel(item.role))}</div>
+                            <div class="stock-cell">
+                                <div>${escapeHtml(item.liquidity_score ?? '')}</div>
+                                <div class="stock-sub">${escapeHtml([
+                                    hasValue(item.recent_relative_strength) ? `强弱 ${item.recent_relative_strength}` : '',
+                                    hasValue(item.crowding_score) ? `拥挤 ${item.crowding_score}` : '',
+                                    hasValue(factor.technical) ? `技术 ${factor.technical}` : '',
+                                ].filter(hasValue).join(' / '))}</div>
+                            </div>
+                            <div class="stock-cell">
+                                <div class="stock-sub">${escapeHtml(item.variant_risk || item.variant_notes || '')}</div>
+                                <button class="ll-inline-link" type="button" data-dossier-type="instrument" data-dossier-id="${escapeHtml(item.ticker || item.instrument_id)}">下钻</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </details>
+        `;
+    }
+
+    function renderParentThesisCards(parents) {
+        const index = opportunityCardIndex();
+        return asArray(parents).map((parent) => {
+            const sourceCards = sourceCardsForParent(parent, index);
+            const firstCard = sourceCards[0] || {};
+            const checklist = sourceCards.flatMap((card) => asArray(card.evidence_checklist));
+            const evidenceRows = sourceCards.flatMap((card) => asArray(card.evidence_panel));
+            const dataRows = asArray(parent.data_summary).length
+                ? asArray(parent.data_summary)
+                : sourceCards.flatMap((card) => asArray(card.data_summary));
+            const blockers = asArray(parent.execution_blockers);
+            return `
+                <div class="opportunity-card parent-thesis-card">
+                    <div class="card-title-row">
+                        <div>
+                            <div class="card-title">${escapeHtml(parent.thesis_title || '缺少验证：母 thesis 未命名')}</div>
+                            <div class="card-kicker">${escapeHtml([parent.sector_zh || parent.sector, displayLabel(parent.family), displayLabel(parent.current_stage)].filter(hasValue).join(' / '))}</div>
+                        </div>
+                        <div class="parent-card-score">
+                            <span>${escapeHtml(scoreValue(parent.decision_priority_score, parent.actionability_score))}</span>
+                            ${renderStatusChip(parent.is_executable ? 'actionable' : parent.generation_status)}
+                        </div>
+                    </div>
+                    <div class="card-copy">${escapeHtml(parent.why_now || parent.reasoning || '缺少验证：why_now 未返回')}</div>
+                    ${renderMissing(blockers)}
+                    <div class="meta-row operator-meta">
+                        ${renderOptionalMeta('可执行度', parent.actionability_score)}
+                        ${renderOptionalMeta('可交易性', parent.tradability_score)}
+                        ${renderOptionalMeta('证据完整度', asPercent(parent.evidence_completeness))}
+                        ${renderOptionalMeta('新鲜度', asPercent(parent.freshness_score))}
+                        ${renderOptionalMeta('证据源', parent.source_count)}
+                        ${renderOptionalMeta('Live / Sample', `${parent.live_source_count || 0} / ${parent.sample_source_count || 0}`)}
+                        ${renderOptionalMeta('引用 / 归档', `${parent.citation_count || 0} / ${parent.archived_link_count || 0}`)}
+                        ${renderOptionalMeta('下次复核', formatDate(parent.next_review_time))}
+                    </div>
+                    <div class="parent-chain-grid">
+                        <div class="operator-card-section">
+                            <div class="section-label">结果</div>
+                            <div class="chain-value">${escapeHtml(parent.result || firstCard.generation_status_zh || '缺少验证：结果未返回')}</div>
+                        </div>
+                        <div class="operator-card-section">
+                            <div class="section-label">思路</div>
+                            <div class="chain-value">${escapeHtml(parent.reasoning || firstCard.driver || '缺少验证：思路未返回')}</div>
+                        </div>
+                        <div class="operator-card-section">
+                            <div class="section-label">策略</div>
+                            <div class="chain-value">${escapeHtml(parent.strategy || '缺少验证：策略未返回')}</div>
+                        </div>
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">证据清单</div>
+                        ${renderChecklist(checklist, parent.evidence_summary)}
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">数据层</div>
+                        ${renderDataSummary(dataRows)}
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">Evidence Panel</div>
+                        ${renderEvidencePanel(evidenceRows)}
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">子载体</div>
+                        ${renderChildVariants(parent.child_variants)}
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">失效条件</div>
+                        ${renderList(parent.invalidation_rules)}
+                    </div>
+                    <div class="parent-actions">
+                        <button class="ll-inline-link" type="button" data-dossier-type="sector" data-dossier-id="${escapeHtml(parent.sector || '')}">赛道 Dossier</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderFlatOpportunityCards(rows) {
+        return rows.map((item) => {
             const missing = asArray(item.missing_confirmations);
             const localAsset = assetLabel(item.local_asset);
             const bridgeAsset = assetLabel(item.bridge_asset);
@@ -728,12 +964,64 @@
                         ${renderDecisionChain(item.decision_chain)}
                     </div>
                     <div class="operator-card-section">
+                        <div class="section-label">证据清单</div>
+                        ${renderChecklist(item.evidence_checklist, item.evidence_summary)}
+                    </div>
+                    <div class="operator-card-section">
+                        <div class="section-label">Evidence Panel</div>
+                        ${renderEvidencePanel(item.evidence_panel)}
+                    </div>
+                    <div class="operator-card-section">
                         <div class="section-label">股票池与下钻</div>
                         ${renderStockPool(item.stock_pool)}
                     </div>
                 </div>
             `;
         }).join('');
+    }
+
+    function renderOpportunityGovernance() {
+        const payload = state.data.opportunityQueuePayload || {};
+        const blocked = asArray(state.data.blockedCards);
+        const root = document.getElementById('opportunityGovernance');
+        setText('governanceSubtitle', `默认可见 ${asArray(state.data.opportunityQueue).length} / 原始 ${payload.raw_count || 0}，挡下 ${blocked.length} 张样例/弱来源卡`);
+        if (!root) return;
+        root.innerHTML = `
+            <div class="governance-summary-grid">
+                ${renderBuilderMetric('默认队列', payload.count ?? asArray(state.data.opportunityQueue).length)}
+                ${renderBuilderMetric('原始机会', payload.raw_count)}
+                ${renderBuilderMetric('被挡机会', blocked.length)}
+                ${renderBuilderMetric('当前过滤', [
+                    state.filters.live_only ? 'live-only' : '',
+                    state.filters.archived_only ? '已归档' : '',
+                    state.filters.include_sample ? '含样例' : '隐藏样例',
+                    state.filters.family !== 'all' ? displayLabel(state.filters.family) : '',
+                ].filter(hasValue).join(' / '))}
+            </div>
+            ${blocked.slice(0, 5).map((item) => `
+                <div class="governance-card">
+                    <div class="card-title">${escapeHtml(item.thesis || item.title || item.id)}</div>
+                    <div class="card-kicker">${escapeHtml([displayLabel(item.data_source_class), displayLabel(item.generation_status)].filter(hasValue).join(' / '))}</div>
+                    ${renderList(item.execution_blockers || item.missing_confirmations)}
+                </div>
+            `).join('') || renderMissing(['当前过滤下没有被挡样例/回退卡'])}
+        `;
+    }
+
+    function renderOpportunityQueue() {
+        const rows = asArray(state.data.opportunityQueue);
+        const parents = asArray(state.data.parentThesisCards);
+        const visibleCount = parents.length || rows.length;
+        setText('opportunityQueueSubtitle', visibleCount ? `当前 ${visibleCount} 张母 thesis / 机会卡，按“结果-思路-策略-依据-数据”展开` : '缺少验证：机会队列未返回机会卡');
+        setText('opportunityQueueCount', visibleCount);
+        if (!visibleCount) {
+            renderEmpty('opportunityQueue');
+            renderOpportunityGovernance();
+            return;
+        }
+        const root = document.getElementById('opportunityQueue');
+        if (root) root.innerHTML = parents.length ? renderParentThesisCards(parents) : renderFlatOpportunityCards(rows);
+        renderOpportunityGovernance();
     }
 
     function renderWhatChanged() {
@@ -822,6 +1110,14 @@
         setText('globalStatusText', buildStatusText());
         fillSelect('leadLagRegion', overview.regions || EMPTY_OVERVIEW.regions, state.filters.region);
         fillSelect('leadLagRegime', overview.regimes || EMPTY_OVERVIEW.regimes, state.filters.regime);
+        const family = document.getElementById('leadLagFamily');
+        if (family) family.value = state.filters.family || 'all';
+        const liveOnly = document.getElementById('leadLagLiveOnly');
+        if (liveOnly) liveOnly.checked = Boolean(state.filters.live_only);
+        const archivedOnly = document.getElementById('leadLagArchivedOnly');
+        if (archivedOnly) archivedOnly.checked = Boolean(state.filters.archived_only);
+        const includeSample = document.getElementById('leadLagIncludeSample');
+        if (includeSample) includeSample.checked = Boolean(state.filters.include_sample);
         const asOfInput = document.getElementById('leadLagAsOf');
         if (asOfInput && !state.filters.as_of && overview.as_of) {
             state.filters.as_of = overview.as_of;
@@ -1168,6 +1464,231 @@
         }).join('');
     }
 
+    function renderObjectMetrics(object, labelMap = {}) {
+        const entries = Object.entries(object || {}).filter(([, value]) => hasValue(value));
+        if (!entries.length) return renderMissing(['缺少验证：指标未返回']);
+        return `
+            <div class="diagnostic-summary">
+                ${entries.map(([key, value]) => renderBuilderMetric(labelMap[key] || displayLabel(key), typeof value === 'object' ? JSON.stringify(value) : value)).join('')}
+            </div>
+        `;
+    }
+
+    function renderSourceQualityLineage() {
+        const payload = state.data.sourceQualityLineage || {};
+        const lineage = payload.lineage || {};
+        const vault = payload.evidence_vault || {};
+        const alerts = asArray(lineage.mapping_pollution_alerts);
+        setText('sourceQualitySubtitle', `文档 ${vault.document_count ?? 0}，归档 ${vault.archived_document_count ?? 0}，解析失败率 ${asPercent(vault.parse_failure_rate) || '缺少验证'}`);
+        const root = document.getElementById('sourceQualityLineage');
+        if (!root) return;
+        root.innerHTML = `
+            <div class="source-quality-grid">
+                <div class="source-quality-card">
+                    <div class="section-label">Evidence Vault</div>
+                    ${renderObjectMetrics({
+                        document_count: vault.document_count,
+                        archived_document_count: vault.archived_document_count,
+                        parse_failure_rate: asPercent(vault.parse_failure_rate),
+                        schema_version: vault.schema_version,
+                    }, {
+                        document_count: '文档数',
+                        archived_document_count: '已归档',
+                        parse_failure_rate: '解析失败率',
+                        schema_version: 'Schema',
+                    })}
+                </div>
+                <div class="source-quality-card">
+                    <div class="section-label">Live / Sample</div>
+                    ${renderObjectMetrics(lineage.live_vs_sample, {
+                        live: 'Live',
+                        sample_or_fallback: '样例/回退',
+                        generated_inference: '模型推断',
+                    })}
+                </div>
+                <div class="source-quality-card">
+                    <div class="section-label">来源等级</div>
+                    ${renderObjectMetrics(vault.reliability_tiers)}
+                </div>
+                <div class="source-quality-card">
+                    <div class="section-label">数据类别</div>
+                    ${renderObjectMetrics(vault.data_source_classes || lineage.source_class_counts)}
+                </div>
+                <div class="source-quality-card">
+                    <div class="section-label">事件类别</div>
+                    ${renderObjectMetrics(lineage.event_class_counts)}
+                </div>
+                <div class="source-quality-card">
+                    <div class="section-label">报警</div>
+                    ${renderList([
+                        lineage.blocked_executable_count ? `被阻止可执行机会：${lineage.blocked_executable_count}` : '',
+                        lineage.cards_without_archive_count ? `缺本地归档机会：${lineage.cards_without_archive_count}` : '',
+                        lineage.stale_next_review_count ? `过期复核点：${lineage.stale_next_review_count}` : '',
+                    ].filter(hasValue))}
+                </div>
+            </div>
+            <div class="alert-stack">
+                ${alerts.slice(0, 8).map((item) => `
+                    <div class="governance-card">
+                        <div class="card-title">${escapeHtml(item.opportunity_id || '映射污染报警')}</div>
+                        <div class="card-copy">${escapeHtml(item.reason || '')}</div>
+                    </div>
+                `).join('') || renderMissing(['暂无映射污染报警'])}
+            </div>
+        `;
+    }
+
+    function renderReportCenter() {
+        const payload = state.data.reportCenter || {};
+        const reports = asArray(payload.reports);
+        setText('reportCenterSubtitle', reports.length ? `当前 ${reports.length} 份报告；全文检索 ${payload.full_text_search ? '已启用' : '未确认'}` : '暂无报告记录或报告中心未初始化');
+        const root = document.getElementById('reportCenter');
+        if (!root) return;
+        if (!reports.length) {
+            renderEmpty('reportCenter');
+            return;
+        }
+        root.innerHTML = `
+            <div class="report-list">
+                ${reports.map((report) => `
+                    <div class="report-card">
+                        <div class="card-title-row">
+                            <div>
+                                <div class="card-title">${escapeHtml(report.title || report.report_id || '未命名报告')}</div>
+                                <div class="card-kicker">${escapeHtml([displayLabel(report.report_type), formatDate(report.generated_at), report.as_of_date].filter(hasValue).join(' / '))}</div>
+                            </div>
+                            ${renderStatusChip(report.local_path ? 'confirmed' : 'missing')}
+                        </div>
+                        <div class="archive-path">${escapeHtml(report.local_path || '缺少本地报告路径')}</div>
+                    </div>
+                `).join('')}
+            </div>
+            ${payload.export_target ? `<div class="report-export-note">${escapeHtml(payload.export_target)}</div>` : ''}
+        `;
+    }
+
+    function renderOpportunityUniverse() {
+        const payload = state.data.opportunityUniverse || {};
+        const counts = payload.counts || {};
+        const sectors = asArray(payload.sectors);
+        setText('opportunityUniverseSubtitle', `Registry ${payload.status || 'unknown'}，行业模板 ${counts.sector_registry || sectors.length || 0}，实体 ${counts.entity_registry || 0}，标的 ${counts.instrument_registry || 0}`);
+        const root = document.getElementById('opportunityUniverse');
+        if (!root) return;
+        root.innerHTML = `
+            <div class="universe-counts">
+                ${renderObjectMetrics(counts, {
+                    sector_registry: '行业',
+                    theme_registry: '主题',
+                    entity_registry: '实体',
+                    instrument_registry: '标的',
+                    mapping_registry: '映射',
+                    model_registry: '模型',
+                    thesis_registry: 'Thesis',
+                    event_template_registry: '事件模板',
+                })}
+            </div>
+            <div class="sector-registry-grid">
+                ${sectors.map((sector) => `
+                    <button class="sector-registry-card" type="button" data-dossier-type="sector" data-dossier-id="${escapeHtml(sector.sector_id)}">
+                        <span>${escapeHtml(sector.name_zh || sector.sector_id)}</span>
+                        <em>${escapeHtml(sector.sector_id)}</em>
+                    </button>
+                `).join('') || renderMissing(['机会宇宙注册表未返回 sector_registry'])}
+            </div>
+        `;
+    }
+
+    function renderDossier(payload = null, type = '') {
+        const root = document.getElementById('dossierPreview');
+        if (!root) return;
+        if (!payload) {
+            root.innerHTML = `
+                <div class="ll-empty">
+                    <i class="bi bi-search"></i>
+                    <div class="ll-empty-title">选择一个赛道、实体或标的</div>
+                    <div class="ll-empty-copy">机会卡子载体和机会宇宙模板都可以打开 Dossier。</div>
+                </div>
+            `;
+            return;
+        }
+        const sector = payload.sector || {};
+        const entity = payload.entity || {};
+        const instrument = payload.instrument || {};
+        const title = sector.name_zh || entity.name_zh || instrument.name_zh || instrument.ticker || payload.sector_id || payload.entity_id || payload.instrument_id || 'Dossier';
+        const reports = asArray(payload.related_reports);
+        const evidence = asArray(payload.related_evidence);
+        const opportunities = asArray(payload.current_opportunities || payload.related_opportunity_cards);
+        const instruments = asArray(payload.instruments);
+        root.innerHTML = `
+            <div class="dossier-card">
+                <div class="card-title-row">
+                    <div>
+                        <div class="card-title">${escapeHtml(title)}</div>
+                        <div class="card-kicker">${escapeHtml(displayLabel(type))}</div>
+                    </div>
+                    ${renderStatusChip('confirmed')}
+                </div>
+                <div class="meta-row builder-meta">
+                    ${renderOptionalMeta('Sector', sector.sector_id || entity.sector_ids || instrument.sector_id)}
+                    ${renderOptionalMeta('Entity', entity.entity_id || instrument.entity_id)}
+                    ${renderOptionalMeta('Market', instrument.market)}
+                    ${renderOptionalMeta('Ticker', instrument.ticker)}
+                </div>
+                ${instruments.length ? `
+                    <div class="operator-card-section">
+                        <div class="section-label">相关上市载体</div>
+                        ${renderList(instruments.map((item) => [item.name_zh || item.ticker, item.ticker, displayLabel(item.market)].filter(hasValue).join(' / ')))}
+                    </div>
+                ` : ''}
+                ${opportunities.length ? `
+                    <div class="operator-card-section">
+                        <div class="section-label">相关机会</div>
+                        ${renderList(opportunities.slice(0, 6).map((item) => item.thesis || item.thesis_title || item.id))}
+                    </div>
+                ` : ''}
+                ${evidence.length ? `
+                    <div class="operator-card-section">
+                        <div class="section-label">相关证据</div>
+                        ${renderEvidencePanel(evidence)}
+                    </div>
+                ` : ''}
+                ${reports.length ? `
+                    <div class="operator-card-section">
+                        <div class="section-label">相关报告</div>
+                        ${renderList(reports.slice(0, 6).map((item) => [item.title, item.local_path].filter(hasValue).join(' / ')))}
+                    </div>
+                ` : ''}
+                ${payload.chain_map ? `
+                    <div class="operator-card-section">
+                        <div class="section-label">传导路径位置</div>
+                        ${renderObjectMetrics(payload.chain_map)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function dossierEndpoint(type, id) {
+        const encoded = encodeURIComponent(id || '');
+        if (type === 'sector') return `${API_PREFIX}/dossier/sector/${encoded}`;
+        if (type === 'entity') return `${API_PREFIX}/dossier/entity/${encoded}`;
+        return `${API_PREFIX}/dossier/instrument/${encoded}`;
+    }
+
+    async function loadDossier(type, id) {
+        if (!hasValue(id)) return;
+        setText('dossierSubtitle', `加载 ${displayLabel(type)}：${id}`);
+        activateLeadLagTab('universe');
+        try {
+            const payload = await fetchSection(dossierEndpoint(type, id), {});
+            renderDossier(payload, type);
+            setText('dossierSubtitle', `${displayLabel(type)} Dossier 已加载：${id}`);
+        } catch (error) {
+            console.warn('[lead-lag] dossier load failed', error);
+            setText('dossierSubtitle', `Dossier 加载失败：${id}`);
+        }
+    }
+
     function extractList(payload, keys = []) {
         if (Array.isArray(payload)) return payload.filter(hasValue);
         if (!payload || typeof payload !== 'object') return [];
@@ -1178,11 +1699,16 @@
     }
 
     function normalizePayload(payload) {
+        const opportunityPayload = payload.opportunityQueue || {};
+        const opportunityPayloadIsList = Array.isArray(opportunityPayload);
         return {
             overview: payload.overview || EMPTY_OVERVIEW,
             decisionCenter: payload.decisionCenter || {},
-            opportunityQueue: extractList(payload.opportunityQueue, ['cards', 'items']),
-            opportunityQueueGroups: extractList(payload.opportunityQueue, ['model_groups', 'groups']),
+            opportunityQueuePayload: opportunityPayloadIsList ? { cards: opportunityPayload, count: opportunityPayload.length } : opportunityPayload,
+            opportunityQueue: extractList(opportunityPayload, ['cards', 'items']),
+            parentThesisCards: opportunityPayloadIsList ? [] : extractList(opportunityPayload, ['parent_thesis_cards']),
+            blockedCards: opportunityPayloadIsList ? [] : extractList(opportunityPayload, ['blocked_cards', 'sample_cards']),
+            opportunityQueueGroups: opportunityPayloadIsList ? [] : extractList(opportunityPayload, ['model_groups', 'groups']),
             whatChanged: payload.whatChanged || {},
             eventFrontline: extractList(payload.eventFrontline, ['events', 'items']),
             avoidBoard: extractList(payload.avoidBoard, ['items']),
@@ -1198,6 +1724,9 @@
             events: asArray(payload.events),
             validation: asArray(payload.validation),
             memory: asArray(payload.memory),
+            sourceQualityLineage: payload.sourceQualityLineage || {},
+            reportCenter: payload.reportCenter || {},
+            opportunityUniverse: payload.opportunityUniverse || {},
         };
     }
 
@@ -1228,11 +1757,14 @@
             sectorEvidence,
             validation,
             memory,
+            sourceQualityLineage,
+            reportCenter,
+            opportunityUniverse,
         ] = await Promise.all([
             fetchV2WithFallback('decision-center', ENDPOINTS.v2.decisionCenter, ENDPOINTS.v1.overview, {}, (payload) => mapV1DecisionCenter(payload, v1Opportunities)),
             fetchV2WithFallback('opportunity-queue', ENDPOINTS.v2.opportunityQueue, ENDPOINTS.v1.opportunities, [], (payload) => asArray(payload).map(mapV1Opportunity)),
             fetchV2WithFallback('what-changed', ENDPOINTS.v2.whatChanged, ENDPOINTS.v1.overview, {}, mapV1WhatChanged),
-            fetchV2WithFallback('event-frontline', ENDPOINTS.v2.eventFrontline, ENDPOINTS.v1.events, [], mapV1EventFrontline, { include_research_facing: false }),
+            fetchV2WithFallback('event-frontline', ENDPOINTS.v2.eventFrontline, ENDPOINTS.v1.events, [], mapV1EventFrontline, { include_research_facing: state.filters.include_research_facing }),
             fetchV2WithFallback('avoid-board', ENDPOINTS.v2.avoidBoard, ENDPOINTS.v1.opportunities, [], mapV1AvoidBoard),
             fetchSection(ENDPOINTS.v1.models, []),
             fetchSection(ENDPOINTS.v1.crossMarket, []),
@@ -1245,6 +1777,9 @@
             fetchSection(ENDPOINTS.v2.sectorEvidence, {}),
             fetchSection(ENDPOINTS.v1.validation, []),
             fetchSection(ENDPOINTS.v1.memory, []),
+            fetchSection(ENDPOINTS.v2.sourceQualityLineage, {}),
+            fetchSection(ENDPOINTS.v2.reportCenter, {}),
+            fetchSection(ENDPOINTS.v2.opportunityUniverse, {}),
         ]);
 
         state.data = normalizePayload({
@@ -1266,6 +1801,9 @@
             events: v1Events,
             validation,
             memory,
+            sourceQualityLineage,
+            reportCenter,
+            opportunityUniverse,
         });
         state.lastUpdatedAt = new Date().toISOString();
 
@@ -1284,7 +1822,43 @@
         renderEvents();
         renderValidation();
         renderMemory();
+        renderSourceQualityLineage();
+        renderReportCenter();
+        renderOpportunityUniverse();
+        renderDossier();
         setLoading(false);
+    }
+
+    function activateLeadLagTab(tabId) {
+        const target = tabId || 'decision';
+        document.querySelectorAll('[data-ll-tab]').forEach((button) => {
+            const active = button.getAttribute('data-ll-tab') === target;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-ll-tab-panel]').forEach((panel) => {
+            panel.classList.toggle('is-active', panel.getAttribute('data-ll-tab-panel') === target);
+        });
+        try {
+            localStorage.setItem('lead-lag-active-tab', target);
+        } catch (error) {
+            // Ignore storage errors.
+        }
+    }
+
+    function bindTabEvents() {
+        document.querySelectorAll('[data-ll-tab]').forEach((button) => {
+            button.addEventListener('click', () => activateLeadLagTab(button.getAttribute('data-ll-tab')));
+        });
+        document.querySelectorAll('[data-ll-tab-jump]').forEach((button) => {
+            button.addEventListener('click', () => activateLeadLagTab(button.getAttribute('data-ll-tab-jump')));
+        });
+        try {
+            const stored = localStorage.getItem('lead-lag-active-tab');
+            if (stored) activateLeadLagTab(stored);
+        } catch (error) {
+            // Ignore storage errors.
+        }
     }
 
     function bindEvents() {
@@ -1292,11 +1866,22 @@
         const asOf = document.getElementById('leadLagAsOf');
         const region = document.getElementById('leadLagRegion');
         const regime = document.getElementById('leadLagRegime');
+        const family = document.getElementById('leadLagFamily');
         const search = document.getElementById('leadLagSearch');
         const includeResearch = document.getElementById('includeResearchFacing');
+        const includeSample = document.getElementById('leadLagIncludeSample');
+        const liveOnly = document.getElementById('leadLagLiveOnly');
+        const archivedOnly = document.getElementById('leadLagArchivedOnly');
         let searchTimer = null;
 
         if (refreshBtn) refreshBtn.addEventListener('click', loadLeadLag);
+        bindTabEvents();
+        document.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+            const trigger = target?.closest('[data-dossier-type][data-dossier-id]');
+            if (!trigger) return;
+            loadDossier(trigger.getAttribute('data-dossier-type'), trigger.getAttribute('data-dossier-id'));
+        });
         if (asOf) {
             asOf.addEventListener('change', (event) => {
                 state.filters.as_of = event.target.value;
@@ -1315,6 +1900,12 @@
                 loadLeadLag();
             });
         }
+        if (family) {
+            family.addEventListener('change', (event) => {
+                state.filters.family = event.target.value;
+                loadLeadLag();
+            });
+        }
         if (search) {
             search.addEventListener('input', (event) => {
                 window.clearTimeout(searchTimer);
@@ -1327,7 +1918,25 @@
         if (includeResearch) {
             includeResearch.addEventListener('change', (event) => {
                 state.filters.include_research_facing = event.target.checked;
-                renderEvents();
+                loadLeadLag();
+            });
+        }
+        if (includeSample) {
+            includeSample.addEventListener('change', (event) => {
+                state.filters.include_sample = event.target.checked;
+                loadLeadLag();
+            });
+        }
+        if (liveOnly) {
+            liveOnly.addEventListener('change', (event) => {
+                state.filters.live_only = event.target.checked;
+                loadLeadLag();
+            });
+        }
+        if (archivedOnly) {
+            archivedOnly.addEventListener('change', (event) => {
+                state.filters.archived_only = event.target.checked;
+                loadLeadLag();
             });
         }
     }

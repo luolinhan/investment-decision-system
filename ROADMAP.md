@@ -35,8 +35,9 @@
 - [x] Force sample/fallback opportunities out of executable status.
 - [x] Add parent thesis cards and child instrument variants.
 - [x] Add evidence panel, evidence checklist, execution blockers, and stale review-time rolling.
-- [ ] Wire parent thesis cards into the Lead-Lag page as the default visible layout.
-- [ ] Add front-end filters for source, market, sector, family, live-only, and archived-only.
+- [x] Wire parent thesis cards into the Lead-Lag page as the default visible layout.
+- [x] Add front-end filters for market, stage, family, live-only, archived-only, and sample/fallback inspection.
+- [ ] Add source-tier and sector-specific quick filters to every dense list.
 
 ### Milestone V3-4 - Report Center and Replay
 - [x] Add report tables and report search API.
@@ -46,7 +47,7 @@
 - [ ] Reduce `unknown_failure` through failure taxonomy classifiers.
 
 ### Milestone V3-5 - Production Acceptance
-- [ ] Run full local test suite.
+- [x] Run full local test suite for current UI integration phase.
 - [ ] Apply V3 migrations on Windows production after database backup.
 - [ ] Restart `InvestmentHub8080`.
 - [ ] Smoke `/health`, `/investment/lead-lag`, Opportunity Queue, Source Quality Lineage, Report Center, Opportunity Universe, and Dossier APIs.

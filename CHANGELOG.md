@@ -2,6 +2,17 @@
 
 All notable changes to the Lead-Lag Alpha Engine docs and delivery templates are recorded here.
 
+## [0.5.1] - 2026-04-26
+
+### Added
+- Added a six-tab Lead-Lag workspace layout for Decision, Opportunities, Events, Diagnostics, Evidence/Reports, and Universe/Dossier workflows.
+- Added frontend rendering for V3 parent thesis cards, child instrument variants, Evidence Checklist, Evidence Panel, raw data summaries, source-quality lineage, report center, opportunity universe registry, and Dossier quick drilldown.
+- Added practical data-governance controls for family, live-only, archived-only, and sample/fallback inspection.
+
+### Changed
+- Lead-Lag now defaults the visible opportunity queue to parent thesis grouping instead of flat repeated cards.
+- Moved dense diagnostics, raw events, report center, and universe registry out of the first viewport into task-specific tabs.
+
 ## [0.5.0] - 2026-04-26
 
 ### Added
