@@ -18,7 +18,7 @@ def _sample_service(tmp_path: Path) -> LeadLagService:
 def test_opportunity_card_v2_required_fields_are_populated(tmp_path: Path):
     service = _sample_service(tmp_path)
 
-    payload = service.opportunity_queue(limit=20)
+    payload = service.opportunity_queue(limit=20, include_sample=True)
 
     assert payload["count"] >= 7
     assert payload["scoring_config"]["opportunity_weights"]["actionability_score"] > 0
@@ -36,7 +36,7 @@ def test_opportunity_card_v2_required_fields_are_populated(tmp_path: Path):
 def test_missing_confirmations_are_explicit_for_weak_opportunities(tmp_path: Path):
     service = _sample_service(tmp_path)
 
-    cards = service.opportunity_queue(limit=20)["cards"]
+    cards = service.opportunity_queue(limit=20, include_sample=True)["cards"]
     hog_card = next(card for card in cards if card["id"] == "hog_latent")
 
     assert hog_card["generation_status"] == "insufficient_evidence"
@@ -52,7 +52,7 @@ def test_operator_payload_methods_are_available(tmp_path: Path):
     what_changed = service.what_changed()
 
     assert decision_center["headline"] == "领先-传导决策中心"
-    assert decision_center["top_directions"]
+    assert isinstance(decision_center["top_directions"], list)
     assert isinstance(avoid_board["items"], list)
     assert set(what_changed) >= {
         "new_signals",

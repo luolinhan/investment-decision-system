@@ -19,10 +19,19 @@ from app.services.lead_lag_diagnostics import build_replay_diagnostics, build_tr
 from app.services.lead_lag_events import build_event_relevance, filter_event_relevance
 from app.services.lead_lag_macro import build_macro_bridge
 from app.services.lead_lag_memory_actions import build_research_memory_actions
+from app.services.lead_lag_v3 import BLOCKED_SOURCE_CLASSES, LeadLagV3Projector
 from app.services.lead_lag_schema import apply_generation_status, compact_strings
 from app.services.lead_lag_scoring import clamp_score, load_lead_lag_v2_config, opportunity_decision_score
 from app.services.lead_lag_sector_evidence import build_sector_deep_evidence
 from app.services.obsidian_memory_service import ObsidianMemoryService
+try:
+    from app.services.evidence_vault import EvidenceVaultService
+except Exception:  # pragma: no cover - optional until V3 migration is run.
+    EvidenceVaultService = None
+try:
+    from app.services.opportunity_universe import OpportunityUniverseRegistry
+except Exception:  # pragma: no cover - optional until V3 migration is run.
+    OpportunityUniverseRegistry = None
 
 
 STAGES = ("latent", "pre_trigger", "triggered", "validating", "crowded", "decaying", "invalidated")
@@ -1642,6 +1651,31 @@ class LeadLagService:
         )
         return ordered
 
+    def _evidence_panels_by_url_for_items(self, items: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        urls: List[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("source_url"):
+                urls.append(str(item.get("source_url")))
+            for evidence in item.get("evidence_items") or []:
+                if isinstance(evidence, dict) and evidence.get("source_url"):
+                    urls.append(str(evidence.get("source_url")))
+        urls = list(dict.fromkeys(url for url in urls if url))
+        if not urls or EvidenceVaultService is None or not self.db_path.exists():
+            return {}
+        try:
+            vault = EvidenceVaultService(db_path=self.db_path, archive_root=self.repo_root / "data" / "archive")
+            panels = vault.evidence_panel_for_urls(urls, limit=20)
+        except Exception:
+            return {}
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for panel in panels:
+            original_link = str(panel.get("original_link") or "")
+            if original_link:
+                grouped.setdefault(original_link, []).append(panel)
+        return grouped
+
     def _events_relevance_all(self) -> List[Dict[str, Any]]:
         raw_events = self.events_calendar(limit=100).get("events", [])
         relevance = [
@@ -1914,6 +1948,15 @@ class LeadLagService:
             "historical_replay_summary": historical_replay,
             "mapped_events": mapped_events,
             "mapped_notes": self._mapped_notes_for_item(item),
+            "raw_evidence_items": item.get("evidence_items") or [],
+            "source_urls": compact_strings(
+                [item.get("source_url")]
+                + [
+                    evidence.get("source_url")
+                    for evidence in item.get("evidence_items", [])
+                    if isinstance(evidence, dict)
+                ]
+            ),
             "source_count": source_count,
             "source_quality": self._source_quality_v2(item),
             "confidence": clamp_score(self._as_float(item.get("replay_hit_rate"), 0.5) * 100.0),
@@ -1943,27 +1986,65 @@ class LeadLagService:
         limit: int = 12,
         region: Optional[str] = None,
         sector: Optional[str] = None,
+        family: Optional[str] = None,
         min_tradability: Optional[float] = None,
+        include_sample: bool = False,
+        live_only: bool = False,
+        archived_only: bool = False,
         **_: Any,
     ) -> Dict[str, Any]:
         events = self._events_relevance_all()
-        cards = [self._opportunity_card_v2(item, events) for item in self._enrich_opportunities()]
+        raw_items = self._enrich_opportunities()
+        evidence_panels_by_url = self._evidence_panels_by_url_for_items(raw_items)
+        projector = LeadLagV3Projector(evidence_panels_by_url=evidence_panels_by_url)
+        cards = [
+            projector.enrich_card(self._opportunity_card_v2(item, events), item)
+            for item in raw_items
+        ]
         if region and str(region).lower() not in {"all", ""}:
             cards = [card for card in cards if str(card.get("region", "")).lower() == str(region).lower()]
         if sector and str(sector).lower() not in {"all", ""}:
             normalized_sector = self._normalize_sector(sector)
             cards = [card for card in cards if self._normalize_sector(card.get("sector")) == normalized_sector]
+        if family and str(family).lower() not in {"all", ""}:
+            normalized_family = str(family).strip()
+            cards = [
+                card for card in cards
+                if normalized_family in set(card.get("opportunity_families") or [card.get("opportunity_family")])
+            ]
         if min_tradability is not None:
             cards = [card for card in cards if self._as_float(card.get("tradability_score")) >= self._as_float(min_tradability)]
+        if archived_only:
+            cards = [card for card in cards if self._as_int(card.get("archived_link_count")) > 0]
         cards.sort(key=lambda card: (-self._as_float(card.get("decision_priority_score")), str(card.get("id"))))
         limit_value = max(1, min(self._as_int(limit, 12), 50))
-        visible = cards[:limit_value]
+        blocked_cards = [card for card in cards if card.get("data_source_class") in BLOCKED_SOURCE_CLASSES]
+        governed_cards = cards if include_sample else [
+            card for card in cards if card.get("data_source_class") not in BLOCKED_SOURCE_CLASSES
+        ]
+        if live_only:
+            governed_cards = [card for card in governed_cards if self._as_int(card.get("live_source_count")) > 0]
+        visible = governed_cards[:limit_value]
+        parent_cards = projector.parent_thesis_cards(visible, limit=limit_value) if visible else []
         return {
             "as_of": datetime.now().replace(microsecond=0).isoformat(),
-            "count": len(cards),
+            "count": len(governed_cards),
+            "raw_count": len(cards),
             "cards": visible,
             "items": visible,
+            "parent_thesis_cards": parent_cards,
+            "blocked_cards": blocked_cards[:limit_value],
+            "sample_cards": blocked_cards[:limit_value],
             "model_groups": self._model_opportunity_groups(visible),
+            "source_quality_lineage": projector.quality_lineage_summary(cards, events=events),
+            "filters": {
+                "include_sample": include_sample,
+                "live_only": live_only,
+                "archived_only": archived_only,
+                "family": family or "all",
+                "sector": sector or "all",
+                "region": region or "all",
+            },
             "source": "lead_lag_v2",
             "scoring_config": self.v2_config.get("scoring", {}),
         }
@@ -1976,6 +2057,7 @@ class LeadLagService:
         limit: int = 20,
         event_class: str = "market-facing",
         include_research_facing: bool = False,
+        include_sample: bool = False,
         sector: Optional[str] = None,
         **_: Any,
     ) -> Dict[str, Any]:
@@ -1987,6 +2069,10 @@ class LeadLagService:
                 for event in events
                 if any(self._normalize_sector(row.get("sector")) == normalized_sector for row in event.get("sector_mapping", []))
             ]
+        projector = LeadLagV3Projector()
+        events = [projector.enhance_event(event) for event in events]
+        if not include_sample:
+            events = [event for event in events if event.get("data_source_class") not in BLOCKED_SOURCE_CLASSES]
         events = filter_event_relevance(events, event_class=event_class, include_research_facing=include_research_facing)
         limit_value = max(1, min(self._as_int(limit, 20), 100))
         visible = events[:limit_value]
@@ -1996,26 +2082,223 @@ class LeadLagService:
             "events": visible,
             "items": visible,
             "default_filter": "market-facing" if not include_research_facing else "all",
+            "include_sample": include_sample,
             "source": "lead_lag_v2",
         }
 
     def get_event_frontline(self, **kwargs: Any) -> Dict[str, Any]:
         return self.event_frontline(**kwargs)
 
+    def source_quality_lineage(self, limit: int = 20, **_: Any) -> Dict[str, Any]:
+        queue = self.opportunity_queue(limit=max(limit, 20), include_sample=True)
+        vault_summary: Dict[str, Any] = {}
+        if EvidenceVaultService is not None and self.db_path.exists():
+            try:
+                vault_summary = EvidenceVaultService(
+                    db_path=self.db_path,
+                    archive_root=self.repo_root / "data" / "archive",
+                ).source_quality_summary()
+            except Exception as exc:
+                vault_summary = {"error": str(exc)}
+        return {
+            "as_of": datetime.now().replace(microsecond=0).isoformat(),
+            "lineage": queue.get("source_quality_lineage", {}),
+            "evidence_vault": vault_summary,
+            "filters": {
+                "sample_hidden_by_default": True,
+                "executable_requires_live_source": True,
+                "generated_inference_requires_confirmation": True,
+            },
+        }
+
+    def get_source_quality_lineage(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.source_quality_lineage(**kwargs)
+
+    def report_center(self, q: Optional[str] = None, limit: int = 20, **_: Any) -> Dict[str, Any]:
+        if EvidenceVaultService is None:
+            return {"as_of": datetime.now().replace(microsecond=0).isoformat(), "reports": [], "count": 0, "status": "unavailable"}
+        vault = EvidenceVaultService(db_path=self.db_path, archive_root=self.repo_root / "data" / "archive")
+        try:
+            vault.ensure_schema()
+            if q:
+                reports = vault.search_reports(q, limit=limit)
+            else:
+                with vault.connect() as conn:
+                    rows = conn.execute(
+                        """
+                        SELECT report_id, report_type, title, local_path, generated_at, as_of_date
+                        FROM reports
+                        ORDER BY generated_at DESC
+                        LIMIT ?
+                        """,
+                        (max(1, min(self._as_int(limit, 20), 100)),),
+                    ).fetchall()
+                    reports = [dict(row) for row in rows]
+            return {
+                "as_of": datetime.now().replace(microsecond=0).isoformat(),
+                "count": len(reports),
+                "reports": reports,
+                "query": q or "",
+                "full_text_search": True,
+                "export_target": "Obsidian 独立目录由报告生成器写入，DB 保存 local_path 与引用关系。",
+            }
+        except Exception as exc:
+            return {
+                "as_of": datetime.now().replace(microsecond=0).isoformat(),
+                "count": 0,
+                "reports": [],
+                "query": q or "",
+                "status": "error",
+                "error": str(exc),
+            }
+
+    def get_report_center(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.report_center(**kwargs)
+
+    def opportunity_universe_registry(self, **_: Any) -> Dict[str, Any]:
+        if OpportunityUniverseRegistry is None:
+            return {"registry_version": None, "counts": {}, "sectors": [], "status": "unavailable"}
+        registry = OpportunityUniverseRegistry(db_path=self.db_path)
+        try:
+            registry.seed_defaults()
+            return registry.registry_summary()
+        except Exception as exc:
+            return {"registry_version": None, "counts": {}, "sectors": [], "status": "error", "error": str(exc)}
+
+    def get_opportunity_universe_registry(self, **kwargs: Any) -> Dict[str, Any]:
+        return self.opportunity_universe_registry(**kwargs)
+
+    def sector_dossier(self, sector_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
+        registry_payload = self.opportunity_universe_registry()
+        sector = {}
+        if OpportunityUniverseRegistry is not None:
+            try:
+                registry = OpportunityUniverseRegistry(db_path=self.db_path)
+                sectors = registry.list_sectors(enabled_only=False)
+                sector = next((item for item in sectors if item.get("sector_id") == sector_id), {})
+            except Exception:
+                sector = {}
+        queue = self.opportunity_queue(limit=max(limit, 10), sector=sector_id, include_sample=True)
+        reports = self.report_center(q=sector.get("name_zh") or sector_id, limit=limit)
+        return {
+            "sector_id": sector_id,
+            "sector": sector,
+            "theses": queue.get("parent_thesis_cards", []),
+            "key_evidence_checklist": sector.get("source_requirements", []),
+            "chain_map": {
+                "upstream_nodes": sector.get("upstream_nodes", []),
+                "downstream_nodes": sector.get("downstream_nodes", []),
+                "lead_assets": sector.get("lead_assets", []),
+                "local_assets": sector.get("local_assets", []),
+            },
+            "current_opportunities": queue.get("cards", []),
+            "related_reports": reports.get("reports", []),
+            "registry_counts": registry_payload.get("counts", {}),
+        }
+
+    def entity_dossier(self, entity_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
+        entity: Dict[str, Any] = {}
+        instruments: List[Dict[str, Any]] = []
+        if OpportunityUniverseRegistry is not None:
+            try:
+                registry = OpportunityUniverseRegistry(db_path=self.db_path)
+                registry.seed_defaults()
+                with registry.connect() as conn:
+                    entity_row = conn.execute("SELECT * FROM entity_registry WHERE entity_id = ?", (entity_id,)).fetchone()
+                    if entity_row:
+                        entity = dict(entity_row)
+                    instrument_rows = conn.execute(
+                        "SELECT * FROM instrument_registry WHERE entity_id = ? ORDER BY market, ticker",
+                        (entity_id,),
+                    ).fetchall()
+                    instruments = [dict(row) for row in instrument_rows]
+            except Exception:
+                entity = {}
+                instruments = []
+        query = entity.get("name_zh") or entity_id
+        reports = self.report_center(q=query, limit=limit)
+        evidence = []
+        if EvidenceVaultService is not None and self.db_path.exists():
+            try:
+                evidence = EvidenceVaultService(
+                    db_path=self.db_path,
+                    archive_root=self.repo_root / "data" / "archive",
+                ).search_documents(query, limit=limit)
+            except Exception:
+                evidence = []
+        return {
+            "entity_id": entity_id,
+            "entity": entity,
+            "instruments": instruments,
+            "recent_event_timeline": self.event_frontline(limit=limit, include_sample=True, include_research_facing=True).get("events", []),
+            "related_reports": reports.get("reports", []),
+            "related_evidence": evidence,
+            "peer_comparison": [],
+            "transmission_position": entity.get("sector_ids"),
+            "historical_triggers": [],
+        }
+
+    def instrument_dossier(self, instrument_id: str, limit: int = 10, **_: Any) -> Dict[str, Any]:
+        instrument: Dict[str, Any] = {}
+        entity: Dict[str, Any] = {}
+        if OpportunityUniverseRegistry is not None:
+            try:
+                registry = OpportunityUniverseRegistry(db_path=self.db_path)
+                registry.seed_defaults()
+                with registry.connect() as conn:
+                    instrument_row = conn.execute(
+                        "SELECT * FROM instrument_registry WHERE instrument_id = ? OR ticker = ?",
+                        (instrument_id, instrument_id),
+                    ).fetchone()
+                    if instrument_row:
+                        instrument = dict(instrument_row)
+                        entity_row = conn.execute("SELECT * FROM entity_registry WHERE entity_id = ?", (instrument.get("entity_id"),)).fetchone()
+                        if entity_row:
+                            entity = dict(entity_row)
+            except Exception:
+                instrument = {}
+                entity = {}
+        ticker = instrument.get("ticker") or instrument_id
+        queue = self.opportunity_queue(limit=50, include_sample=True)
+        related_cards = []
+        for card in queue.get("cards", []):
+            if any(asset.get("code") == ticker for asset in card.get("stock_pool", []) if isinstance(asset, dict)):
+                related_cards.append(card)
+        evidence = []
+        if EvidenceVaultService is not None and self.db_path.exists():
+            try:
+                evidence = EvidenceVaultService(
+                    db_path=self.db_path,
+                    archive_root=self.repo_root / "data" / "archive",
+                ).search_documents(ticker, limit=limit)
+            except Exception:
+                evidence = []
+        return {
+            "instrument_id": instrument_id,
+            "instrument": instrument,
+            "entity": entity,
+            "market_liquidity": instrument.get("liquidity_bucket"),
+            "factor_snapshot": self._factor_snapshot_for_asset({"code": ticker, "market": instrument.get("market")}),
+            "related_opportunity_cards": related_cards[:limit],
+            "related_evidence": evidence,
+            "related_events": self.event_frontline(limit=limit, include_sample=True, include_research_facing=True).get("events", []),
+            "local_archive_links": [item.get("local_archive_path") for item in evidence if item.get("local_archive_path")],
+        }
+
     def _risk_budget_from_bridge(self, actionable: List[Dict[str, Any]], bridge: Dict[str, Any]) -> Dict[str, str]:
         bridge_score = self._as_float(bridge.get("bridge_score"), 50.0)
         external_score = self._as_float((bridge.get("external_risk") or {}).get("score"), 50.0)
         hk_score = self._as_float((bridge.get("hk_liquidity") or {}).get("score"), 50.0)
         bridge_state = str(bridge.get("bridge_state") or "risk_neutral")
-        if not actionable:
-            return {
-                "label": "no_new_risk",
-                "reason": f"无 actionable 机会；bridge={bridge_state}, score={bridge_score:.1f}",
-            }
         if bridge_score < 42 or external_score < 40:
             return {
                 "label": "no_new_risk",
                 "reason": f"Macro/External/HK bridge 收紧，external={external_score:.1f}, HK={hk_score:.1f}",
+            }
+        if not actionable:
+            return {
+                "label": "no_new_risk",
+                "reason": f"无 actionable 机会；bridge={bridge_state}, score={bridge_score:.1f}",
             }
         if bridge_score < 55 or hk_score < 45:
             return {

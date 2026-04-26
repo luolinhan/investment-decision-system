@@ -1,5 +1,58 @@
 # Roadmap
 
+## Lead-Lag Alpha Engine V3
+
+### Scope
+- Upgrade V2 into an evidence-driven research operating system.
+- Make every high-priority conclusion traceable to source documents, local archives, data points, citations, and report records.
+- Keep Windows production as the only runtime acceptance target.
+
+### Milestone V3-0 - Audit and Architecture
+- [x] Audit V2 service, routing, sample bundle, live fusion, SQLite schema, and tests.
+- [x] Add `docs/v2_gap_report.md`.
+- [x] Add `docs/v3_architecture.md`.
+- [x] Add Evidence Vault, archive, reliability, registry, dossier, report, replay, and UI density specs.
+- [x] Add `docs/deprecations.md` for old external enhancement assets.
+
+### Milestone V3-1 - Evidence Vault and Source Archive
+- [x] Add Evidence Vault SQLite schema.
+- [x] Add local archive directory policy.
+- [x] Add migration/backfill script for existing `raw_documents` and `research_reports`.
+- [x] Add document/report search helpers and source quality summary.
+- [ ] Add PDF/HTML binary archiver and parser status dashboard.
+- [ ] Add citation extraction into `citations` and `extracted_facts` from new collectors.
+
+### Milestone V3-2 - Opportunity Universe and Entity Layer
+- [x] Add sector/theme/entity/instrument/mapping/model/thesis/event-template registry tables.
+- [x] Seed at least 12 industry/theme templates; current seed contains 25 templates.
+- [x] Add sector/entity/instrument dossier API skeletons.
+- [ ] Expand entity and instrument seeds for all 25 sectors.
+- [ ] Add mapping pollution checks into scoring, not only diagnostics.
+
+### Milestone V3-3 - Live/Sample Isolation and Thesis Grouping
+- [x] Add V3 data source classes.
+- [x] Hide sample/fallback opportunities and events by default.
+- [x] Force sample/fallback opportunities out of executable status.
+- [x] Add parent thesis cards and child instrument variants.
+- [x] Add evidence panel, evidence checklist, execution blockers, and stale review-time rolling.
+- [ ] Wire parent thesis cards into the Lead-Lag page as the default visible layout.
+- [ ] Add front-end filters for source, market, sector, family, live-only, and archived-only.
+
+### Milestone V3-4 - Report Center and Replay
+- [x] Add report tables and report search API.
+- [ ] Generate daily/weekly/monthly/report-center outputs into `reports` and Obsidian export directory.
+- [ ] Add report version diff.
+- [ ] Add replay backfill for 1/3/5/10/20 horizons into DuckDB/Parquet.
+- [ ] Reduce `unknown_failure` through failure taxonomy classifiers.
+
+### Milestone V3-5 - Production Acceptance
+- [ ] Run full local test suite.
+- [ ] Apply V3 migrations on Windows production after database backup.
+- [ ] Restart `InvestmentHub8080`.
+- [ ] Smoke `/health`, `/investment/lead-lag`, Opportunity Queue, Source Quality Lineage, Report Center, Opportunity Universe, and Dossier APIs.
+- [ ] Push GitHub commit and confirm Windows production matches GitHub.
+- [ ] Update long-term knowledge base with migration and validation results.
+
 ## Lead-Lag Alpha Engine V2
 
 ### Scope

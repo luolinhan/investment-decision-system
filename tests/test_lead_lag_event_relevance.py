@@ -14,21 +14,30 @@ def _sample_service(tmp_path: Path) -> LeadLagService:
     )
 
 
-def test_event_frontline_defaults_to_market_facing(tmp_path: Path):
+def test_event_frontline_filters_sample_by_default(tmp_path: Path):
     service = _sample_service(tmp_path)
 
     payload = service.event_frontline(limit=20)
 
-    assert payload["events"]
+    assert payload["events"] == []
     assert payload["default_filter"] == "market-facing"
-    assert all(event["event_class"] == "market-facing" for event in payload["events"])
+
+
+def test_event_frontline_can_include_sample_research_layer(tmp_path: Path):
+    service = _sample_service(tmp_path)
+
+    payload = service.event_frontline(limit=20, include_sample=True, include_research_facing=True)
+
+    assert payload["events"]
+    assert all(event["event_class"] in {"research-facing", "archive-only"} for event in payload["events"])
     for event in payload["events"]:
         assert event["expected_path"]
         assert isinstance(event["expected_path"], list)
         assert event["expected_path"][0]["expected_lag_days"]["min"] >= 0
         assert event["invalidation"]
         assert isinstance(event["invalidation"], list)
-        assert event["china_mapping_score"] >= service.v2_config["thresholds"]["event_market_china_mapping_min"]
+        assert event["tradability_class"] in {"research-facing", "archive-only"}
+        assert event["data_source_class"] in {"sample_demo", "fallback_placeholder"}
 
 
 def test_low_mapping_developer_noise_is_not_in_default_frontline(tmp_path: Path):
@@ -48,9 +57,9 @@ def test_low_mapping_developer_noise_is_not_in_default_frontline(tmp_path: Path)
     )
 
     default_events = service.event_frontline(limit=50)["events"]
-    all_events = service.event_frontline(limit=50, include_research_facing=True)["events"]
+    all_events = service.event_frontline(limit=50, include_sample=True, include_research_facing=True)["events"]
     developer_event = next(event for event in all_events if event["event_id"] == "developer_sdk_noise")
 
-    assert developer_event["event_class"] == "research-facing"
+    assert developer_event["event_class"] == "archive-only"
     assert developer_event["noise_reason"] == "developer_ecosystem_without_china_mapping"
     assert all(event["event_id"] != "developer_sdk_noise" for event in default_events)

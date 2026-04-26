@@ -199,16 +199,34 @@ class LeadLagBriefGenerator:
         events = [event for event in frontline.get("events", []) if isinstance(event, dict)]
         avoid_items = [item for item in avoid.get("items", []) if isinstance(item, dict)]
         macro_context = _macro_context_from_bridge(bridge) or _macro_context(liquidity)
+        today_focus = self._today_focus(config.slot, decision, changed, cards, events) or [
+            "当前无 live 可执行机会；样例/回退机会已从默认简报中过滤。"
+        ]
+        new_catalysts = self._new_catalysts(events) or [
+            {
+                "event_id": "no_live_market_facing",
+                "title": "当前无 live market-facing 催化",
+                "expected_path": "等待官方/公开来源和本地映射确认",
+            }
+        ]
+        top_opportunities = self._top_opportunities(cards) or [
+            {
+                "opportunity_id": "no_live_executable",
+                "thesis": "当前无 live 可执行机会",
+                "actionability_score": 0,
+                "tradability_score": 0,
+            }
+        ]
 
         return {
             "slot": config.slot,
             "as_of": as_of_dt.isoformat(),
             "headline": self._headline(config, decision, changed),
-            "today_focus": self._today_focus(config.slot, decision, changed, cards, events),
-            "new_catalysts": self._new_catalysts(events),
+            "today_focus": today_focus,
+            "new_catalysts": new_catalysts,
             "invalidation_alerts": self._invalidation_alerts(cards, avoid_items),
             "next_checkpoints": self._next_checkpoints(config.slot, as_of_dt, decision, cards),
-            "top_opportunities": self._top_opportunities(cards),
+            "top_opportunities": top_opportunities,
             "do_not_chase": self._do_not_chase(decision, avoid_items),
             "macro_external_hk_context": macro_context,
             "source_summary": self._source_summary(decision, queue, frontline, avoid, changed),

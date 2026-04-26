@@ -2,6 +2,27 @@
 
 All notable changes to the Lead-Lag Alpha Engine docs and delivery templates are recorded here.
 
+## [0.5.0] - 2026-04-26
+
+### Added
+- Added V3 audit and architecture documentation set, including Evidence Vault schema, source archive policy, source reliability rules, opportunity universe registry, entity/instrument model, live/sample separation, report center spec, replay backfill plan, and UI information density rules.
+- Added `EvidenceVaultService` with V3 SQLite schema, FTS-compatible search fallback, local text archive writes, V2 raw document/report backfill, source quality summary, report search, and URL evidence panels.
+- Added `scripts/migrate_v3_evidence_vault.py` to create Evidence Vault tables and backfill `raw_documents` / `research_reports`.
+- Added `OpportunityUniverseRegistry` with sector/theme/entity/instrument/mapping/model/thesis/event-template tables.
+- Added `scripts/migrate_v3_opportunity_universe.py` and seeded 25 industry/theme templates.
+- Added V3 Lead-Lag projection helpers for source-class tagging, execution blockers, evidence panels, evidence checklist, stale review-time rolling, parent thesis grouping, child instrument variants, and source lineage diagnostics.
+- Added V3 APIs for source quality lineage, report center, opportunity universe, and sector/entity/instrument dossiers.
+- Added tests for Evidence Vault, Opportunity Universe, live/sample isolation, parent thesis projection, event demotion, and V3 API surfaces.
+
+### Changed
+- Opportunity Queue now hides `sample_demo` / `fallback_placeholder` by default; `include_sample=true` is required for sample-layer inspection.
+- Sample/fallback cards are forced out of executable status and include explicit `execution_blockers`.
+- Event Frontline now hides sample events by default and classifies weak events as research-facing or archive-only.
+- README and AGENTS were shortened and refocused on V3 operations, Windows production acceptance, data architecture, and live/sample rules.
+
+### Deprecated
+- Existing external coding/translation enhancement assets are documented as deprecated in `docs/deprecations.md`; they are not part of the V3 development path.
+
 ## [0.4.0] - 2026-04-26
 
 ### Added

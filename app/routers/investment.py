@@ -628,7 +628,11 @@ async def lead_lag_opportunity_queue(
     as_of: Optional[str] = None,
     region: Optional[str] = None,
     sector: Optional[str] = None,
+    family: Optional[str] = None,
     regime: Optional[str] = None,
+    include_sample: bool = False,
+    live_only: bool = False,
+    archived_only: bool = False,
     q: Optional[str] = None,
 ):
     """Lead-Lag V2 可执行机会队列。"""
@@ -639,7 +643,11 @@ async def lead_lag_opportunity_queue(
         as_of=as_of,
         region=region,
         sector=sector,
+        family=family,
         regime=regime,
+        include_sample=include_sample,
+        live_only=live_only,
+        archived_only=archived_only,
         q=q,
     )
 
@@ -673,6 +681,8 @@ async def lead_lag_event_frontline(
     region: Optional[str] = None,
     sector: Optional[str] = None,
     event_class: Optional[str] = "market-facing",
+    include_sample: bool = False,
+    include_research_facing: bool = False,
     window: Optional[str] = None,
     q: Optional[str] = None,
 ):
@@ -685,8 +695,93 @@ async def lead_lag_event_frontline(
         region=region,
         sector=sector,
         event_class=event_class,
+        include_sample=include_sample,
+        include_research_facing=include_research_facing,
         window=window,
         q=q,
+    )
+
+
+@router.get("/api/lead-lag/source-quality-lineage")
+async def lead_lag_source_quality_lineage(
+    limit: int = 20,
+):
+    """Lead-Lag V3 来源可信度与数据血缘诊断。"""
+    return _call_lead_lag_service(
+        ["source_quality_lineage", "get_source_quality_lineage"],
+        {"lineage": {}, "evidence_vault": {}},
+        unwrap=False,
+        limit=limit,
+    )
+
+
+@router.get("/api/lead-lag/report-center")
+async def lead_lag_report_center(
+    q: Optional[str] = None,
+    limit: int = 20,
+):
+    """Lead-Lag V3 报告中心与全文检索。"""
+    return _call_lead_lag_service(
+        ["report_center", "get_report_center"],
+        {"reports": [], "count": 0},
+        unwrap=False,
+        q=q,
+        limit=limit,
+    )
+
+
+@router.get("/api/lead-lag/opportunity-universe")
+async def lead_lag_opportunity_universe():
+    """Lead-Lag V3 机会宇宙注册表。"""
+    return _call_lead_lag_service(
+        ["opportunity_universe_registry", "get_opportunity_universe_registry"],
+        {"counts": {}, "sectors": []},
+        unwrap=False,
+    )
+
+
+@router.get("/api/lead-lag/dossier/sector/{sector_id}")
+async def lead_lag_sector_dossier(
+    sector_id: str,
+    limit: int = 10,
+):
+    """Lead-Lag V3 Sector Dossier。"""
+    return _call_lead_lag_service(
+        ["sector_dossier"],
+        {"sector_id": sector_id, "sector": {}, "current_opportunities": []},
+        unwrap=False,
+        sector_id=sector_id,
+        limit=limit,
+    )
+
+
+@router.get("/api/lead-lag/dossier/entity/{entity_id}")
+async def lead_lag_entity_dossier(
+    entity_id: str,
+    limit: int = 10,
+):
+    """Lead-Lag V3 Entity Dossier。"""
+    return _call_lead_lag_service(
+        ["entity_dossier"],
+        {"entity_id": entity_id, "entity": {}, "instruments": []},
+        unwrap=False,
+        entity_id=entity_id,
+        limit=limit,
+    )
+
+
+@router.get("/api/lead-lag/dossier/instrument/{instrument_id}")
+async def lead_lag_instrument_dossier(
+    instrument_id: str,
+    limit: int = 10,
+):
+    """Lead-Lag V3 Instrument Dossier。"""
+    return _call_lead_lag_service(
+        ["instrument_dossier"],
+        {"instrument_id": instrument_id, "instrument": {}, "related_opportunity_cards": []},
+        unwrap=False,
+        instrument_id=instrument_id,
+        limit=limit,
     )
 
 

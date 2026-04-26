@@ -66,10 +66,10 @@ def test_opportunity_card_contains_bridge_score_impact(tmp_path: Path):
     zero_bridge_config["scoring"]["opportunity_weights"]["bridge_adjustment_score"] = 0
 
     service.v2_config = zero_bridge_config
-    baseline = service.opportunity_queue(limit=20)["cards"][0]
+    baseline = service.opportunity_queue(limit=20, include_sample=True)["cards"][0]
 
     service.v2_config = default_config
-    influenced = service.opportunity_queue(limit=20)["cards"][0]
+    influenced = service.opportunity_queue(limit=20, include_sample=True)["cards"][0]
 
     assert influenced["bridge_impact"]["explanation"]
     assert influenced["bridge_impact"]["cache_status"] == "sample_fallback"

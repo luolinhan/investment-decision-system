@@ -59,21 +59,43 @@ def test_lead_lag_v2_operator_endpoints():
     queue = client.get("/investment/api/lead-lag/opportunity-queue")
     assert queue.status_code == 200
     queue_payload = queue.json()
-    assert queue_payload["cards"]
-    first_card = queue_payload["cards"][0]
+    assert "cards" in queue_payload
+    assert all(card["data_source_class"] not in {"sample_demo", "fallback_placeholder"} for card in queue_payload["cards"])
+
+    sample_queue = client.get("/investment/api/lead-lag/opportunity-queue?include_sample=true")
+    assert sample_queue.status_code == 200
+    sample_payload = sample_queue.json()
+    assert sample_payload["cards"]
+    first_card = sample_payload["cards"][0]
     assert first_card["why_now"]
     assert first_card["baton_stage"]
     assert first_card["invalidation_rules"]
     assert first_card["historical_replay_summary"]
     assert first_card["decision_chain"]["result"]
     assert first_card["stock_pool"][0]["name"]
-    assert queue_payload["model_groups"]
+    assert first_card["data_source_class"] in {
+        "live_official",
+        "live_public",
+        "live_media",
+        "user_curated",
+        "generated_inference",
+        "sample_demo",
+        "fallback_placeholder",
+    }
+    assert "parent_thesis_cards" in sample_payload
+    assert sample_payload["model_groups"]
 
     frontline = client.get("/investment/api/lead-lag/event-frontline")
     assert frontline.status_code == 200
     frontline_payload = frontline.json()
-    assert frontline_payload["events"]
+    assert "events" in frontline_payload
     assert all(item["event_class"] == "market-facing" for item in frontline_payload["events"])
+
+    sample_frontline = client.get("/investment/api/lead-lag/event-frontline?include_sample=true&include_research_facing=true")
+    assert sample_frontline.status_code == 200
+    sample_frontline_payload = sample_frontline.json()
+    assert sample_frontline_payload["events"]
+    assert "source_drawer" in sample_frontline_payload["events"][0]
 
     avoid = client.get("/investment/api/lead-lag/avoid-board")
     assert avoid.status_code == 200
@@ -107,3 +129,30 @@ def test_lead_lag_v2_operator_endpoints():
     sector_payload = sector.json()
     assert sector_payload["count"] >= 5
     assert all(item["evidence_layers"] for item in sector_payload["sectors"])
+
+
+def test_lead_lag_v3_registry_report_and_dossier_endpoints():
+    lineage = client.get("/investment/api/lead-lag/source-quality-lineage")
+    assert lineage.status_code == 200
+    assert "lineage" in lineage.json()
+
+    universe = client.get("/investment/api/lead-lag/opportunity-universe")
+    assert universe.status_code == 200
+    universe_payload = universe.json()
+    assert universe_payload["counts"]["sector_registry"] >= 12
+
+    reports = client.get("/investment/api/lead-lag/report-center?limit=5")
+    assert reports.status_code == 200
+    assert "reports" in reports.json()
+
+    sector = client.get("/investment/api/lead-lag/dossier/sector/ai_compute_infra")
+    assert sector.status_code == 200
+    assert sector.json()["sector_id"] == "ai_compute_infra"
+
+    entity = client.get("/investment/api/lead-lag/dossier/entity/entity_nvidia")
+    assert entity.status_code == 200
+    assert entity.json()["entity_id"] == "entity_nvidia"
+
+    instrument = client.get("/investment/api/lead-lag/dossier/instrument/NVDA")
+    assert instrument.status_code == 200
+    assert instrument.json()["instrument_id"] == "NVDA"
