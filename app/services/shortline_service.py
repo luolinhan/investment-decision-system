@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from xml.etree import ElementTree as ET
 
 from app.db import get_sqlite_connection
+from app.services.bailian_client import BailianJsonTranslator
 from quant_workbench.service import QuantWorkbenchService
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -398,21 +399,15 @@ class ShortlineService:
                 "Accept": "application/json",
             }
         )
-        self.bailian_api_key = (
-            os.getenv("BAILIAN_API_KEY", "").strip()
-            or os.getenv("DASHSCOPE_API_KEY", "").strip()
+        self.bailian_translator = BailianJsonTranslator(
+            repo_root=BASE_DIR.parent,
+            default_model="qwen3.6-plus",
+            timeout_default=60,
         )
-        self.bailian_base_url = _normalize_openai_base_url(
-            os.getenv("BAILIAN_BASE_URL", "").strip()
-            or os.getenv("DASHSCOPE_BASE_URL", "").strip(),
-            "https://coding.dashscope.aliyuncs.com/v1",
-        )
-        self.bailian_model = (
-            os.getenv("BAILIAN_MODEL", "").strip()
-            or os.getenv("DASHSCOPE_MODEL", "").strip()
-            or "qwen3.6-plus"
-        )
-        self.bailian_timeout = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "60"))
+        self.bailian_api_key = self.bailian_translator.api_key
+        self.bailian_base_url = self.bailian_translator.base_url
+        self.bailian_model = self.bailian_translator.model
+        self.bailian_timeout = self.bailian_translator.timeout
         self._sec_ticker_cache: Optional[Dict[str, Dict[str, str]]] = None
         self._reference_seed_lock = threading.Lock()
         self.workbench = QuantWorkbenchService()
@@ -867,7 +862,7 @@ class ShortlineService:
                 """
                 UPDATE cross_market_signal_events
                 SET status='archived', updated_at=?
-                WHERE status='active' AND event_time < ?
+                WHERE status='active' AND datetime(event_time) < datetime(?)
                 """,
                 (now, (datetime.now() - timedelta(days=7)).replace(microsecond=0).isoformat()),
             )
@@ -1443,43 +1438,16 @@ class ShortlineService:
         return {"ok": True, "translated": updated, "generated_at": _utcnow_iso()}
 
     def _translate_payload(self, payload: Dict[str, Any]) -> Dict[str, str]:
-        url = f"{self.bailian_base_url}/chat/completions"
         try:
-            resp = requests.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {self.bailian_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.bailian_model,
-                    "temperature": 0.1,
-                    "max_tokens": 400,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "你是面向 A股和港股短线研究的双语事件翻译助手。"
-                                "请把输入英文翻译为简洁专业的中文。"
-                                "只输出严格 JSON，字段名与输入保持一致。"
-                            ),
-                        },
-                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                    ],
-                },
-                timeout=self.bailian_timeout,
+            return self.bailian_translator.translate_payload(
+                payload,
+                system_prompt=(
+                    "你是面向 A股和港股短线研究的双语事件翻译助手。"
+                    "请把输入英文翻译为简洁专业的中文。"
+                    "只输出严格 JSON，字段名与输入保持一致。"
+                ),
+                max_tokens=400,
             )
-            resp.raise_for_status()
-            content = (((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
-            if content.startswith("```"):
-                content = content.strip("`")
-                content = re.sub(r"^json\s*", "", content).strip()
-            start = content.find("{")
-            end = content.rfind("}")
-            if start >= 0 and end > start:
-                content = content[start : end + 1]
-            parsed = json.loads(content)
-            return {str(k): str(v) for k, v in parsed.items() if v is not None}
         except Exception:
             return {}
 
@@ -1569,7 +1537,7 @@ class ShortlineService:
                 """
                 SELECT *
                 FROM cross_market_signal_events
-                WHERE status='active' AND event_time >= ?
+                WHERE status='active' AND datetime(event_time) >= datetime(?)
                 ORDER BY event_time DESC
                 """,
                 (cutoff,),
@@ -1646,7 +1614,7 @@ class ShortlineService:
                 """
                 UPDATE cross_market_signal_candidates
                 SET status='archived', updated_at=?
-                WHERE status='active' AND event_time < ?
+                WHERE status='active' AND datetime(event_time) < datetime(?)
                 """,
                 (now, cutoff),
             )

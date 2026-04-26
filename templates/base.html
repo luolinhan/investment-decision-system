@@ -768,37 +768,21 @@
                     <i class="bi bi-radar"></i>
                     <span>情报雷达</span>
                 </a>
+                <a class="nav-link {% if '/investment/lead-lag' in request.url.path %}active{% endif %}" href="/investment/lead-lag">
+                    <i class="bi bi-diagram-3"></i>
+                    <span>Lead-Lag</span>
+                </a>
                 <a class="nav-link {% if '/investment/shortline' in request.url.path %}active{% endif %}" href="/investment/shortline">
                     <i class="bi bi-lightning-charge"></i>
                     <span>短线执行层</span>
                 </a>
-                <a class="nav-link {% if request.url.path == '/investment/research' or '/reports' in request.url.path or request.url.path == '/' %}active{% endif %}" href="/investment/research">
+                <a class="nav-link {% if request.url.path == '/investment/research' %}active{% endif %}" href="/investment/research">
                     <i class="bi bi-layout-text-window-reverse"></i>
                     <span>研究工作台</span>
                 </a>
                 <a class="nav-link {% if request.url.path == '/stocks' %}active{% endif %}" href="/stocks">
                     <i class="bi bi-star"></i>
                     <span>自选标的</span>
-                </a>
-            </div>
-            <div class="nav-section">
-                <div class="nav-section-title">归档</div>
-                <a class="nav-link {% if '/reports' in request.url.path %}active{% endif %}" href="/reports">
-                    <i class="bi bi-journal-text"></i>
-                    <span>研究证据</span>
-                    <span class="nav-badge" id="reportCount">-</span>
-                </a>
-                <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
-                    <i class="bi bi-grid-1x2"></i>
-                    <span>内容仪表盘</span>
-                </a>
-            </div>
-
-            <div class="nav-section">
-                <div class="nav-section-title">系统</div>
-                <a class="nav-link {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">
-                    <i class="bi bi-gear"></i>
-                    <span>系统设置</span>
                 </a>
             </div>
         </nav>

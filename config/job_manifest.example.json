@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "description": "Investment Hub maintenance job manifest. Commands are safe examples; secrets stay in .env/.env.local or the Windows task environment.",
+  "tasks": {
+    "collect_intelligence": {
+      "description": "Collect official/public intelligence documents into data/investment.db.",
+      "command": ["{python}", "scripts/sync_intelligence.py"],
+      "cwd": "{repo_root}",
+      "timeout_seconds": 3600,
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    "translate_intelligence": {
+      "description": "Fill missing Chinese fields for intelligence and research rows using Bailian when configured.",
+      "command": ["{python}", "scripts/translate_intelligence.py"],
+      "cwd": "{repo_root}",
+      "timeout_seconds": 3600,
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "INTELLIGENCE_TRANSLATION_LIMIT": "{translation_limit}"
+      }
+    },
+    "translate_shortline_t0": {
+      "description": "Translate recent shortline T0 official events.",
+      "command": ["{python}", "scripts/translate_shortline_events.py", "--limit", "{shortline_limit}"],
+      "cwd": "{repo_root}",
+      "timeout_seconds": 1800,
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    "export_lead_lag_snapshot": {
+      "description": "Export a Lead-Lag collector snapshot for replay and handoff.",
+      "command": ["{python}", "scripts/lead_lag_aliyun_collector.py", "--output", "data/lead_lag/collector_snapshot.json"],
+      "cwd": "{repo_root}",
+      "timeout_seconds": 1200,
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    "lead_lag_preopen_brief": {
+      "description": "Generate the 08:20 Lead-Lag pre-open playbook.",
+      "command": ["{python}", "scripts/export_lead_lag_brief.py", "--slot", "pre_open_playbook"],
+      "cwd": "{repo_root}",
+      "timeout_seconds": 1200,
+      "env": {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  },
+  "sequences": {
+    "lead_lag_pretranslate": {
+      "description": "Front-load collection, bilingual completion, and Lead-Lag snapshot export.",
+      "steps": [
+        {"task": "collect_intelligence"},
+        {"task": "translate_intelligence"},
+        {"task": "translate_shortline_t0"},
+        {"task": "export_lead_lag_snapshot"}
+      ]
+    }
+  },
+  "defaults": {
+    "translation_limit": "100",
+    "shortline_limit": "20"
+  }
+}

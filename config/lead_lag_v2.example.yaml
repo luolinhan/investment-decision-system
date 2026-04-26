@@ -1,0 +1,39 @@
+engine:
+  version: v2
+  default_mode: operator
+
+thresholds:
+  event_market_china_mapping_min: 55
+  event_market_relevance_min: 45
+  opportunity_actionable_min: 70
+  opportunity_watch_min: 45
+
+scoring:
+  opportunity_weights:
+    actionability_score: 0.30
+    tradability_score: 0.22
+    evidence_completeness: 0.20
+    freshness_score: 0.16
+    historical_replay_score: 0.12
+    bridge_adjustment_score: 0.10
+    noise_penalty: -0.18
+  event_weights:
+    china_mapping_score: 0.30
+    tradability_score: 0.25
+    evidence_quality: 0.25
+    time_decay: 0.20
+    noise_penalty: -1.00
+  bridge_weights:
+    macro_score: 0.34
+    external_score: 0.33
+    hk_score: 0.33
+  bridge_impact:
+    actionability_weight: 0.08
+    tradability_weight: 0.10
+    decision_weight: 0.08
+    high_beta_penalty_threshold: 45
+    high_beta_sectors:
+      ai: true
+      semis: true
+      innovative_pharma: true
+      solar: true

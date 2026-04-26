@@ -14,6 +14,7 @@
 - Intelligence: `/investment/intelligence`
 - Shortline: `/investment/shortline`
 - Research workbench: `/investment/research-workbench`
+- Lead-Lag: `/investment/lead-lag`
 
 ## Long-Term Maintenance Mode
 
@@ -21,15 +22,19 @@ This repo should be handled as a persistent Codex project, not a one-off task fo
 
 Expected workflow:
 - open with `investment-codex`
-- use worker agents only for bounded implementation tasks
+- use Codex built-in worker agents only for bounded implementation tasks when the user asks for multi-agent execution
 - keep acceptance, deployment, and production verification in the control repo
 
 Current recommended agent mix:
-- Codex controller
-- Worker A for ETL/backend volume
-- Worker B for hard implementation
-- Worker C for frontend/template volume
-- Worker D for tests/migrations/repetitive execution
+- Codex controller: current high-capability model for architecture, debugging, review, and acceptance
+- Coding workers: Codex built-in `worker` agents on `gpt-5.3-codex`
+- Lightweight docs/research workers: `gpt-5.4-mini` only when the task is low-risk and non-production
+- External Bailian / Claude worker launchers have been deleted from this machine
+
+Prompt templates:
+- `/Users/lhluo/agent-workspaces/templates/investment-controller-kickoff.md`
+- `/Users/lhluo/agent-workspaces/templates/investment-worker-dispatch.md`
+- `/Users/lhluo/agent-workspaces/templates/investment-worker-task.md`
 
 ## Current Stable Facts
 
@@ -38,6 +43,7 @@ Current recommended agent mix:
 - Shortline official event chain now includes `SEC + FDA + ClinicalTrials + Company IR`
 - Shortline T0 official events now have bilingual completion in production
 - Windows detached `uvicorn` is run through `pythonw` startup script to avoid no-stdout crashes
+- Lead-Lag V2 Operator/Builder surfaces are deployed on Windows with Transmission Graph Workspace, Replay Diagnostics, Sector Deep Evidence, Obsidian Action Memory, and fixed-time brief tasks
 
 ## Active Priorities
 
@@ -46,6 +52,7 @@ Current recommended agent mix:
 3. Improve Research workbench structure, filtering, and bilingual extraction quality
 4. Tighten Windows task scheduling and service restart reliability
 5. Reduce page-level empty-state failures by preferring persisted snapshots over live fetches
+6. Expand Lead-Lag official provider coverage for HKEX short selling / Stock Connect holdings / NBS / PBOC / CDE-NMPA feeds
 
 ## Standard Acceptance Checklist
 
@@ -55,19 +62,10 @@ Current recommended agent mix:
 - API returns current expected fields
 - knowledge base updated for operationally relevant changes
 
-## Recommended Entry Commands
+## Recommended Entry Command
 
 Controller:
 
 ```bash
 investment-codex
-```
-
-Workers:
-
-```bash
-investment-worker-a
-investment-worker-b
-investment-worker-c
-investment-worker-d
 ```

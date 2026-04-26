@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
+import sys
 
 from app.config import settings, ensure_directories, get_investment_runtime_profile
 from app.database import init_db
@@ -16,13 +17,16 @@ from app.routers import reports, pages, investment, investment_v2, radar
 
 # 配置日志
 os.makedirs("logs", exist_ok=True)
+_log_handlers = [
+    logging.FileHandler("logs/app.log", encoding="utf-8"),
+]
+if getattr(sys.stderr, "write", None) is not None:
+    _log_handlers.insert(0, logging.StreamHandler())
+
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("logs/app.log", encoding="utf-8"),
-    ]
+    handlers=_log_handlers,
 )
 logger = logging.getLogger(__name__)
 

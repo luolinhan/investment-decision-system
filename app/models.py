@@ -59,17 +59,6 @@ class CollectionTask(Base):
     completed_at = Column(DateTime)
 
 
-class Setting(Base):
-    """系统设置"""
-    __tablename__ = "settings"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String(100), unique=True, nullable=False)
-    value = Column(Text)
-    description = Column(String(500))
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
-
 # 初始股票数据
 DEFAULT_STOCKS = [
     # 科技 / 半导体

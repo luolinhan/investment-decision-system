@@ -13,47 +13,19 @@ import sqlite3
 import sys
 from typing import Any, Dict, List, Tuple
 
-import requests
-from dotenv import load_dotenv
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.db import get_sqlite_connection  # noqa: E402
+from app.services.bailian_client import BailianJsonTranslator, normalize_json_block  # noqa: E402
 from app.services.intelligence_service import IntelligenceService  # noqa: E402
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.getenv("INVESTMENT_DB_PATH", os.path.join(BASE_DIR, "data", "investment.db"))
 
 
-def _normalize_openai_base_url(value: str, default: str) -> str:
-    base_url = (value or default).strip().rstrip("/")
-    if base_url.endswith("/chat/completions"):
-        base_url = base_url[: -len("/chat/completions")]
-    return base_url
-
-
-class BailianTranslator:
+class BailianTranslator(BailianJsonTranslator):
     def __init__(self) -> None:
-        load_dotenv(os.path.join(BASE_DIR, ".env.local"), override=False)
-        load_dotenv(os.path.join(BASE_DIR, ".env"), override=False)
-        self.api_key = (
-            os.getenv("BAILIAN_API_KEY", "").strip()
-            or os.getenv("DASHSCOPE_API_KEY", "").strip()
-        )
-        self.base_url = _normalize_openai_base_url(
-            os.getenv("BAILIAN_BASE_URL", "").strip()
-            or os.getenv("DASHSCOPE_BASE_URL", "").strip(),
-            "https://coding.dashscope.aliyuncs.com/v1",
-        )
-        self.model = (
-            os.getenv("BAILIAN_MODEL", "").strip()
-            or os.getenv("DASHSCOPE_MODEL", "").strip()
-            or "qwen3.6-plus"
-        )
-        self.timeout = int(os.getenv("BAILIAN_TIMEOUT_SECONDS", "60"))
-
-    def enabled(self) -> bool:
-        return bool(self.api_key)
+        super().__init__(default_model="qwen3.6-plus", timeout_default=60)
 
     def config_snapshot(self) -> Dict[str, Any]:
         return {
@@ -62,68 +34,6 @@ class BailianTranslator:
             "model": self.model,
             "timeout_seconds": self.timeout,
         }
-
-    def _request_content(self, system_prompt: str, user_payload: Dict[str, Any]) -> str:
-        if not self.enabled():
-            return ""
-        resp = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json={
-                "model": self.model,
-                "temperature": 0.1,
-                "max_tokens": 800,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-                ],
-            },
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        content = (((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
-        return content
-
-    @staticmethod
-    def _normalize_json_block(content: str) -> str:
-        if content.startswith("```"):
-            content = content.strip("`")
-            content = content.replace("json\n", "", 1).strip()
-        start = content.find("{")
-        end = content.rfind("}")
-        if start >= 0 and end > start:
-            content = content[start : end + 1]
-        return content
-
-    def translate_payload(self, payload: Dict[str, Any]) -> Dict[str, str]:
-        if not self.enabled():
-            return {}
-        prompt = (
-            "你是面向A股和港股投资研究的信息翻译助手。"
-            "请把输入英文翻译成简洁、准确、保留专有名词的中文。"
-            "只返回严格JSON，字段名保持和输入一致；不要添加解释。"
-        )
-        content = self._normalize_json_block(self._request_content(prompt, payload))
-        try:
-            parsed = json.loads(content)
-            return {str(k): str(v) for k, v in parsed.items() if v is not None}
-        except json.JSONDecodeError:
-            repair_prompt = (
-                "你是 JSON 修复助手。"
-                "把输入中的 raw_output 修复成严格合法的 JSON，且只保留 required_keys 中列出的字段。"
-                "不要添加解释。"
-            )
-            repaired = self._normalize_json_block(
-                self._request_content(
-                    repair_prompt,
-                    {"required_keys": list(payload.keys()), "raw_output": content},
-                )
-            )
-            try:
-                parsed = json.loads(repaired)
-                return {str(k): str(v) for k, v in parsed.items() if v is not None}
-            except json.JSONDecodeError:
-                return {}
 
     def enrich_research_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self.enabled():
@@ -137,7 +47,7 @@ class BailianTranslator:
             "key_points 要有 4 到 6 条，优先覆盖：核心结论、产业链传导、催化剂/验证点、主要风险。"
             "如果输入里提供 existing_key_points，需要尽量保留其 en 文本并补齐对应 zh。"
         )
-        content = self._normalize_json_block(self._request_content(prompt, payload))
+        content = normalize_json_block(self._request_content(prompt, payload, max_tokens=1400))
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:

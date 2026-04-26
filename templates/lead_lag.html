@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}领先-传导 Alpha 引擎{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/lead_lag.css">
+{% endblock %}
+
+{% block content %}
+<div class="page-header lead-lag-header">
+    <div>
+        <div class="page-title">领先-传导 Alpha 引擎</div>
+        <div class="page-subtitle">用“结果-思路-策略-依据-数据”的研判链路，回答今天先看什么、为什么现在看、缺什么验证、何时失效。</div>
+    </div>
+    <div class="lead-lag-actions">
+        <a class="btn btn-secondary" href="#builderMode">
+            <i class="bi bi-tools"></i>
+            研究诊断区
+        </a>
+        <div class="status-strip">
+            <span class="status-label">数据状态</span>
+            <span class="status-value" id="globalStatusText">等待加载</span>
+        </div>
+        <button class="btn btn-secondary" id="leadLagRefreshBtn" type="button">
+            <i class="bi bi-arrow-clockwise"></i>
+            刷新
+        </button>
+    </div>
+</div>
+
+<section class="lead-lag-hero operator-decision-center" aria-labelledby="decisionCenterTitle">
+    <div class="hero-summary">
+        <div class="hero-eyebrow">操作视图 / 决策中心</div>
+        <h2 class="hero-title" id="decisionCenterTitle">等待决策中心载入</h2>
+        <p class="hero-copy" id="decisionCenterConclusion">优先读取 V2 decision-center；若后端尚未提供，将回退到 V1 并标注缺少验证。</p>
+        <div class="hero-flags" id="decisionCenterFlags"></div>
+        <div class="decision-list" id="decisionTopDirections"></div>
+    </div>
+    <div class="decision-rail">
+        <div class="rail-card">
+            <div class="rail-label">风险预算</div>
+            <div class="rail-value" id="decisionRiskBudget">等待加载</div>
+            <div class="rail-copy" id="decisionRiskReason"></div>
+        </div>
+        <div class="rail-card">
+            <div class="rail-label">下次检查</div>
+            <div class="rail-value" id="decisionNextCheck">等待加载</div>
+        </div>
+        <div class="rail-card">
+            <div class="rail-label">今日不做</div>
+            <div class="compact-list" id="decisionDoNotDo"></div>
+        </div>
+        <div class="rail-card">
+            <div class="rail-label">关键失效条件</div>
+            <div class="compact-list" id="decisionInvalidations"></div>
+        </div>
+    </div>
+</section>
+
+<section class="lead-lag-toolbar">
+    <div class="toolbar-group">
+        <label class="form-label" for="leadLagAsOf">观察日</label>
+        <input class="form-control" id="leadLagAsOf" type="date">
+    </div>
+    <div class="toolbar-group">
+        <label class="form-label" for="leadLagRegion">市场</label>
+        <select class="form-select" id="leadLagRegion">
+            <option value="all">全部</option>
+        </select>
+    </div>
+    <div class="toolbar-group">
+        <label class="form-label" for="leadLagRegime">阶段</label>
+        <select class="form-select" id="leadLagRegime">
+            <option value="all">全部</option>
+        </select>
+    </div>
+    <div class="toolbar-group toolbar-search">
+        <label class="form-label" for="leadLagSearch">搜索</label>
+        <input class="form-control" id="leadLagSearch" type="search" placeholder="机会、赛道、事件、资产">
+    </div>
+</section>
+
+<section class="metric-glossary" aria-label="指标说明">
+    <div class="metric-glossary-head">
+        <div class="operator-section-label">指标说明</div>
+        <div class="ll-panel-subtitle">分数均为 0-100，越高代表越有利；噪音惩罚越高代表越需要降权。</div>
+    </div>
+    <div class="metric-glossary-grid">
+        <div class="glossary-item"><b>决策优先级</b><span>综合可执行度、可交易性、证据完整度、新鲜度、历史回放和噪音惩罚后的排序分。</span></div>
+        <div class="glossary-item"><b>可执行度</b><span>信号强度叠加宏观、外部风险、港股流动性后，是否值得进入行动清单。</span></div>
+        <div class="glossary-item"><b>可交易性</b><span>是否有明确本地资产、流动性和观察窗口，而不只是概念映射。</span></div>
+        <div class="glossary-item"><b>证据完整度</b><span>独立事件、研报、Radar 快照和历史回放是否足够支撑结论。</span></div>
+        <div class="glossary-item"><b>传导棒位</b><span>预触发、第一棒、第二棒、验证棒、拥挤、已失效，用于判断追踪节奏。</span></div>
+        <div class="glossary-item"><b>股票池</b><span>每张机会卡拆出领先资产、桥接资产、本地映射和同赛道代理，支持下钻查看。</span></div>
+    </div>
+</section>
+
+<section class="operator-mode">
+    <div class="operator-section-label">每日操作视图</div>
+    <article class="ll-panel model-discovery-panel">
+        <div class="ll-panel-head">
+            <div>
+                <div class="ll-panel-title">模型发现分组</div>
+                <div class="ll-panel-subtitle" id="modelDiscoverySubtitle">按不同模型拆分机会来源，避免把所有机会混在一张榜里。</div>
+            </div>
+            <div class="ll-panel-badge" id="modelDiscoveryCount">0</div>
+        </div>
+        <div class="model-discovery-groups" id="modelDiscoveryGroups"></div>
+    </article>
+    <section class="lead-lag-grid operator-grid-main">
+        <article class="ll-panel ll-panel-emphasis">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">机会队列</div>
+                    <div class="ll-panel-subtitle" id="opportunityQueueSubtitle">按决策优先级、可交易性、证据完整度排序</div>
+                </div>
+                <div class="ll-panel-badge" id="opportunityQueueCount">0</div>
+            </div>
+            <div class="opportunity-board opportunity-queue" id="opportunityQueue"></div>
+        </article>
+
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">今日变化</div>
+                    <div class="ll-panel-subtitle" id="whatChangedSubtitle">相对上一观察窗口的新信号、升级、降级和宏观变化</div>
+                </div>
+            </div>
+            <div class="change-stack" id="whatChanged"></div>
+        </article>
+    </section>
+
+    <section class="lead-lag-grid operator-grid-secondary">
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">事件前线</div>
+                    <div class="ll-panel-subtitle" id="eventFrontlineSubtitle">默认仅展示可交易催化事件</div>
+                </div>
+                <span class="ll-panel-badge">催化</span>
+            </div>
+            <div class="timeline-list event-frontline" id="eventFrontline"></div>
+        </article>
+
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">不要追高</div>
+                    <div class="ll-panel-subtitle" id="avoidBoardSubtitle">拥挤、证据不足、已走完或触发失效的方向</div>
+                </div>
+            </div>
+            <div class="avoid-board" id="avoidBoard"></div>
+        </article>
+    </section>
+</section>
+
+<section class="builder-mode" id="builderMode">
+    <div class="builder-mode-head">
+        <div>
+            <div class="operator-section-label">研究诊断区</div>
+            <h3>模型、图谱、回放、原始事件与研究记忆诊断区</h3>
+        </div>
+        <div class="builder-toggle">
+            <label class="form-check-label" for="includeResearchFacing">
+                <input class="form-check-input" id="includeResearchFacing" type="checkbox">
+                显示研究背景事件
+            </label>
+        </div>
+    </div>
+
+    <section class="lead-lag-grid lead-lag-grid-top">
+        <article class="ll-panel ll-panel-emphasis">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">模型库</div>
+                    <div class="ll-panel-subtitle" id="modelLibrarySubtitle">未加载模型定义与状态</div>
+                </div>
+                <div class="ll-panel-badge" id="modelLibraryCount">0</div>
+            </div>
+            <div class="model-library-list" id="modelLibraryList"></div>
+        </article>
+
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">跨市场映射</div>
+                    <div class="ll-panel-subtitle" id="crossMarketSubtitle">跨市场因子和资产的主观察面</div>
+                </div>
+            </div>
+            <div class="cross-market-map" id="crossMarketMap"></div>
+        </article>
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">传导图谱工作区</div>
+                    <div class="ll-panel-subtitle" id="industryTransmissionSubtitle">节点、边、时滞、卡点与第一/第二/第三棒</div>
+                </div>
+            </div>
+            <div class="transmission-lanes" id="industryTransmission"></div>
+        </article>
+    </section>
+
+    <section class="lead-lag-grid lead-lag-grid-middle">
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">外部风险与港股流动性</div>
+                    <div class="ll-panel-subtitle" id="liquiditySubtitle">美元、利率、CNH、港股流动性的联读面板</div>
+                </div>
+            </div>
+            <div class="liquidity-grid" id="liquidityPanel"></div>
+        </article>
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">赛道深证据</div>
+                    <div class="ll-panel-subtitle" id="sectorThesisSubtitle">五大赛道证据层、验证缺口、provider gaps 与失效规则</div>
+                </div>
+            </div>
+            <div class="sector-thesis-list" id="sectorThesis"></div>
+        </article>
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">原始事件</div>
+                    <div class="ll-panel-subtitle" id="eventCalendarSubtitle">诊断区可查看可交易催化与研究背景事件</div>
+                </div>
+            </div>
+            <div class="timeline-list" id="eventCalendar"></div>
+        </article>
+    </section>
+
+    <section class="lead-lag-grid lead-lag-grid-bottom">
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">历史回放诊断</div>
+                    <div class="ll-panel-subtitle" id="replayValidationSubtitle">1/3/5/10/20 日分布、拥挤前后、failure modes 与阶段切换</div>
+                </div>
+            </div>
+            <div class="validation-list" id="replayValidation"></div>
+        </article>
+
+        <article class="ll-panel">
+            <div class="ll-panel-head">
+                <div>
+                    <div class="ll-panel-title">Obsidian 行动记忆</div>
+                    <div class="ll-panel-subtitle" id="obsidianSubtitle">thesis、胜负案例、典型陷阱、相似案例与机会映射</div>
+                </div>
+            </div>
+            <div class="memory-stack" id="obsidianMemory"></div>
+        </article>
+    </section>
+</section>
+
+<template id="leadLagEmptyState">
+    <div class="ll-empty">
+        <i class="bi bi-database-exclamation"></i>
+        <div class="ll-empty-title">暂无数据</div>
+        <div class="ll-empty-copy">等待接口返回，或后端尚未提供该 V2 契约。</div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/lead_lag.js"></script>
+{% endblock %}

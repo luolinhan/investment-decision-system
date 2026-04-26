@@ -1,0 +1,206 @@
+version: lead_lag_source_matrix_v1
+updated_at: "2026-04-25"
+
+security:
+  token_policy: "Never store real API keys, cookies, private tokens, or webhook URLs in this file."
+  secret_sources:
+    - ".env"
+    - ".env.local"
+    - "Windows Task Scheduler environment"
+
+tiers:
+  T0_official_primary:
+    description: Official sources that may directly trigger or invalidate a Lead-Lag signal.
+    trigger_eligible: true
+    refresh_expectation: intraday_or_daily
+    source_classes:
+      official_exchanges:
+        description: Exchange disclosures, market structure, trading calendars, flows, and notices.
+        examples:
+          - name: HKEX news and filings
+            url: "https://www.hkexnews.hk/"
+            cost: free
+          - name: SSE announcements
+            url: "https://www.sse.com.cn/disclosure/listedinfo/announcement/"
+            cost: free
+          - name: SZSE announcements
+            url: "https://www.szse.cn/disclosure/listed/notice/"
+            cost: free
+          - name: Cboe market statistics
+            url: "https://www.cboe.com/us/options/market_statistics/"
+            cost: free
+      regulators:
+        description: Regulator releases, approvals, enforcement, rule changes, filings, and consultation papers.
+        examples:
+          - name: SEC EDGAR
+            url: "https://www.sec.gov/edgar/search/"
+            cost: free
+          - name: FDA press announcements
+            url: "https://www.fda.gov/news-events/fda-newsroom/press-announcements"
+            cost: free
+          - name: CSRC disclosure
+            url: "http://www.csrc.gov.cn/"
+            cost: free
+          - name: HK SFC news
+            url: "https://www.sfc.hk/en/News-and-announcements"
+            cost: free
+      company_announcements:
+        description: Company IR, earnings releases, investor decks, exchange-filed notices, and product milestone pages.
+        examples:
+          - name: Company investor relations pages
+            url: "https://www.sec.gov/edgar/search/"
+            cost: free
+          - name: HKEX issuer announcements
+            url: "https://www1.hkexnews.hk/search/titlesearch.xhtml"
+            cost: free
+      macro_official:
+        description: Official macro, central bank, statistics, customs, fiscal, credit, labor, inventory, and commodity data.
+        examples:
+          - name: FRED
+            url: "https://fred.stlouisfed.org/"
+            cost: free
+          - name: BEA
+            url: "https://www.bea.gov/data"
+            cost: free
+          - name: BLS
+            url: "https://www.bls.gov/data/"
+            cost: free
+          - name: PBOC
+            url: "http://www.pbc.gov.cn/"
+            cost: free
+          - name: China NBS
+            url: "https://data.stats.gov.cn/"
+            cost: free
+
+  T1_public_reliable:
+    description: Public, reproducible sources that can confirm T0 signals or produce rule-bound numeric triggers.
+    trigger_eligible: conditional
+    refresh_expectation: daily_or_weekly
+    source_classes:
+      public_research_indexes:
+        description: Open research indexes and preprint/search portals used for technology, healthcare, and policy context.
+        examples:
+          - name: arXiv
+            url: "https://arxiv.org/"
+            cost: free
+          - name: PubMed
+            url: "https://pubmed.ncbi.nlm.nih.gov/"
+            cost: free
+          - name: ClinicalTrials.gov
+            url: "https://clinicaltrials.gov/"
+            cost: free
+          - name: Semantic Scholar
+            url: "https://www.semanticscholar.org/"
+            cost: free
+      market_public_data:
+        description: Public quotes, index membership, fund-flow, sector, and market breadth references.
+        examples:
+          - name: Yahoo Finance
+            url: "https://finance.yahoo.com/"
+            cost: free
+          - name: Nasdaq data link pages
+            url: "https://www.nasdaq.com/market-activity"
+            cost: free
+          - name: AkShare public adapters
+            url: "https://akshare.akfamily.xyz/"
+            cost: free
+      industry_public_data:
+        description: Industry associations, public dashboards, commodity references, and official semi-official portals.
+        examples:
+          - name: EIA
+            url: "https://www.eia.gov/"
+            cost: free
+          - name: IEA reports index
+            url: "https://www.iea.org/reports"
+            cost: free
+
+  T2_search_enrichment:
+    description: Search and discovery layer for candidate expansion. It cannot independently open a candidate.
+    trigger_eligible: false
+    refresh_expectation: on_demand
+    source_classes:
+      docs_first_search:
+        examples:
+          - name: Aliyun search proxy
+            url: "http://47.88.90.29:8899/"
+            cost: internal_proxy
+          - name: Official-site search queries
+            url: "https://www.google.com/search"
+            cost: free
+      reputable_public_context:
+        examples:
+          - name: Exchange news pages
+            url: "https://www.hkex.com.hk/News"
+            cost: free
+          - name: Regulator news pages
+            url: "https://www.sec.gov/newsroom"
+            cost: free
+
+  T3_operator_memory:
+    description: Durable internal memory and review notes. Context only, never market truth.
+    trigger_eligible: false
+    refresh_expectation: append_only
+    source_classes:
+      internal_memory:
+        examples:
+          - name: Obsidian strategy notes
+            path: "/Users/lhluo/Documents/Obsidian/知识库/"
+          - name: Lead-Lag worklog
+            path: "docs/lead_lag_worklog.md"
+          - name: replay postmortems
+            path: "reports/"
+
+lead_lag_domains:
+  - cross_market_mapping
+  - industry_transmission
+  - customer_capex_spillover
+  - price_spread_transmission
+  - inventory_destocking_cycle
+  - policy_credit_fiscal
+  - external_liquidity_bridge
+  - event_calendar
+  - crowding_short_squeeze
+  - second_derivative_revision
+
+pre_collection_windows_task:
+  purpose: "Front-load high-quality official/public collection before Lead-Lag scoring and UI review."
+  script: "scripts/lead_lag_pretranslate_task.ps1"
+  recommended_schedule:
+    market_hours: "every 15-30 minutes"
+    off_hours: "hourly"
+  commands:
+    collect_intelligence: "python scripts/sync_intelligence.py"
+    translate_intelligence: "python scripts/translate_intelligence.py"
+    collect_lead_lag_snapshot: "python scripts/lead_lag_aliyun_collector.py --output data/lead_lag/collector_snapshot.json"
+    translate_shortline_t0: "python scripts/translate_shortline_events.py --limit 20"
+  environment:
+    required:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    optional:
+      INVESTMENT_DB_PATH: "data/investment.db"
+      INTELLIGENCE_TRANSLATION_LIMIT: "100"
+      BAILIAN_API_KEY: "<set in .env.local or Windows environment; never commit>"
+      BAILIAN_BASE_URL: "https://coding.dashscope.aliyuncs.com/v1"
+      BAILIAN_MODEL: "qwen3-coder-plus"
+  safety:
+    - "Use a lock directory to avoid overlapping sync and translation runs."
+    - "Write logs under logs/ and do not include secrets."
+    - "Treat missing BAILIAN_API_KEY as fallback mode, not a hard failure."
+
+adapter_acceptance:
+  required_metadata:
+    - source_tier
+    - source_class
+    - source_name
+    - source_url
+    - fetched_at
+    - content_hash
+    - trace_id
+    - parser_version
+    - license_note
+  rules:
+    - "T0 official primary sources can trigger only when parser output is deterministic and replayable."
+    - "T1 public reliable sources can trigger only for directly verifiable numeric facts."
+    - "T2 search enrichment cannot trigger candidates without T0/T1 confirmation."
+    - "T3 operator memory is context only."

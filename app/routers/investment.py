@@ -2,6 +2,7 @@
 投资决策数据API路由
 """
 from datetime import datetime
+import inspect
 import os
 import platform
 import sqlite3
@@ -10,7 +11,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_investment_runtime_profile, settings
@@ -26,6 +27,14 @@ from app.services.strategy_planning_service import StrategyPlanningService
 from app.services.north_flow_service import get_north_flow_service
 from app.services.research_workbench_service import get_research_workbench_service
 from app.services.shortline_service import ShortlineService
+try:
+    from app.services.lead_lag_service import LeadLagService
+except Exception:
+    LeadLagService = None
+try:
+    from app.services.lead_lag_briefs import LeadLagBriefGenerator
+except Exception:
+    LeadLagBriefGenerator = None
 from quant_workbench.service import QuantWorkbenchService
 from quant_workbench.sync import QuantWorkbenchSync
 
@@ -45,6 +54,7 @@ _coding_plan_service = None
 _intelligence_service = None
 _research_workbench_service = None
 _shortline_service = None
+_lead_lag_service = None
 _runtime_refresh_lock = threading.Lock()
 _runtime_refresh_state: Dict[str, Any] = {
     "running": False,
@@ -202,6 +212,233 @@ def _load_snapshot_opportunity_summary(db_path: str = DB_PATH) -> Dict[str, Any]
     finally:
         conn.close()
 
+
+def _lead_lag_fallback_overview() -> Dict[str, Any]:
+    today = datetime.now().date().isoformat()
+    return {
+        "headline": "Lead-Lag Alpha Engine",
+        "summary": "Lead-Lag 服务暂未就绪，当前返回稳定回退结构，前端仍可用于 mock 或联调。",
+        "flags": ["Fallback Ready", "Mock-friendly", "Service Optional"],
+        "metrics": [
+            {"label": "模型数", "value": "-", "note": "等待 /models"},
+            {"label": "机会数", "value": "-", "note": "等待 /opportunities"},
+            {"label": "事件窗口", "value": "-", "note": "等待 /events-calendar"},
+            {"label": "记忆命中", "value": "-", "note": "等待 /obsidian-memory"},
+        ],
+        "regions": ["all", "cn", "hk", "us"],
+        "regimes": ["all", "risk_on", "risk_off"],
+        "as_of": today,
+        "status_text": "使用稳定回退数据，等待 Lead-LagService 接入",
+        "source": "fallback",
+    }
+
+
+def _lead_lag_fallback_decision_center() -> Dict[str, Any]:
+    return {
+        "as_of": datetime.now().isoformat(),
+        "headline": "Decision Center 待接入",
+        "main_conclusion": "V2 后端尚未生成今日主结论。",
+        "do_not_do_today": ["不要在缺少验证链时追高。"],
+        "top_directions": [],
+        "baton_summary": {"first_baton": [], "second_baton": [], "pre_trigger": []},
+        "risk_budget": {"label": "no_new_risk", "reason": "V2 评分尚未完成。"},
+        "key_invalidations": ["等待 OpportunityCard invalidation_rules。"],
+        "next_check_time": None,
+        "source_count": 0,
+        "cache_status": "sample_fallback",
+    }
+
+
+def _lead_lag_fallback_what_changed() -> Dict[str, Any]:
+    return {
+        "as_of": datetime.now().isoformat(),
+        "since": None,
+        "new_signals": [],
+        "upgraded_opportunities": [],
+        "downgraded_or_invalidated": [],
+        "crowding_up": [],
+        "macro_external_policy_changes": [],
+    }
+
+
+def _lead_lag_fallback_macro_bridge() -> Dict[str, Any]:
+    return {
+        "as_of": datetime.now().isoformat(),
+        "macro_regime": {"label": "待接入", "drivers": []},
+        "external_risk": {"label": "待接入", "drivers": []},
+        "hk_liquidity": {"label": "待接入", "drivers": []},
+        "decision_impact": "V2 bridge scorer 尚未生成。",
+        "cache_status": "sample_fallback",
+    }
+
+
+def _lead_lag_fallback_brief(slot: str) -> Dict[str, Any]:
+    return {
+        "slot": slot,
+        "as_of": datetime.now().isoformat(),
+        "headline": "Lead-Lag 简报待接入",
+        "today_focus": [],
+        "new_catalysts": [],
+        "invalidation_alerts": [],
+        "next_checkpoints": [],
+        "top_opportunities": [],
+        "do_not_chase": [],
+        "macro_external_hk_context": {},
+        "source_summary": {"source_count": 0, "freshness": "unknown", "cache_status": "sample_fallback"},
+    }
+
+
+def _lead_lag_fallback_list(section: str) -> List[Dict[str, Any]]:
+    today = datetime.now().date().isoformat()
+    fallback_map: Dict[str, List[Dict[str, Any]]] = {
+        "models": [
+            {
+                "name": "Cross-Market Lead",
+                "summary": "用跨市场价格、汇率和波动率信号判断风险偏好变化。",
+                "status": "ready",
+                "lead_window": "1-5d",
+                "universe": "CN/HK/US",
+                "confidence": "high",
+            },
+            {
+                "name": "Industry Transmission",
+                "summary": "跟踪行业上游到下游的价格和盈利传导链路。",
+                "status": "watch",
+                "lead_window": "3-20d",
+                "universe": "A-share",
+                "confidence": "medium",
+            },
+        ],
+        "opportunities": [
+            {
+                "title": "Risk-on switch watch",
+                "rationale": "流动性与风险偏好同步改善时，优先关注高 beta 方向。",
+                "score": 72,
+                "driver": "Liquidity",
+                "confirmation": "Credit and FX follow-through",
+                "risk": "Policy reversal",
+            }
+        ],
+        "crossMarket": [
+            {
+                "name": "USD/CNH -> HK growth",
+                "summary": "美元与离岸人民币波动先于港股成长风格切换。",
+                "tone": "positive",
+                "signal": "confirm",
+                "lag": "2-4d",
+            }
+        ],
+        "transmission": [
+            {
+                "name": "Rates -> Banks -> Brokers",
+                "summary": "利率方向变化通过金融链条扩散到风险偏好。",
+                "signal": "positive",
+                "steps": ["Rates", "Banks", "Brokers", "Broad market"],
+            }
+        ],
+        "liquidity": [
+            {
+                "name": "USD Liquidity",
+                "summary": "美元流动性与风险资产估值压缩/扩张的共同驱动。",
+                "tone": "neutral",
+                "signal": "watch",
+                "value": "n/a",
+            }
+        ],
+        "thesis": [
+            {
+                "name": "AI infrastructure",
+                "summary": "景气与资本开支同步时，半导体和算力链更容易形成持续行情。",
+                "evidence": ["Capex", "Earnings", "Order flow"],
+                "invalidation": "订单与利润预期下修",
+                "crowding": "medium",
+            }
+        ],
+        "events": [
+            {
+                "title": "Macro data release",
+                "date": today,
+                "type": "macro",
+                "importance": "high",
+                "notes": "观察利率、汇率和风险偏好联动。",
+            }
+        ],
+        "validation": [
+            {
+                "title": "Replay sample",
+                "outcome": "pending",
+                "hit_rate": "-",
+                "reason": "等待历史回放验证服务返回。",
+                "reference": "fallback",
+            }
+        ],
+        "memory": [
+            {
+                "title": "Lead-lag notes",
+                "tags": ["lead-lag", "fallback", "research"],
+                "notes": "服务未接入时的占位笔记。",
+                "links": [],
+            }
+        ],
+    }
+    return fallback_map.get(section, [])
+
+
+def _unwrap_lead_lag_payload(payload: Any, fallback: Any) -> Any:
+    if payload is None:
+        return fallback
+    if isinstance(payload, dict):
+        if "data" in payload and payload["data"] is not None:
+            return payload["data"]
+        if "items" in payload and isinstance(payload["items"], list):
+            return payload["items"]
+    return payload
+
+
+def _call_lead_lag_service(method_names: List[str], fallback: Any, unwrap: bool = True, **kwargs: Any) -> Any:
+    service = get_lead_lag_service()
+    if service is None:
+        return fallback
+
+    last_error: Optional[Exception] = None
+    for method_name in method_names:
+        method = getattr(service, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            signature = inspect.signature(method)
+            has_var_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+            accepted_kwargs = kwargs if has_var_kwargs else {
+                key: value for key, value in kwargs.items() if key in signature.parameters
+            }
+        except (TypeError, ValueError):
+            accepted_kwargs = kwargs
+
+        try:
+            result = method(**accepted_kwargs) if accepted_kwargs else method()
+            return _unwrap_lead_lag_payload(result, fallback) if unwrap else result
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    if last_error:
+        print(f"lead-lag service call failed for {method_names}: {last_error}")
+    return fallback
+
+
+def get_lead_lag_service():
+    global _lead_lag_service
+    if _lead_lag_service is not None:
+        return _lead_lag_service
+    if LeadLagService is None:
+        return None
+    try:
+        _lead_lag_service = LeadLagService()
+    except Exception as exc:
+        print(f"lead-lag service init failed: {exc}")
+        _lead_lag_service = None
+    return _lead_lag_service
+
 def get_investment_service():
     global _investment_service
     if _investment_service is None:
@@ -312,13 +549,440 @@ def normalize_index_keys(indices: Dict) -> Dict:
 @router.get("/", response_class=HTMLResponse)
 async def investment_dashboard(request: Request):
     """投资决策仪表板页面"""
-    return templates.TemplateResponse("investment.html", {"request": request})
+    return templates.TemplateResponse(request, "investment.html", {})
 
 
 @router.get("/intelligence", response_class=HTMLResponse)
 async def intelligence_hub_page(request: Request):
     """重大事项情报雷达页面。"""
-    return templates.TemplateResponse("intelligence.html", {"request": request})
+    return templates.TemplateResponse(request, "intelligence.html", {})
+
+
+@router.get("/lead-lag", response_class=HTMLResponse)
+async def lead_lag_page(request: Request):
+    """Lead-Lag Alpha Engine 页面。"""
+    return templates.TemplateResponse(request, "lead_lag.html", {})
+
+
+@router.get("/api/lead-lag/overview")
+async def lead_lag_overview(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 总览。"""
+    fallback = _lead_lag_fallback_overview()
+    payload = _call_lead_lag_service(
+        ["get_overview", "overview", "build_overview"],
+        fallback,
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/models")
+async def lead_lag_models(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 模型库。"""
+    return _call_lead_lag_service(
+        ["list_models", "get_models", "models"],
+        _lead_lag_fallback_list("models"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/decision-center")
+async def lead_lag_decision_center(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 决策中心。"""
+    fallback = _lead_lag_fallback_decision_center()
+    payload = _call_lead_lag_service(
+        ["decision_center", "get_decision_center", "build_decision_center"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/opportunity-queue")
+async def lead_lag_opportunity_queue(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 可执行机会队列。"""
+    return _call_lead_lag_service(
+        ["opportunity_queue", "get_opportunity_queue", "build_opportunity_cards"],
+        {"cards": [], "items": [], "count": 0},
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/what-changed")
+async def lead_lag_what_changed(
+    as_of: Optional[str] = None,
+    since: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 昨日至今变化。"""
+    fallback = _lead_lag_fallback_what_changed()
+    payload = _call_lead_lag_service(
+        ["what_changed", "get_what_changed", "build_what_changed"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        since=since,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/event-frontline")
+async def lead_lag_event_frontline(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    event_class: Optional[str] = "market-facing",
+    window: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 事件前线，默认只返回 market-facing 催化。"""
+    return _call_lead_lag_service(
+        ["event_frontline", "get_event_frontline", "list_event_frontline"],
+        {"events": [], "items": [], "count": 0, "default_filter": event_class or "market-facing"},
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        event_class=event_class,
+        window=window,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/avoid-board")
+async def lead_lag_avoid_board(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 不追高/回避列表。"""
+    return _call_lead_lag_service(
+        ["avoid_board", "get_avoid_board", "do_not_chase"],
+        {"items": [], "count": 0},
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/macro-bridge")
+async def lead_lag_macro_bridge(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+):
+    """Lead-Lag V2 宏观 / 外部 / 港股桥接层。"""
+    fallback = _lead_lag_fallback_macro_bridge()
+    payload = _call_lead_lag_service(
+        ["macro_bridge", "get_macro_bridge", "build_macro_bridge"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        regime=regime,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/transmission-workspace")
+async def lead_lag_transmission_workspace(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 传导图谱工作区。"""
+    fallback = {"nodes": [], "edges": [], "baton_tiers": {}, "current_bottlenecks": []}
+    payload = _call_lead_lag_service(
+        ["transmission_workspace", "get_transmission_workspace", "industry_transmission"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/replay-diagnostics")
+async def lead_lag_replay_diagnostics(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 回放诊断。"""
+    fallback = {"horizon_distribution": [], "regime_split": [], "failure_modes": [], "stage_transitions": []}
+    payload = _call_lead_lag_service(
+        ["replay_diagnostics", "get_replay_diagnostics", "replay_validation"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        regime=regime,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/research-memory/actions")
+async def lead_lag_research_memory_actions(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 Obsidian 行动记忆。"""
+    fallback = {"items": [], "status": "missing"}
+    payload = _call_lead_lag_service(
+        ["research_memory_actions", "get_research_memory_actions", "obsidian_memory"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/sector-evidence")
+async def lead_lag_sector_evidence(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    sector: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag V2 五大赛道深证据层。"""
+    fallback = {"sectors": [], "count": 0, "cache_status": "fallback"}
+    payload = _call_lead_lag_service(
+        ["sector_deep_evidence", "get_sector_deep_evidence"],
+        fallback,
+        unwrap=False,
+        as_of=as_of,
+        region=region,
+        sector=sector,
+        q=q,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/briefs/{slot}")
+async def lead_lag_brief(
+    slot: str,
+    as_of: Optional[str] = None,
+):
+    """Lead-Lag V2 固定时点简报。"""
+    fallback = _lead_lag_fallback_brief(slot)
+    if LeadLagBriefGenerator is not None:
+        try:
+            generator = LeadLagBriefGenerator(service=get_lead_lag_service())
+            return generator.generate(slot, as_of=as_of)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            print(f"lead-lag brief generation failed for {slot}: {exc}")
+    payload = _call_lead_lag_service(
+        ["build_brief", "get_brief", "lead_lag_brief"],
+        fallback,
+        unwrap=False,
+        slot=slot,
+        as_of=as_of,
+    )
+    return payload if isinstance(payload, dict) else fallback
+
+
+@router.get("/api/lead-lag/opportunities")
+async def lead_lag_opportunities(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 机会列表。"""
+    return _call_lead_lag_service(
+        ["list_opportunities", "get_opportunities", "opportunities"],
+        _lead_lag_fallback_list("opportunities"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/cross-market-map")
+async def lead_lag_cross_market_map(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 跨市场映射。"""
+    return _call_lead_lag_service(
+        ["get_cross_market_map", "list_cross_market_map", "cross_market_map"],
+        _lead_lag_fallback_list("crossMarket"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/industry-transmission")
+async def lead_lag_industry_transmission(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 行业传导。"""
+    return _call_lead_lag_service(
+        ["get_industry_transmission", "list_industry_transmission", "industry_transmission"],
+        _lead_lag_fallback_list("transmission"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/liquidity")
+async def lead_lag_liquidity(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 流动性。"""
+    return _call_lead_lag_service(
+        ["get_liquidity", "list_liquidity", "liquidity"],
+        _lead_lag_fallback_list("liquidity"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/sector-thesis")
+async def lead_lag_sector_thesis(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 赛道 thesis。"""
+    return _call_lead_lag_service(
+        ["list_sector_thesis", "get_sector_thesis", "sector_thesis"],
+        _lead_lag_fallback_list("thesis"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/events-calendar")
+async def lead_lag_events_calendar(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 事件日历。"""
+    return _call_lead_lag_service(
+        ["get_events_calendar", "list_events_calendar", "events_calendar"],
+        _lead_lag_fallback_list("events"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/replay-validation")
+async def lead_lag_replay_validation(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag 回放验证。"""
+    return _call_lead_lag_service(
+        ["get_replay_validation", "list_replay_validation", "replay_validation"],
+        _lead_lag_fallback_list("validation"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
+
+
+@router.get("/api/lead-lag/obsidian-memory")
+async def lead_lag_obsidian_memory(
+    as_of: Optional[str] = None,
+    region: Optional[str] = None,
+    regime: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Lead-Lag Obsidian 研究记忆。"""
+    return _call_lead_lag_service(
+        ["get_obsidian_memory", "list_obsidian_memory", "obsidian_memory"],
+        _lead_lag_fallback_list("memory"),
+        as_of=as_of,
+        region=region,
+        regime=regime,
+        q=q,
+    )
 
 
 @router.get("/api/overview")
@@ -1785,8 +2449,6 @@ async def research_workbench_list(
     target_scope: Optional[str] = None,
     report_type: Optional[str] = None,
     query: Optional[str] = None,
-    bilingual_only: bool = False,
-    archived_only: bool = False,
 ):
     """研究工作台报告列表（支持筛选）。"""
     svc = get_research_workbench_svc()
@@ -1798,28 +2460,11 @@ async def research_workbench_list(
             target_scope=target_scope,
             report_type=report_type,
             query=query,
-            bilingual_only=bilingual_only,
-            archived_only=archived_only,
         )
-        return {"total": len(items), "items": items}
+        return {"total": len(items), "items": items, "reports": items}
     except Exception as exc:
         print(f"research_workbench_list失败: {exc}")
         return {"error": str(exc), "total": 0, "items": []}
-
-
-@router.get("/api/research/{report_key}/asset")
-async def research_workbench_asset(report_key: str):
-    """读取 Windows 已归档的研究原文。"""
-    svc = get_research_workbench_svc()
-    detail = svc.get_report_detail(report_key)
-    if not detail:
-        raise HTTPException(status_code=404, detail=f"report not found: {report_key}")
-    asset_path = detail.get("original_asset_path") or ""
-    if not asset_path or not os.path.exists(asset_path):
-        raise HTTPException(status_code=404, detail="archived asset not found")
-    filename = os.path.basename(asset_path)
-    media_type = "application/pdf" if filename.lower().endswith(".pdf") else "text/plain; charset=utf-8"
-    return FileResponse(asset_path, filename=filename, media_type=media_type)
 
 
 @router.get("/api/research/{report_key}")

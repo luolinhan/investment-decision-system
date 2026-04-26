@@ -1,0 +1,808 @@
+{
+  "version": "v1",
+  "as_of": "2026-04-25",
+  "model_families": [
+    {
+      "family_id": "leadership_breadth",
+      "name": "Leadership Breadth",
+      "domain": "market_microstructure",
+      "signal_strength": 0.92,
+      "confidence": 0.83,
+      "weight": 0.12,
+      "preferred_stage": "triggered",
+      "description": "Tracks whether a narrow leader set is expanding into second-line names."
+    },
+    {
+      "family_id": "event_spillover",
+      "name": "Event Spillover",
+      "domain": "cross_market",
+      "signal_strength": 0.88,
+      "confidence": 0.84,
+      "weight": 0.11,
+      "preferred_stage": "triggered",
+      "description": "Maps official events in the US into HK and A-share follow-through."
+    },
+    {
+      "family_id": "transmission_graph",
+      "name": "Transmission Graph",
+      "domain": "cross_sector",
+      "signal_strength": 0.87,
+      "confidence": 0.80,
+      "weight": 0.10,
+      "preferred_stage": "validating",
+      "description": "Uses graph paths to infer which industry links are transmitting price action."
+    },
+    {
+      "family_id": "liquidity_dispersion",
+      "name": "Liquidity Dispersion",
+      "domain": "market_quality",
+      "signal_strength": 0.79,
+      "confidence": 0.77,
+      "weight": 0.10,
+      "preferred_stage": "crowded",
+      "description": "Measures where capital is concentrated and where edge is being crowded out."
+    },
+    {
+      "family_id": "earnings_revision",
+      "name": "Earnings Revision",
+      "domain": "fundamentals",
+      "signal_strength": 0.84,
+      "confidence": 0.79,
+      "weight": 0.10,
+      "preferred_stage": "triggered",
+      "description": "Captures guide-up, guide-down, and estimate revision momentum."
+    },
+    {
+      "family_id": "policy_surprise",
+      "name": "Policy Surprise",
+      "domain": "macro_policy",
+      "signal_strength": 0.76,
+      "confidence": 0.74,
+      "weight": 0.09,
+      "preferred_stage": "pre_trigger",
+      "description": "Marks regulatory or official policy changes that can re-rate sectors."
+    },
+    {
+      "family_id": "valuation_gap",
+      "name": "Valuation Gap",
+      "domain": "relative_value",
+      "signal_strength": 0.72,
+      "confidence": 0.73,
+      "weight": 0.08,
+      "preferred_stage": "latent",
+      "description": "Compares US leaders to local proxies when the spread widens enough to matter."
+    },
+    {
+      "family_id": "replay_validation",
+      "name": "Replay Validation",
+      "domain": "research_ops",
+      "signal_strength": 0.81,
+      "confidence": 0.82,
+      "weight": 0.09,
+      "preferred_stage": "validating",
+      "description": "Checks whether prior lead-lag scenarios still replay cleanly in sample history."
+    },
+    {
+      "family_id": "breadth_thrust",
+      "name": "Breadth Thrust",
+      "domain": "market_breadth",
+      "signal_strength": 0.86,
+      "confidence": 0.81,
+      "weight": 0.07,
+      "preferred_stage": "triggered",
+      "description": "Confirms whether the move is single-name noise or broad participation."
+    },
+    {
+      "family_id": "memory_alignment",
+      "name": "Memory Alignment",
+      "domain": "knowledge_ops",
+      "signal_strength": 0.68,
+      "confidence": 0.75,
+      "weight": 0.04,
+      "preferred_stage": "pre_trigger",
+      "description": "Links fresh signal to prior Obsidian notes, thesis cards, and execution memory."
+    }
+  ],
+  "sector_theses": [
+    {
+      "sector_key": "ai",
+      "sector_name": "AI",
+      "title": "AI 先看算力链，先行的是硬件和互联，不是最拥挤的应用层",
+      "thesis": "US leader capex and model demand still transmit first into GPUs, networking, servers, and optical interconnect names.",
+      "signal_strength": 0.91,
+      "confidence": 0.85,
+      "stage_hint": "triggered",
+      "baton_map": {
+        "first_baton": ["NVDA", "SMCI"],
+        "second_baton": ["300502.SZ", "300308.SZ"],
+        "next_baton": ["002463.SZ", "601138.SH"]
+      },
+      "anchors": ["NVDA", "SMCI", "300502.SZ", "300308.SZ"],
+      "bull_case": ["capex remains elevated", "optics and assembly remain supply constrained", "China proxies are still under-owned"],
+      "bear_case": ["valuation compresses faster than earnings grow", "capex decelerates", "application names absorb all attention"],
+      "risks": ["crowding in the top basket", "macro risk-off into large cap tech"],
+      "notes": "Keep first baton on the highest-conviction hardware transmitter, not on broad AI branding."
+    },
+    {
+      "sector_key": "innovative_pharma",
+      "sector_name": "创新药",
+      "title": "创新药的主线仍然是临床读出和 BD 事件，不是单纯估值修复",
+      "thesis": "Official readouts, approvals, and partner economics should lead the move; CRO/CXO follow only after evidence is visible.",
+      "signal_strength": 0.84,
+      "confidence": 0.79,
+      "stage_hint": "validating",
+      "baton_map": {
+        "first_baton": ["LLY", "600276.SH"],
+        "second_baton": ["1801.HK", "688235.SH"],
+        "next_baton": ["2269.HK", "603259.SH"]
+      },
+      "anchors": ["LLY", "600276.SH", "1801.HK"],
+      "bull_case": ["trial readouts beat expectations", "BD transactions re-rate the group", "domestic innovation becomes visible in revenue"],
+      "bear_case": ["trial slips or mixed data", "funding windows tighten", "policy headlines dominate the tape"],
+      "risks": ["binary outcomes", "liquidity gaps in small-cap names"],
+      "notes": "Only the official event chain belongs in the engine; rumor flow stays out."
+    },
+    {
+      "sector_key": "semis",
+      "sector_name": "芯片半导体",
+      "title": "半导体最强传导来自设备、先进封装和代工链，而不是泛芯片叙事",
+      "thesis": "Equipment and foundry proxies should lead when US semis strengthen; second-line names lag until orders and lead times confirm.",
+      "signal_strength": 0.89,
+      "confidence": 0.82,
+      "stage_hint": "crowded",
+      "baton_map": {
+        "first_baton": ["TSM", "ASML"],
+        "second_baton": ["002371.SZ", "688012.SH"],
+        "next_baton": ["688072.SH", "688037.SH"]
+      },
+      "anchors": ["TSM", "ASML", "002371.SZ"],
+      "bull_case": ["foundry cycle turns up", "equipment orders stay firm", "HBM and packaging keep demand broad"],
+      "bear_case": ["crowding rises too fast", "guidance resets lower", "export controls pressure the chain"],
+      "risks": ["top-heavy positioning", "valuation compression"],
+      "notes": "This is the most crowded of the five thesis cards in the sample bundle."
+    },
+    {
+      "sector_key": "solar",
+      "sector_name": "光伏",
+      "title": "光伏/逆变器的交易核心是去库存和盈利拐点，不是单纯产能故事",
+      "thesis": "Treat this as a timing trade: first follow inventory repair and price stabilization, then only keep names with real margin recovery.",
+      "signal_strength": 0.74,
+      "confidence": 0.76,
+      "stage_hint": "pre_trigger",
+      "baton_map": {
+        "first_baton": ["FSLR", "ENPH"],
+        "second_baton": ["601012.SH", "300274.SZ"],
+        "next_baton": ["600438.SH", "159857.SZ"]
+      },
+      "anchors": ["FSLR", "ENPH", "601012.SH"],
+      "bull_case": ["inventory clears", "pricing stabilizes", "policy tailwinds return to the front page"],
+      "bear_case": ["capacity keeps outrunning demand", "price wars continue", "subsidy headlines fade"],
+      "risks": ["value trap after reflex rallies", "policy-only trades reversing quickly"],
+      "notes": "Useful as a second-order baton after stronger US leadership is confirmed."
+    },
+    {
+      "sector_key": "hog_cycle",
+      "sector_name": "猪周期",
+      "title": "猪周期要等现货、期货和产能去化三线共振",
+      "thesis": "The cycle only becomes tradable when supply discipline, feed costs, and spot price recovery line up together.",
+      "signal_strength": 0.63,
+      "confidence": 0.72,
+      "stage_hint": "latent",
+      "baton_map": {
+        "first_baton": ["TSN", "ADM"],
+        "second_baton": ["300498.SZ", "002714.SZ"],
+        "next_baton": ["000876.SZ"]
+      },
+      "anchors": ["TSN", "ADM", "300498.SZ"],
+      "bull_case": ["industry capacity keeps shrinking", "spot prices recover", "feed input relief expands margins"],
+      "bear_case": ["supply keeps growing", "import pressure stays high", "demand recovery disappoints"],
+      "risks": ["cycle timing is slow", "headlines move faster than earnings"],
+      "notes": "Treat as a low-temperature latent setup until validation improves."
+    }
+  ],
+  "transmission_graph": {
+    "nodes": [
+      {
+        "node_id": "nvda",
+        "label": "NVIDIA",
+        "symbol": "NVDA",
+        "market": "US",
+        "sector": "ai",
+        "role": "leader",
+        "score": 98
+      },
+      {
+        "node_id": "smci",
+        "label": "Super Micro",
+        "symbol": "SMCI",
+        "market": "US",
+        "sector": "ai",
+        "role": "leader",
+        "score": 91
+      },
+      {
+        "node_id": "amd",
+        "label": "AMD",
+        "symbol": "AMD",
+        "market": "US",
+        "sector": "ai",
+        "role": "leader",
+        "score": 87
+      },
+      {
+        "node_id": "amat",
+        "label": "Applied Materials",
+        "symbol": "AMAT",
+        "market": "US",
+        "sector": "semis",
+        "role": "leader",
+        "score": 89
+      },
+      {
+        "node_id": "tsm",
+        "label": "TSMC",
+        "symbol": "TSM",
+        "market": "US",
+        "sector": "semis",
+        "role": "leader",
+        "score": 95
+      },
+      {
+        "node_id": "lly",
+        "label": "Eli Lilly",
+        "symbol": "LLY",
+        "market": "US",
+        "sector": "innovative_pharma",
+        "role": "leader",
+        "score": 92
+      },
+      {
+        "node_id": "fslr",
+        "label": "First Solar",
+        "symbol": "FSLR",
+        "market": "US",
+        "sector": "solar",
+        "role": "leader",
+        "score": 84
+      },
+      {
+        "node_id": "tsn",
+        "label": "Tyson Foods",
+        "symbol": "TSN",
+        "market": "US",
+        "sector": "hog_cycle",
+        "role": "leader",
+        "score": 78
+      },
+      {
+        "node_id": "a_share_optical",
+        "label": "新易盛",
+        "symbol": "300502.SZ",
+        "market": "A",
+        "sector": "ai",
+        "role": "second_baton",
+        "score": 93
+      },
+      {
+        "node_id": "a_share_optics",
+        "label": "中际旭创",
+        "symbol": "300308.SZ",
+        "market": "A",
+        "sector": "ai",
+        "role": "second_baton",
+        "score": 92
+      },
+      {
+        "node_id": "a_share_equipment",
+        "label": "北方华创",
+        "symbol": "002371.SZ",
+        "market": "A",
+        "sector": "semis",
+        "role": "second_baton",
+        "score": 91
+      },
+      {
+        "node_id": "hk_innovative_pharma",
+        "label": "信达生物",
+        "symbol": "1801.HK",
+        "market": "HK",
+        "sector": "innovative_pharma",
+        "role": "second_baton",
+        "score": 84
+      }
+    ],
+    "edges": [
+      {
+        "source": "nvda",
+        "target": "a_share_optical",
+        "relation": "supplier",
+        "sector": "ai",
+        "strength": 0.92,
+        "lag_days": 1
+      },
+      {
+        "source": "nvda",
+        "target": "a_share_optics",
+        "relation": "supplier",
+        "sector": "ai",
+        "strength": 0.90,
+        "lag_days": 1
+      },
+      {
+        "source": "smci",
+        "target": "a_share_optical",
+        "relation": "assembly_peer",
+        "sector": "ai",
+        "strength": 0.84,
+        "lag_days": 2
+      },
+      {
+        "source": "amd",
+        "target": "a_share_optics",
+        "relation": "direct_peer",
+        "sector": "ai",
+        "strength": 0.81,
+        "lag_days": 2
+      },
+      {
+        "source": "tsm",
+        "target": "a_share_equipment",
+        "relation": "foundry_cycle",
+        "sector": "semis",
+        "strength": 0.88,
+        "lag_days": 2
+      },
+      {
+        "source": "amat",
+        "target": "a_share_equipment",
+        "relation": "equipment_peer",
+        "sector": "semis",
+        "strength": 0.91,
+        "lag_days": 1
+      },
+      {
+        "source": "lly",
+        "target": "hk_innovative_pharma",
+        "relation": "direct_peer",
+        "sector": "innovative_pharma",
+        "strength": 0.79,
+        "lag_days": 3
+      },
+      {
+        "source": "fslr",
+        "target": "601012.SH",
+        "relation": "direct_peer",
+        "sector": "solar",
+        "strength": 0.77,
+        "lag_days": 1
+      },
+      {
+        "source": "fslr",
+        "target": "300274.SZ",
+        "relation": "inverter_peer",
+        "sector": "solar",
+        "strength": 0.75,
+        "lag_days": 1
+      },
+      {
+        "source": "tsn",
+        "target": "300498.SZ",
+        "relation": "cycle_peer",
+        "sector": "hog_cycle",
+        "strength": 0.71,
+        "lag_days": 4
+      },
+      {
+        "source": "tsn",
+        "target": "002714.SZ",
+        "relation": "cycle_peer",
+        "sector": "hog_cycle",
+        "strength": 0.69,
+        "lag_days": 4
+      },
+      {
+        "source": "nvda",
+        "target": "002463.SZ",
+        "relation": "pcb_supplier",
+        "sector": "ai",
+        "strength": 0.82,
+        "lag_days": 2
+      }
+    ]
+  },
+  "events": [
+    {
+      "event_id": "nvda_earnings_20260428",
+      "event_date": "2026-04-28",
+      "title": "NVIDIA earnings release",
+      "sector_key": "ai",
+      "market": "US",
+      "importance": "high",
+      "stage": "triggered",
+      "priority_score": 97,
+      "related_symbols": ["NVDA", "SMCI", "300502.SZ", "300308.SZ"]
+    },
+    {
+      "event_id": "lly_conf_call_20260430",
+      "event_date": "2026-04-30",
+      "title": "Eli Lilly call and pipeline update",
+      "sector_key": "innovative_pharma",
+      "market": "US",
+      "importance": "high",
+      "stage": "validating",
+      "priority_score": 88,
+      "related_symbols": ["LLY", "600276.SH", "1801.HK"]
+    },
+    {
+      "event_id": "amat_supply_day_20260502",
+      "event_date": "2026-05-02",
+      "title": "Applied Materials supply chain day",
+      "sector_key": "semis",
+      "market": "US",
+      "importance": "medium",
+      "stage": "crowded",
+      "priority_score": 84,
+      "related_symbols": ["AMAT", "002371.SZ", "688012.SH"]
+    },
+    {
+      "event_id": "fslr_capacity_update_20260506",
+      "event_date": "2026-05-06",
+      "title": "First Solar capacity and pricing update",
+      "sector_key": "solar",
+      "market": "US",
+      "importance": "medium",
+      "stage": "pre_trigger",
+      "priority_score": 73,
+      "related_symbols": ["FSLR", "601012.SH", "300274.SZ"]
+    },
+    {
+      "event_id": "hog_spot_monitor_20260508",
+      "event_date": "2026-05-08",
+      "title": "US hog and feed spot price monitor",
+      "sector_key": "hog_cycle",
+      "market": "US",
+      "importance": "low",
+      "stage": "latent",
+      "priority_score": 61,
+      "related_symbols": ["TSN", "ADM", "300498.SZ", "002714.SZ"]
+    },
+    {
+      "event_id": "sec_10q_window_20260512",
+      "event_date": "2026-05-12",
+      "title": "US 10-Q / 8-K filing window",
+      "sector_key": "cross_market",
+      "market": "US",
+      "importance": "medium",
+      "stage": "triggered",
+      "priority_score": 80,
+      "related_symbols": ["NVDA", "AMD", "TSM", "AMAT"]
+    },
+    {
+      "event_id": "hk_policy_check_20260515",
+      "event_date": "2026-05-15",
+      "title": "HK market policy and southbound flow check",
+      "sector_key": "cross_market",
+      "market": "HK",
+      "importance": "medium",
+      "stage": "validating",
+      "priority_score": 69,
+      "related_symbols": ["9988.HK", "1801.HK", "0700.HK"]
+    }
+  ],
+  "opportunities": [
+    {
+      "opportunity_id": "ai_compute_first",
+      "name": "AI 算力链 first baton",
+      "sector_key": "ai",
+      "symbol": "NVDA",
+      "market": "US",
+      "base_score": 88,
+      "signal_strength": 0.93,
+      "evidence_count": 5,
+      "liquidity_score": 0.82,
+      "replay_hit_rate": 0.74,
+      "crowding": 0.18,
+      "decay_rate": 0.05,
+      "days_since_event": 1,
+      "validation_status": "validated",
+      "notes": "Keep the first baton on the highest-conviction hardware transmitter."
+    },
+    {
+      "opportunity_id": "ai_second_baton",
+      "name": "AI 光模块 second baton",
+      "sector_key": "ai",
+      "symbol": "300502.SZ",
+      "market": "A",
+      "base_score": 84,
+      "signal_strength": 0.82,
+      "evidence_count": 4,
+      "liquidity_score": 0.78,
+      "replay_hit_rate": 0.63,
+      "crowding": 0.24,
+      "decay_rate": 0.08,
+      "days_since_event": 2,
+      "validation_status": "validating",
+      "notes": "This is the clearest follow-through baton from the US leader."
+    },
+    {
+      "opportunity_id": "semis_crowded_baton",
+      "name": "半导体 crowded baton",
+      "sector_key": "semis",
+      "symbol": "002371.SZ",
+      "market": "A",
+      "base_score": 86,
+      "signal_strength": 0.88,
+      "evidence_count": 6,
+      "liquidity_score": 0.81,
+      "replay_hit_rate": 0.69,
+      "crowding": 0.76,
+      "decay_rate": 0.10,
+      "days_since_event": 2,
+      "validation_status": "validated",
+      "notes": "Strong but crowded."
+    },
+    {
+      "opportunity_id": "innovative_pharma_validating",
+      "name": "创新药 validating baton",
+      "sector_key": "innovative_pharma",
+      "symbol": "600276.SH",
+      "market": "A",
+      "base_score": 79,
+      "signal_strength": 0.67,
+      "evidence_count": 3,
+      "liquidity_score": 0.66,
+      "replay_hit_rate": 0.71,
+      "crowding": 0.28,
+      "decay_rate": 0.61,
+      "days_since_event": 24,
+      "validation_status": "validated",
+      "notes": "Event readouts are still under review."
+    },
+    {
+      "opportunity_id": "solar_pre_trigger",
+      "name": "光伏 pre-trigger baton",
+      "sector_key": "solar",
+      "symbol": "601012.SH",
+      "market": "A",
+      "base_score": 61,
+      "signal_strength": 0.49,
+      "evidence_count": 1,
+      "liquidity_score": 0.57,
+      "replay_hit_rate": 0.40,
+      "crowding": 0.22,
+      "decay_rate": 0.18,
+      "days_since_event": 9,
+      "validation_status": "watching",
+      "notes": "Needs confirmation from inventory repair."
+    },
+    {
+      "opportunity_id": "hog_latent",
+      "name": "猪周期 latent baton",
+      "sector_key": "hog_cycle",
+      "symbol": "002714.SZ",
+      "market": "A",
+      "base_score": 42,
+      "signal_strength": 0.21,
+      "evidence_count": 0,
+      "liquidity_score": 0.52,
+      "replay_hit_rate": 0.28,
+      "crowding": 0.19,
+      "decay_rate": 0.09,
+      "days_since_event": 5,
+      "validation_status": "watching",
+      "notes": "Latent until spot and futures align."
+    },
+    {
+      "opportunity_id": "invalidated_proxy",
+      "name": "失效映射 proxy",
+      "sector_key": "ai",
+      "symbol": "300274.SZ",
+      "market": "A",
+      "base_score": 83,
+      "signal_strength": 0.89,
+      "evidence_count": 4,
+      "liquidity_score": 0.73,
+      "replay_hit_rate": 0.72,
+      "crowding": 0.21,
+      "decay_rate": 0.13,
+      "days_since_event": 3,
+      "validation_status": "watching",
+      "invalidated": true,
+      "blocker_score": 0.95,
+      "notes": "Explicitly invalidated to exercise the terminal state."
+    }
+  ],
+  "replay_stats": [
+    {
+      "scenario_key": "ai_compute_spillover",
+      "sector_key": "ai",
+      "cases": 18,
+      "hit_rate": 0.78,
+      "win_rate": 0.67,
+      "avg_lead_days": 1.8,
+      "net_alpha_bps": 145,
+      "validated": true
+    },
+    {
+      "scenario_key": "innovative_pharma_readout",
+      "sector_key": "innovative_pharma",
+      "cases": 12,
+      "hit_rate": 0.71,
+      "win_rate": 0.63,
+      "avg_lead_days": 2.6,
+      "net_alpha_bps": 118,
+      "validated": true
+    },
+    {
+      "scenario_key": "semis_equipment_cycle",
+      "sector_key": "semis",
+      "cases": 15,
+      "hit_rate": 0.82,
+      "win_rate": 0.69,
+      "avg_lead_days": 1.5,
+      "net_alpha_bps": 162,
+      "validated": true
+    },
+    {
+      "scenario_key": "solar_inventory_repair",
+      "sector_key": "solar",
+      "cases": 10,
+      "hit_rate": 0.68,
+      "win_rate": 0.58,
+      "avg_lead_days": 2.9,
+      "net_alpha_bps": 96,
+      "validated": false
+    },
+    {
+      "scenario_key": "hog_cycle_turn",
+      "sector_key": "hog_cycle",
+      "cases": 9,
+      "hit_rate": 0.57,
+      "win_rate": 0.49,
+      "avg_lead_days": 4.1,
+      "net_alpha_bps": 54,
+      "validated": false
+    }
+  ],
+  "watchlists": {
+    "us": [
+      {"symbol": "NVDA", "name": "NVIDIA", "sector": "ai", "role": "leader"},
+      {"symbol": "SMCI", "name": "Super Micro", "sector": "ai", "role": "leader"},
+      {"symbol": "AMD", "name": "AMD", "sector": "ai", "role": "leader"},
+      {"symbol": "AMAT", "name": "Applied Materials", "sector": "semis", "role": "leader"},
+      {"symbol": "LLY", "name": "Eli Lilly", "sector": "innovative_pharma", "role": "leader"},
+      {"symbol": "FSLR", "name": "First Solar", "sector": "solar", "role": "leader"},
+      {"symbol": "TSN", "name": "Tyson Foods", "sector": "hog_cycle", "role": "leader"}
+    ],
+    "hk": [
+      {"symbol": "1801.HK", "name": "信达生物", "sector": "innovative_pharma", "role": "leader"},
+      {"symbol": "9988.HK", "name": "阿里巴巴-W", "sector": "ai", "role": "adr"},
+      {"symbol": "0700.HK", "name": "腾讯控股", "sector": "ai", "role": "adr"},
+      {"symbol": "00981.HK", "name": "中芯国际", "sector": "semis", "role": "leader"},
+      {"symbol": "1024.HK", "name": "快手-W", "sector": "ai", "role": "adr"}
+    ],
+    "a_share": [
+      {"symbol": "300502.SZ", "name": "新易盛", "sector": "ai", "role": "second_baton"},
+      {"symbol": "300308.SZ", "name": "中际旭创", "sector": "ai", "role": "second_baton"},
+      {"symbol": "002371.SZ", "name": "北方华创", "sector": "semis", "role": "second_baton"},
+      {"symbol": "688012.SH", "name": "中微公司", "sector": "semis", "role": "second_baton"},
+      {"symbol": "600276.SH", "name": "恒瑞医药", "sector": "innovative_pharma", "role": "leader"},
+      {"symbol": "601012.SH", "name": "隆基绿能", "sector": "solar", "role": "leader"},
+      {"symbol": "300274.SZ", "name": "阳光电源", "sector": "solar", "role": "leader"},
+      {"symbol": "300498.SZ", "name": "温氏股份", "sector": "hog_cycle", "role": "leader"},
+      {"symbol": "002714.SZ", "name": "牧原股份", "sector": "hog_cycle", "role": "leader"}
+    ],
+    "etf": [
+      {"symbol": "SMH", "name": "VanEck Semiconductor ETF", "sector": "semis", "role": "etf"},
+      {"symbol": "SOXX", "name": "iShares Semiconductor ETF", "sector": "semis", "role": "etf"},
+      {"symbol": "XBI", "name": "SPDR Biotech ETF", "sector": "innovative_pharma", "role": "etf"},
+      {"symbol": "TAN", "name": "Invesco Solar ETF", "sector": "solar", "role": "etf"},
+      {"symbol": "MOO", "name": "VanEck Agribusiness ETF", "sector": "hog_cycle", "role": "etf"},
+      {"symbol": "BOTZ", "name": "Global X Robotics ETF", "sector": "ai", "role": "etf"}
+    ]
+  },
+  "source_health": {
+    "sec": {
+      "status": "healthy",
+      "freshness_minutes": 35,
+      "coverage_score": 0.94,
+      "last_refresh": "2026-04-25T09:10:00+08:00"
+    },
+    "fda": {
+      "status": "healthy",
+      "freshness_minutes": 45,
+      "coverage_score": 0.91,
+      "last_refresh": "2026-04-25T09:05:00+08:00"
+    },
+    "clinicaltrials": {
+      "status": "healthy",
+      "freshness_minutes": 60,
+      "coverage_score": 0.88,
+      "last_refresh": "2026-04-25T08:55:00+08:00"
+    },
+    "company_ir": {
+      "status": "healthy",
+      "freshness_minutes": 90,
+      "coverage_score": 0.84,
+      "last_refresh": "2026-04-25T08:40:00+08:00"
+    },
+    "price_feeds": {
+      "status": "degraded",
+      "freshness_minutes": 18,
+      "coverage_score": 0.76,
+      "last_refresh": "2026-04-25T09:20:00+08:00"
+    }
+  },
+  "liquidity": {
+    "markets": [
+      {"market": "US", "score": 0.86, "state": "deep", "comment": "US leader baskets remain the best first baton source."},
+      {"market": "HK", "score": 0.71, "state": "adequate", "comment": "HK is usable but more sensitive to crowding."},
+      {"market": "A", "score": 0.68, "state": "selective", "comment": "A-share liquidity is strongest in second-baton leaders and ETFs."},
+      {"market": "ETF", "score": 0.82, "state": "deep", "comment": "ETF proxies are the cleanest way to express the theme."}
+    ],
+    "sectors": [
+      {"sector_key": "ai", "score": 0.87, "state": "deep", "comment": "The AI basket still has the clearest transmission and turnover."},
+      {"sector_key": "semis", "score": 0.74, "state": "crowded", "comment": "Semis are strong but the sample bundle marks them as the most crowded thesis."},
+      {"sector_key": "innovative_pharma", "score": 0.63, "state": "selective", "comment": "Plays are event-driven rather than broad beta."},
+      {"sector_key": "solar", "score": 0.57, "state": "thin", "comment": "Needs more confirmation before sizing up."},
+      {"sector_key": "hog_cycle", "score": 0.49, "state": "thin", "comment": "Still a latent cycle trade until spot prices confirm."}
+    ],
+    "crowding": [
+      {"sector_key": "semis", "score": 0.76, "state": "crowded"},
+      {"sector_key": "ai", "score": 0.58, "state": "watch"},
+      {"sector_key": "innovative_pharma", "score": 0.41, "state": "open"},
+      {"sector_key": "solar", "score": 0.33, "state": "open"},
+      {"sector_key": "hog_cycle", "score": 0.24, "state": "open"}
+    ]
+  },
+  "cross_market_map": {
+    "lanes": [
+      {"lane": "US -> A", "theme": "ai", "strength": 0.91, "lead_lag_days": 1},
+      {"lane": "US -> HK", "theme": "innovative_pharma", "strength": 0.79, "lead_lag_days": 3},
+      {"lane": "US -> A", "theme": "semis", "strength": 0.89, "lead_lag_days": 1},
+      {"lane": "US -> A", "theme": "solar", "strength": 0.77, "lead_lag_days": 1},
+      {"lane": "US -> A", "theme": "hog_cycle", "strength": 0.70, "lead_lag_days": 4}
+    ]
+  },
+  "memory_seed": {
+    "status": "missing",
+    "themes": ["AI", "创新药", "半导体", "光伏", "养猪"],
+    "tracked_tags": ["策略", "复盘", "主题", "观察池", "风控", "资源"],
+    "note_count": 7,
+    "signals": [
+      "AI 先看硬件和互联，不追最拥挤应用层",
+      "创新药只保留官方事件链",
+      "半导体以设备和封装确认",
+      "光伏先等库存和利润修复",
+      "猪周期先等现货和期货共振"
+    ],
+    "recent_notes": [
+      {
+        "title": "Lead-Lag Alpha V1 复盘模板",
+        "path": "sample_data/lead_lag/lead_lag_v1.json",
+        "modified_at": "2026-04-25T00:00:00",
+        "tracked_tags": ["策略", "复盘"]
+      },
+      {
+        "title": "AI 算力链 first baton",
+        "path": "sample_data/lead_lag/lead_lag_v1.json",
+        "modified_at": "2026-04-25T00:00:00",
+        "tracked_tags": ["主题", "观察池"]
+      }
+    ],
+    "theme_matches": [
+      {
+        "title": "AI 算力链 first baton",
+        "path": "sample_data/lead_lag/lead_lag_v1.json",
+        "theme_score": 3,
+        "tracked_tags": ["主题", "观察池"]
+      },
+      {
+        "title": "创新药 validating",
+        "path": "sample_data/lead_lag/lead_lag_v1.json",
+        "theme_score": 2,
+        "tracked_tags": ["主题"]
+      }
+    ]
+  }
+}

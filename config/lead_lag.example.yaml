@@ -1,0 +1,29 @@
+engine:
+  version: v1
+  mode: sample_data
+  data_dir: sample_data/lead_lag
+  export_dir: reports/lead_lag
+
+filters:
+  default_region: all
+  default_regime: all
+  model_limit: 10
+  opportunity_limit: 12
+  event_limit: 20
+  memory_limit: 6
+
+obsidian:
+  enabled: true
+  vault_path: /Users/yourname/Documents/Obsidian/KnowledgeBase
+  tracked_tags:
+    - 策略
+    - 复盘
+    - 主题
+    - 观察池
+    - 风控
+    - 资源
+
+collector:
+  mode: demo
+  output_path: data/lead_lag/collector_snapshot.json
+  source_health_window_hours: 12

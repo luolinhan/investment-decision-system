@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
+from calendar import monthrange
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -91,6 +93,30 @@ def _parse_any_datetime(value: Any) -> Optional[datetime]:
     return None
 
 
+def _parse_period_end(value: Any, frequency: Optional[str] = None) -> Optional[datetime]:
+    if value in (None, "", "-", "--"):
+        return None
+    text = str(value).strip()
+    freq = (frequency or "").strip().lower()
+    quarter_match = re.match(r"^(\d{4})-Q([1-4])$", text)
+    if quarter_match:
+        year = int(quarter_match.group(1))
+        quarter = int(quarter_match.group(2))
+        month = quarter * 3
+        return datetime(year, month, monthrange(year, month)[1])
+    month_match = re.match(r"^(\d{4})-(\d{2})$", text)
+    if month_match:
+        year = int(month_match.group(1))
+        month = int(month_match.group(2))
+        return datetime(year, month, monthrange(year, month)[1])
+    date_match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", text)
+    if date_match and freq == "monthly" and int(date_match.group(3)) == 1:
+        year = int(date_match.group(1))
+        month = int(date_match.group(2))
+        return datetime(year, month, monthrange(year, month)[1])
+    return _parse_any_datetime(text)
+
+
 def _is_duckdb_lock_error(exc: Exception) -> bool:
     text = str(exc)
     return (
@@ -111,12 +137,14 @@ REQUIRED_INDICATORS: List[Dict[str, Any]] = [
     {"panel": "macro", "name": "固定资产投资累计同比", "aliases": ["CN_FA_YOY", "CN_FAI_YTD_YOY", "china.fai_ytd_yoy", "cn.fai_ytd_yoy"], "priority": "P0", "source": "NBS / Akshare", "status": "expected"},
     {"panel": "macro", "name": "地产投资累计同比", "aliases": ["CN_RE_INVEST_YOY", "CN_RE_INVEST_INDEX", "china.real_estate_investment_yoy", "cn.real_estate_investment_yoy", "china.real_estate_index"], "priority": "P0", "source": "NBS / parser", "status": "expected"},
     {"panel": "macro", "name": "工业增加值同比", "aliases": ["CN_INDUSTRIAL_VA_YOY", "china.industrial_value_added_yoy", "cn.industrial_value_added_yoy"], "priority": "P1", "source": "NBS / Akshare", "status": "expected"},
-    {"panel": "macro", "name": "产能利用率", "aliases": ["china.capacity_utilization", "cn.capacity_utilization"], "priority": "P1", "source": "NBS", "status": "expected"},
+    {"panel": "macro", "name": "产能利用率", "aliases": ["CN_CAPACITY_UTILIZATION", "china.capacity_utilization", "cn.capacity_utilization"], "priority": "P1", "source": "NBS", "status": "expected"},
     {"panel": "macro", "name": "FDI累计同比", "aliases": ["CN_FDI_YOY", "china.fdi_ytd_yoy", "cn.fdi_ytd_yoy"], "priority": "P2", "source": "MOFCOM / Akshare", "status": "expected"},
     {"panel": "external", "name": "DXY", "aliases": ["DXY", "external.dxy", "dxy"], "priority": "P0", "source": "Yahoo / Stooq", "status": "expected"},
     {"panel": "external", "name": "美国2Y", "aliases": ["US_2Y_YIELD", "external.us2y", "us2y"], "priority": "P0", "source": "Treasury / Akshare", "status": "expected"},
     {"panel": "external", "name": "美国10Y", "aliases": ["US_10Y_YIELD", "external.us10y", "us10y"], "priority": "P0", "source": "Treasury / Akshare", "status": "expected"},
     {"panel": "external", "name": "2s10s", "aliases": ["US_2S10S", "external.us2s10s", "us2s10s"], "priority": "P0", "source": "derived", "status": "expected"},
+    {"panel": "external", "name": "联邦基金有效利率", "aliases": ["FED_FUNDS_EFFECTIVE", "external.fedfunds", "fedfunds"], "priority": "P1", "source": "FRED", "status": "expected"},
+    {"panel": "external", "name": "美国10Y盈亏平衡通胀", "aliases": ["US_10Y_BREAKEVEN", "external.us10y_breakeven", "us10y_breakeven"], "priority": "P1", "source": "FRED", "status": "expected"},
     {"panel": "external", "name": "VIX", "aliases": ["VIX", "external.vix", "vix"], "priority": "P0", "source": "Yahoo", "status": "expected"},
     {"panel": "external", "name": "黄金", "aliases": ["GOLD", "external.gold", "gold"], "priority": "P1", "source": "Yahoo / Stooq", "status": "expected"},
     {"panel": "external", "name": "USD/CNH", "aliases": ["USD_CNH", "external.usdcnh", "usdcnh"], "priority": "P0", "source": "Yahoo / Stooq", "status": "expected"},
@@ -202,7 +230,143 @@ SECTOR_BLUEPRINTS: List[Dict[str, Any]] = [
         "watchlist": ["159865", "002714.SZ", "002157.SZ", "603477.SH"],
         "cycle": "周",
     },
+    {
+        "key": "robotics",
+        "name": "机器人",
+        "keywords": ["robot", "robotics", "humanoid", "automation", "servo", "机器人", "人形机器人", "自动化", "减速器"],
+        "leading": ["主机厂订单", "零部件验证", "量产节点", "资本开支"],
+        "confirming": ["客户导入", "出货节奏", "产业链公告"],
+        "risk": ["量产延期", "成本不下行", "需求透支"],
+        "invalid": ["主机厂量产节点后移且订单验证连续走弱"],
+        "watchlist": ["159559", "300024.SZ", "002747.SZ", "688017.SH", "002050.SZ"],
+        "cycle": "周",
+    },
+    {
+        "key": "nuclear",
+        "name": "核电",
+        "keywords": ["nuclear", "reactor", "uranium", "grid", "核电", "核准", "机组", "乏燃料"],
+        "leading": ["核准节奏", "机组开工", "设备招标", "电力资本开支"],
+        "confirming": ["设备交付", "项目进度", "利用小时"],
+        "risk": ["核准放缓", "项目延期", "资本开支回落"],
+        "invalid": ["新机组核准节奏放缓且设备订单连续转弱"],
+        "watchlist": ["001896.SZ", "601985.SH", "601611.SH", "002130.SZ"],
+        "cycle": "月",
+    },
+    {
+        "key": "dividend",
+        "name": "红利 / 高股息",
+        "keywords": ["dividend", "yield", "high dividend", "utility", "bank", "红利", "高股息", "公用事业", "银行"],
+        "leading": ["长端利率", "外部风险", "现金流稳定性", "分红预期"],
+        "confirming": ["派息率提升", "防御资金回流", "盈利稳定"],
+        "risk": ["利率快速下行转成长", "监管压缩息差", "分红不及预期"],
+        "invalid": ["外部 risk_on 持续且成长主线重新全面占优"],
+        "watchlist": ["512890", "515180", "601398.SH", "600941.SH", "00939.HK"],
+        "cycle": "周",
+    },
+    {
+        "key": "brokerage",
+        "name": "券商",
+        "keywords": ["brokerage", "securities", "ipo", "trading volume", "margin", "券商", "两融", "成交额", "投行业务"],
+        "leading": ["成交额", "两融余额", "风险偏好", "政策催化"],
+        "confirming": ["开户数", "北向改善", "投行业务回暖"],
+        "risk": ["成交额下台阶", "融资盘收缩", "政策预期落空"],
+        "invalid": ["成交额和两融余额连续两个观察窗同步走弱"],
+        "watchlist": ["512000", "512880", "600030.SH", "601688.SH", "06837.HK"],
+        "cycle": "日",
+    },
 ]
+
+
+INDICATOR_GUIDE_ORDER: List[Tuple[str, Sequence[str]]] = [
+    ("M1 同比", ["CN_M1_YOY"]),
+    ("M2 同比", ["CN_M2_YOY"]),
+    ("社融存量增速", ["CN_TSF_YOY"]),
+    ("核心 CPI 同比", ["CN_CPI_CORE_YOY"]),
+    ("PPI 同比", ["CN_PPI_YOY"]),
+    ("DXY", ["DXY"]),
+    ("美国 2Y", ["US_2Y_YIELD"]),
+    ("美国 10Y", ["US_10Y_YIELD"]),
+    ("联邦基金有效利率", ["FED_FUNDS_EFFECTIVE"]),
+    ("10Y Breakeven", ["US_10Y_BREAKEVEN"]),
+    ("VIX", ["VIX"]),
+    ("USD/CNH", ["USD_CNH"]),
+]
+
+
+INDICATOR_GUIDE_SEEDS: Dict[str, Dict[str, str]] = {
+    "CN_M1_YOY": {
+        "calc": "狭义货币 M1 同比增速。",
+        "meaning": "更贴近企业活期存款与交易活跃度，通常先于风险偏好修复。",
+        "bullish": "M1 回升通常意味着风险偏好改善、弹性方向更容易启动。",
+        "bearish": "M1 持续偏弱说明宽货币未顺畅传导到实体与风险资产。",
+    },
+    "CN_M2_YOY": {
+        "calc": "广义货币 M2 同比增速。",
+        "meaning": "用于观察货币环境是偏宽还是偏紧。",
+        "bullish": "M2 在高位且稳定，说明系统流动性宽松。",
+        "bearish": "M2 快速回落时，高估值风格承压。",
+    },
+    "CN_TSF_YOY": {
+        "calc": "社会融资规模存量同比增速。",
+        "meaning": "最关键的信用扩张代理，用来验证宽信用是否真的发生。",
+        "bullish": "社融回升时，顺周期、金融和部分成长链更容易得到验证。",
+        "bearish": "社融偏弱说明政策表述积极，但信用传导仍未落地。",
+    },
+    "CN_CPI_CORE_YOY": {
+        "calc": "扣除食品和能源后的核心 CPI 同比；若官方口径缺失，则以规则代理并明确标注。",
+        "meaning": "更能反映内需和服务价格的真实修复。",
+        "bullish": "核心 CPI 站稳正值并抬升，说明通缩压力真正缓解。",
+        "bearish": "核心 CPI 低迷意味着需求修复不够扎实。",
+    },
+    "CN_PPI_YOY": {
+        "calc": "工业生产者出厂价格指数同比。",
+        "meaning": "工业品价格和上游盈利的直接温度计。",
+        "bullish": "PPI 降幅收窄或转正，有利于周期、资源和制造链利润修复。",
+        "bearish": "PPI 再走弱会拖累工业企业盈利预期。",
+    },
+    "DXY": {
+        "calc": "美元指数，跟踪美元对一篮子主要货币的强弱。",
+        "meaning": "全球流动性和 EM 风险偏好的核心外部变量。",
+        "bullish": "DXY 回落时，中国风险资产的外部压制通常减轻。",
+        "bearish": "DXY 走强常伴随港股与成长弹性承压。",
+    },
+    "US_2Y_YIELD": {
+        "calc": "美国 2 年期国债收益率。",
+        "meaning": "最接近政策利率预期的利率锚。",
+        "bullish": "2Y 下行通常意味着市场预期政策约束减弱。",
+        "bearish": "2Y 快速上行时，全球风险资产估值更容易被压缩。",
+    },
+    "US_10Y_YIELD": {
+        "calc": "美国 10 年期国债收益率。",
+        "meaning": "全球长端定价锚，直接影响成长估值。",
+        "bullish": "10Y 温和回落有利于成长和高久期资产估值修复。",
+        "bearish": "10Y 高位上冲会压制全球风险资产。",
+    },
+    "FED_FUNDS_EFFECTIVE": {
+        "calc": "联邦基金有效利率日频值。",
+        "meaning": "美国实际资金价格，用来确认货币环境是否真的进入宽松区间。",
+        "bullish": "有效利率回落说明外部货币约束趋缓。",
+        "bearish": "有效利率维持高位意味着美元体系仍偏紧。",
+    },
+    "US_10Y_BREAKEVEN": {
+        "calc": "美国 10 年期盈亏平衡通胀率，近似市场隐含通胀预期。",
+        "meaning": "用于区分再通胀交易和增长恐慌。",
+        "bullish": "Breakeven 走稳上行，通常意味着增长与通胀预期改善。",
+        "bearish": "Breakeven 过低多对应增长担忧升温。",
+    },
+    "VIX": {
+        "calc": "CBOE 波动率指数。",
+        "meaning": "最直接的外部风险温度计。",
+        "bullish": "VIX 回落到低位，说明市场风险厌恶缓和。",
+        "bearish": "VIX 抬升往往意味着先去杠杆，再谈交易机会。",
+    },
+    "USD_CNH": {
+        "calc": "美元兑离岸人民币汇率。",
+        "meaning": "港股和跨境风险偏好的直接反馈变量。",
+        "bullish": "USD/CNH 回落说明人民币贬压减轻，利于港股弹性。",
+        "bearish": "USD/CNH 上行时，港股与外资偏好通常承压。",
+    },
+}
 
 
 class RadarService:
@@ -379,16 +543,20 @@ class RadarService:
         with self._connect() as conn:
             cols = set(self._table_columns(conn, "indicator_observations"))
             value_text_col = "value_text" if "value_text" in cols else "notes"
-            frequency_col = "frequency" if "frequency" in cols else "quality_flag"
-            metadata_col = "metadata" if "metadata" in cols else "notes"
+            fetch_select = f"obs.fetch_ts" if "fetch_ts" in cols else "NULL"
+            fetch_order = "obs.fetch_ts DESC NULLS LAST" if "fetch_ts" in cols else "obs.source DESC"
+            quality_select = f"obs.quality_flag" if "quality_flag" in cols else "NULL"
             row = conn.execute(
                 f"""
-                SELECT {key_col}, {date_col}, value, {value_text_col}, unit, source,
-                       {frequency_col}, {metadata_col}
-                FROM indicator_observations
-                WHERE {key_col} = ? AND value IS NOT NULL AND isfinite(value)
-                  AND regexp_matches(CAST({date_col} AS VARCHAR), '^[0-9]{{4}}-[0-9]{{2}}(-[0-9]{{2}})?$')
-                ORDER BY {date_col} DESC
+                SELECT obs.{key_col}, obs.{date_col}, obs.value, obs.{value_text_col}, obs.unit, obs.source,
+                       {fetch_select}, {quality_select},
+                       cat.frequency, cat.direction, cat.category, cat.source, cat.notes
+                FROM indicator_observations AS obs
+                LEFT JOIN indicator_catalog AS cat
+                  ON cat.indicator_code = obs.{key_col}
+                WHERE obs.{key_col} = ? AND obs.value IS NOT NULL AND isfinite(obs.value)
+                  AND regexp_matches(CAST(obs.{date_col} AS VARCHAR), '^[0-9]{{4}}-[0-9]{{2}}(-[0-9]{{2}})?$')
+                ORDER BY obs.{date_col} DESC, {fetch_order}
                 LIMIT 1
                 """,
                 [key],
@@ -402,8 +570,14 @@ class RadarService:
             "value_text": row[3],
             "unit": row[4] or "",
             "source": row[5],
-            "frequency": row[6],
-            "metadata": _json_loads(row[7], {}),
+            "fetch_ts": str(row[6]) if row[6] else None,
+            "quality_flag": row[7] or "",
+            "frequency": row[8],
+            "direction": row[9],
+            "category": row[10],
+            "catalog_source": row[11],
+            "catalog_notes": row[12] or "",
+            "metadata": {},
         }
 
     def _series_for_aliases(self, aliases: Sequence[str], limit: int = 36) -> List[Dict[str, Any]]:
@@ -546,28 +720,35 @@ class RadarService:
         latest_rows: Sequence[Optional[Dict[str, Any]]],
         stale_after_days: int,
     ) -> Dict[str, Any]:
-        parsed: List[datetime] = []
+        parsed_rows: List[Tuple[datetime, Optional[datetime], Dict[str, Any]]] = []
         for row in latest_rows:
             if not row:
                 continue
-            parsed_dt = _parse_any_datetime(
+            obs_dt = _parse_period_end(
                 row.get("observation_date")
                 or row.get("event_time")
-                or row.get("last_seen_at")
+                or row.get("last_seen_at"),
+                row.get("frequency"),
             )
-            if parsed_dt:
-                parsed.append(parsed_dt)
-        if not parsed:
+            fetch_dt = _parse_any_datetime(row.get("fetch_ts") or row.get("last_update"))
+            effective_dt = obs_dt or fetch_dt
+            if effective_dt:
+                parsed_rows.append((effective_dt, fetch_dt, row))
+        if not parsed_rows:
             return {
                 "last_update": None,
+                "observation_period": None,
+                "fetched_at": None,
                 "stale_after_days": stale_after_days,
                 "age_days": None,
                 "is_stale": True,
             }
-        latest_dt = max(parsed)
+        latest_dt, latest_fetch_dt, latest_row = max(parsed_rows, key=lambda item: item[0])
         age_days = max(0.0, round((datetime.now() - latest_dt).total_seconds() / 86400.0, 1))
         return {
             "last_update": latest_dt.date().isoformat(),
+            "observation_period": latest_row.get("observation_date"),
+            "fetched_at": latest_fetch_dt.date().isoformat() if latest_fetch_dt else None,
             "stale_after_days": stale_after_days,
             "age_days": age_days,
             "is_stale": age_days > stale_after_days,
@@ -697,24 +878,66 @@ class RadarService:
             "items": items[:40],
         }
 
+    def _get_indicator_guide_panel(self) -> Dict[str, Any]:
+        catalog_map = {row.get("indicator_key"): row for row in self._load_catalog()}
+        items: List[Dict[str, Any]] = []
+        for display_name, aliases in INDICATOR_GUIDE_ORDER:
+            latest = self._latest_for_aliases(aliases)
+            key = (latest or {}).get("indicator_key") or (aliases[0] if aliases else "")
+            catalog_row = catalog_map.get(key, {})
+            seed = INDICATOR_GUIDE_SEEDS.get(key, {})
+            value = _to_float((latest or {}).get("value"))
+            unit = (latest or {}).get("unit") or ""
+            items.append(
+                {
+                    "indicator_key": key,
+                    "display_name": display_name,
+                    "latest_value": value,
+                    "latest_display": _display(value, unit=unit, digits=3 if unit == "rate" else 2),
+                    "observation_period": (latest or {}).get("observation_date"),
+                    "fetched_at": (latest or {}).get("fetch_ts"),
+                    "frequency": catalog_row.get("frequency") or (latest or {}).get("frequency"),
+                    "direction": catalog_row.get("direction") or (latest or {}).get("direction"),
+                    "half_life_days": catalog_row.get("half_life_days"),
+                    "source": (latest or {}).get("catalog_source") or catalog_row.get("source") or (latest or {}).get("source"),
+                    "calc": seed.get("calc") or "按原始公开数据口径直接读取。",
+                    "meaning": seed.get("meaning") or catalog_row.get("notes") or (latest or {}).get("catalog_notes") or "",
+                    "bullish": seed.get("bullish") or "",
+                    "bearish": seed.get("bearish") or "",
+                }
+            )
+        ready = sum(1 for item in items if item.get("latest_value") is not None)
+        return {
+            "summary": {
+                "total": len(items),
+                "ready": ready,
+                "missing": len(items) - ready,
+            },
+            "items": items,
+        }
+
     def _get_macro_panel(self) -> Dict[str, Any]:
         specs = {
             "m1": ["CN_M1_YOY", "china.m1_yoy", "cn.m1_yoy", "macro.cn.m1_yoy"],
             "m2": ["CN_M2_YOY", "china.m2_yoy", "cn.m2_yoy", "macro.cn.m2_yoy"],
             "social_financing": ["CN_TSF_YOY", "china.social_financing_yoy", "cn.social_financing_yoy"],
+            "new_loans": ["CN_NEW_LOANS", "china.social_financing_flow", "cn.social_financing_flow"],
             "cpi": ["CN_CPI_YOY", "china.cpi_yoy", "cn.cpi_yoy", "macro.cn.cpi_yoy"],
             "core_cpi": ["CN_CPI_CORE_YOY", "china.core_cpi_yoy", "cn.core_cpi_yoy"],
             "ppi": ["CN_PPI_YOY", "china.ppi_yoy", "cn.ppi_yoy", "macro.cn.ppi_yoy"],
             "fai": ["CN_FA_YOY", "CN_FAI_YTD_YOY", "china.fai_ytd_yoy", "cn.fai_ytd_yoy"],
             "real_estate": ["CN_RE_INVEST_YOY", "CN_RE_INVEST_INDEX", "china.real_estate_investment_yoy", "cn.real_estate_investment_yoy", "china.real_estate_index"],
             "industrial": ["CN_INDUSTRIAL_VA_YOY", "china.industrial_value_added_yoy", "cn.industrial_value_added_yoy"],
-            "capacity": ["china.capacity_utilization", "cn.capacity_utilization"],
+            "capacity": ["CN_CAPACITY_UTILIZATION", "china.capacity_utilization", "cn.capacity_utilization"],
             "fdi": ["CN_FDI_YOY", "china.fdi_ytd_yoy", "cn.fdi_ytd_yoy"],
         }
         latest = {key: self._latest_for_aliases(aliases) for key, aliases in specs.items()}
         m1 = _to_float((latest.get("m1") or {}).get("value"))
         m2 = _to_float((latest.get("m2") or {}).get("value"))
+        social_financing = _to_float((latest.get("social_financing") or {}).get("value"))
+        new_loans = _to_float((latest.get("new_loans") or {}).get("value"))
         cpi = _to_float((latest.get("cpi") or {}).get("value"))
+        core_cpi = _to_float((latest.get("core_cpi") or {}).get("value"))
         ppi = _to_float((latest.get("ppi") or {}).get("value"))
         fai = _to_float((latest.get("fai") or {}).get("value"))
         real_estate_row = latest.get("real_estate") or {}
@@ -736,7 +959,7 @@ class RadarService:
             real_estate_credit_ok = real_estate is None or real_estate >= 95.0
         else:
             real_estate_signal = self._signal(
-                "地产投资/价格代理",
+                "地产开发投资累计同比",
                 real_estate,
                 good=-3.0,
                 bad=-8.0,
@@ -749,31 +972,48 @@ class RadarService:
         signals = [
             self._signal("M1同比", m1, good=3.0, bad=-2.0, unit="%", digits=1, hint="M1回升通常对应风险偏好改善。"),
             self._signal("M2同比", m2, good=8.0, bad=6.0, unit="%", digits=1, hint="M2高位意味着货币环境偏宽。"),
+            self._signal("社融存量增速", social_financing, good=8.0, bad=7.0, unit="%", digits=1, hint="宽信用是否落地，要看社融而不是只看政策表述。"),
+            self._signal("新增人民币贷款", new_loans, good=15000.0, bad=8000.0, unit="亿", digits=0, hint="新增贷款是信用扩张的快照变量，要和季节性一起读。"),
             self._signal("CPI同比", cpi, good=0.6, bad=-0.5, unit="%", digits=1, hint="CPI脱离零轴后，通缩压力才算真正缓和。"),
+            self._signal("核心CPI同比", core_cpi, good=0.8, bad=0.2, unit="%", digits=1, hint="核心CPI更能反映内需修复的质量。"),
             self._signal("PPI同比", ppi, good=-0.5, bad=-2.0, unit="%", digits=1, hint="PPI上修意味着工业价格压力缓解。"),
-            self._signal("固定资产投资累计同比", fai, good=3.0, bad=0.0, unit="%", digits=1, hint="财政与信用扩张的确认项。"),
+            self._signal("固定资产投资累计同比", fai, good=1.5, bad=0.0, unit="%", digits=1, hint="财政与信用扩张的确认项。"),
             real_estate_signal,
             self._signal("工业增加值同比", industrial, good=5.0, bad=3.0, unit="%", digits=1, hint="工业生产改善有助于验证景气修复。"),
             self._signal("产能利用率", capacity, good=74.5, bad=72.0, unit="%", digits=1, hint="产能利用率抬升，有助于价格和盈利修复。"),
         ]
         score = self._score_signals(signals)
-        if (m2 or 0) >= 8.0:
+        if (m2 or 0) >= 8.0 and (m1 or 0) >= 3.0:
             money_label = "宽货币"
+        elif (m2 or 0) >= 7.0:
+            money_label = "适度宽松"
         elif m2 is None:
             money_label = "货币缺数"
         else:
             money_label = "中性货币"
-        if fai is not None and fai >= 3.0 and real_estate_credit_ok:
+        if (
+            social_financing is not None
+            and social_financing >= 8.0
+            and (new_loans is None or new_loans >= 12000.0)
+            and fai is not None
+            and fai >= 1.5
+            and real_estate_credit_ok
+        ):
             credit_label = "宽信用"
+        elif (
+            (social_financing is not None and social_financing >= 7.5)
+            or (fai is not None and fai >= 1.0)
+        ):
+            credit_label = "信用修复中"
         elif fai is None:
             credit_label = "信用缺数"
         else:
             credit_label = "信用分化"
-        if cpi is None or ppi is None:
+        if core_cpi is None or ppi is None:
             inflation_label = "价格缺数"
-        elif cpi >= 0.5 and ppi >= -0.5:
+        elif core_cpi >= 1.0 and ppi >= 0.0:
             inflation_label = "再通胀/通缩缓解"
-        elif cpi >= 0.0:
+        elif core_cpi >= 0.5 and cpi is not None and cpi >= 0.0:
             inflation_label = "通缩缓解中"
         else:
             inflation_label = "再通缩风险"
@@ -781,7 +1021,8 @@ class RadarService:
         charts = [
             {"label": "M1同比", "points": self._series_for_aliases(specs["m1"], limit=24)},
             {"label": "M2同比", "points": self._series_for_aliases(specs["m2"], limit=24)},
-            {"label": "CPI同比", "points": self._series_for_aliases(specs["cpi"], limit=24)},
+            {"label": "社融存量增速", "points": self._series_for_aliases(specs["social_financing"], limit=24)},
+            {"label": "核心CPI同比", "points": self._series_for_aliases(specs["core_cpi"], limit=24)},
             {"label": "PPI同比", "points": self._series_for_aliases(specs["ppi"], limit=24)},
         ]
         coverage = self._coverage(specs.values())
@@ -792,13 +1033,17 @@ class RadarService:
             "quadrant": {"money": money_label, "credit": credit_label},
             "signals": signals,
             "missing_keys": missing,
-            "beneficiaries": ["创新药", "AI基础设施", "高股息(若外部压力未放大)"] if score >= 60 else ["高股息", "防御", "低波动"],
+            "beneficiaries": ["创新药", "AI基础设施", "机器人", "高股息(若外部压力未放大)"] if score >= 60 else ["高股息", "防御", "低波动"],
             "pressured_styles": ["地产链", "高负债顺周期"] if real_estate_drag else ["无明显压制风格"],
-            "policy_divergence": ["政策表述偏积极，但社融/核心CPI仍需补齐验证。"] if "social_financing" in missing or "core_cpi" in missing else [],
+            "policy_divergence": [
+                "货币端偏松，但信用验证仍偏慢。"
+                if money_label in {"宽货币", "适度宽松"} and credit_label not in {"宽信用", "信用修复中"}
+                else "政策表述偏积极，但社融/核心CPI仍需补齐验证。"
+            ] if ("social_financing" in missing or "core_cpi" in missing or (money_label in {"宽货币", "适度宽松"} and credit_label == "信用分化")) else [],
             "charts": charts,
             "chart_stats": [dict(label=item["label"], **self._series_stats(item["points"])) for item in charts],
             "coverage_ratio": coverage,
-            "freshness": self._panel_freshness(latest.values(), stale_after_days=45),
+            "freshness": self._panel_freshness(latest.values(), stale_after_days=70),
         }
 
     def _get_external_panel(self) -> Dict[str, Any]:
@@ -807,6 +1052,8 @@ class RadarService:
             "us2y": ["US_2Y_YIELD", "external.us2y", "us2y"],
             "us10y": ["US_10Y_YIELD", "external.us10y", "us10y"],
             "spread": ["US_2S10S", "external.us2s10s", "us2s10s"],
+            "fedfunds": ["FED_FUNDS_EFFECTIVE", "external.fedfunds", "fedfunds"],
+            "breakeven": ["US_10Y_BREAKEVEN", "external.us10y_breakeven", "us10y_breakeven"],
             "vix": ["VIX", "external.vix", "vix"],
             "gold": ["GOLD", "external.gold", "gold"],
             "usdcnh": ["USD_CNH", "external.usdcnh", "usdcnh"],
@@ -816,8 +1063,11 @@ class RadarService:
         latest = {key: self._latest_for_aliases(aliases) for key, aliases in specs.items()}
         signals = [
             self._signal("DXY", _to_float((latest.get("dxy") or {}).get("value")), good=102.5, bad=105.0, reverse=True, digits=2, hint="美元回落时，中国风险资产压力通常减轻。"),
+            self._signal("美国2Y", _to_float((latest.get("us2y") or {}).get("value")), good=3.8, bad=4.6, reverse=True, unit="%", digits=2, hint="2Y 更贴近政策利率预期，是最敏感的外部利率约束。"),
             self._signal("美国10Y", _to_float((latest.get("us10y") or {}).get("value")), good=4.0, bad=4.5, reverse=True, unit="%", digits=2, hint="长端利率过高会压制估值。"),
             self._signal("2s10s", _to_float((latest.get("spread") or {}).get("value")), good=0.0, bad=-0.5, unit="%", digits=2, hint="倒挂越深，全球风险偏好越脆弱。"),
+            self._signal("联邦基金有效利率", _to_float((latest.get("fedfunds") or {}).get("value")), good=4.4, bad=5.0, reverse=True, unit="%", digits=2, hint="有效利率越高，美元体系的资金约束越强。"),
+            self._signal("10Y Breakeven", _to_float((latest.get("breakeven") or {}).get("value")), good=2.0, bad=1.7, unit="%", digits=2, hint="通胀预期过低多对应增长担忧升温。"),
             self._signal("VIX", _to_float((latest.get("vix") or {}).get("value")), good=16.0, bad=24.0, reverse=True, digits=2, hint="VIX是最直接的外部风险温度计。"),
             self._signal("黄金", _to_float((latest.get("gold") or {}).get("value")), good=2400.0, bad=2800.0, reverse=True, digits=0, hint="黄金过热常伴随避险升级。"),
             self._signal("USD/CNH", _to_float((latest.get("usdcnh") or {}).get("value")), good=7.10, bad=7.30, reverse=True, digits=3, hint="离岸人民币贬压会拖累港股弹性。"),
@@ -839,7 +1089,7 @@ class RadarService:
         asset_map = {
             "A股": "外部压力回落时，成长和顺周期弹性提升；压力抬升时，红利和内需防御更稳。",
             "港股": "对美元、CNH、南向情绪最敏感；risk_on 阶段高弹性更受益。",
-            "高弹性主题": "需要 DXY/VIX/CNH 同时配合，不然只适合短波段。",
+            "高弹性主题": "需要 DXY、利率、VIX、CNH 同时配合，不然只适合短波段。",
             "红利防御": "risk_off 下更占优，但要留意利率与人民币方向。",
         }
         return {
@@ -957,6 +1207,10 @@ class RadarService:
             "semi": [["CN_SW_SEMI_INDEX"], ["CN_SW_ELEC_INDEX"], ["SECTOR_SEMI_DOMESTIC_SUB", "sector.semi_domestic_substitution", "semi_domestic_substitution"], ["sector.semi_ic_output", "semi_ic_output"]],
             "pv": [["CN_SW_SOLAR_INDEX"], ["CN_SW_BATTERY_INDEX"], ["SECTOR_PV_SUPPLY_DISCIPLINE", "sector.pv_supply_discipline", "pv_supply_discipline"], ["sector.pv_cell_output", "pv_cell_output"]],
             "hog": [["CN_HOG_PRICE_INDEX"], ["CN_HOG_SPOT_PRICE"], ["CN_HOG_FUTURES_PRICE"], ["CN_SW_AGRI_INDEX"]],
+            "robotics": [["CN_SW_ELEC_INDEX"]],
+            "nuclear": [["CN_SW_ELEC_INDEX"], ["CN_FA_YOY", "CN_FAI_YTD_YOY"]],
+            "dividend": [["US_10Y_YIELD"], ["CN_SOUTH_FLOW"], ["CN_NORTH_FLOW"]],
+            "brokerage": [["CN_NORTH_FLOW"], ["CN_SOUTH_FLOW"]],
         }
         aliases_list = key_map.get(blueprint_key, [])
         verified: List[str] = []
@@ -988,12 +1242,14 @@ class RadarService:
             base_score = 35 + min(20, match_counts["events"] * 5) + min(15, match_counts["research"] * 3) + bonus
             score = max(20, min(95, base_score))
             confidence = round(min(0.92, 0.35 + (len(verified) * 0.12) + (match_counts["events"] * 0.03) + (match_counts["research"] * 0.02)), 2)
+            priority = "优先观察" if score >= 85 else "跟踪验证" if score >= 70 else "条件观察"
             cards.append(
                 {
                     "key": blueprint["key"],
                     "name": blueprint["name"],
                     "score": score,
                     "confidence": confidence,
+                    "priority": priority,
                     "leading_variables": blueprint["leading"],
                     "confirmed_variables": verified or blueprint["confirming"][:1],
                     "unverified_variables": missing or blueprint["confirming"],
@@ -1002,6 +1258,7 @@ class RadarService:
                     "watchlist": blueprint["watchlist"],
                     "review_cycle": blueprint["cycle"],
                     "evidence": match_counts,
+                    "evidence_total": match_counts["events"] + match_counts["research"] + len(verified),
                 }
             )
         cards.sort(key=lambda item: (item["score"], item["confidence"]), reverse=True)
@@ -1015,6 +1272,8 @@ class RadarService:
                 "event_matches": sum(item["evidence"]["events"] for item in cards),
                 "research_matches": sum(item["evidence"]["research"] for item in cards),
                 "verified_indicator_hits": sum(len(item["confirmed_variables"]) for item in cards),
+                "high_priority_cards": sum(1 for item in cards if item["score"] >= 80),
+                "theme_count": len(cards),
             },
         }
 
@@ -1207,6 +1466,7 @@ class RadarService:
             external = self._get_external_panel()
             hk = self._get_hk_panel()
             sectors = self._get_sector_panel()
+            guide = self._get_indicator_guide_panel()
             policy = self._get_policy_panel()
             pizza = self._get_pizza_panel()
             gaps = self._get_gaps()
@@ -1253,6 +1513,7 @@ class RadarService:
                 "external": external,
                 "hk": hk,
                 "sectors": sectors,
+                "guide": guide,
                 "policy": policy,
                 "pizza": pizza,
                 "gaps": gaps,
