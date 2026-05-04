@@ -580,9 +580,10 @@ def _build_execution_gate(decision: Dict[str, Any]) -> Dict[str, Any]:
     health_summary = data_health.get("summary") or {}
     storage_fresh_pct = _to_float(data_health.get("storage_fresh_pct"), 0.0) or 0.0
     error_count = int(health_summary.get("error_count") or 0)
+    health_status = str(health_summary.get("status") or "").lower()
     execution_mode = regime.get("execution_mode") or "defensive"
 
-    if error_count > 0 or storage_fresh_pct < 60:
+    if health_status == "error" or error_count > 0 or storage_fresh_pct < 60:
         return {
             "status": "blocked",
             "label": "禁止新增仓位",
@@ -706,6 +707,21 @@ async def _build_practical_brief() -> Dict[str, Any]:
     health_summary = data_health.get("summary") or {}
     storage_fresh_pct = _to_float(data_health.get("storage_fresh_pct"), 0.0) or 0.0
     strategy_stability = decision.get("strategy_stability") or {}
+    health_score = health_summary.get("health_score")
+    if health_score is None:
+        health_score = health_summary.get("fresh_pct", storage_fresh_pct)
+    health_status = health_summary.get("status")
+    if not health_status:
+        health_status = "healthy" if storage_fresh_pct >= 90 else ("warning" if storage_fresh_pct >= 60 else "error")
+    grade_counts: Dict[str, int] = {}
+    for item in leaderboard:
+        grade = str(item.get("grade") or "-").upper()
+        grade_counts[grade] = grade_counts.get(grade, 0) + 1
+    avg_score = round(
+        _safe_div(sum(_format_score(item) for item in leaderboard), max(1, len(leaderboard))),
+        1,
+    )
+    buy_ratio_pct = round(_safe_div(len(actionable) * 100.0, max(1, len(leaderboard))), 1)
 
     active_metrics = [
         "数据健康/快照新鲜度",
@@ -739,13 +755,21 @@ async def _build_practical_brief() -> Dict[str, Any]:
             "avoid_count": len(avoid_items),
         },
         "opportunity_summary": {
-            **(decision.get("opportunity_summary") or {}),
-            **(pool.get("summary") or {}),
+            "pool_code": (pool.get("summary") or {}).get("pool_code", "watch"),
+            "as_of_date": (pool.get("summary") or {}).get("as_of_date"),
+            "candidate_count": len(leaderboard),
+            "actionable_count": len(actionable),
+            "watch_count": len(watch_items),
+            "avoid_count": len(avoid_items),
+            "grade_counts": grade_counts,
+            "average_score": avg_score,
+            "buy_ratio_pct": buy_ratio_pct,
+            "source_table": (pool.get("summary") or {}).get("source_table"),
         },
         "watch_summary": decision.get("watch_summary") or {},
         "data_status": {
-            "status": health_summary.get("status") or "unknown",
-            "health_score": health_summary.get("health_score"),
+            "status": health_status,
+            "health_score": health_score,
             "storage_fresh_pct": storage_fresh_pct,
             "error_count": health_summary.get("error_count", 0),
             "warning_count": health_summary.get("warning_count", 0),
