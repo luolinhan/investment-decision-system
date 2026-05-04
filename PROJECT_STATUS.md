@@ -10,11 +10,11 @@
 
 ## Surfaces
 
-- Radar: `/investment/radar`
-- Intelligence: `/investment/intelligence`
-- Shortline: `/investment/shortline`
-- Research workbench: `/investment/research-workbench`
-- Lead-Lag: `/investment/lead-lag`
+- Daily execution workbench: `/investment/`
+- Legacy multi-indicator dashboard: `/investment/legacy`
+- Intelligence source desk: `/investment/intelligence`
+- Lead-Lag theme research: `/investment/lead-lag`
+- Stocks: `/stocks`
 
 ## Long-Term Maintenance Mode
 
@@ -39,7 +39,9 @@ Prompt templates:
 ## Current Stable Facts
 
 - Windows is the only production runtime for UI, API, and SQLite/DuckDB state
-- Aliyun only handles collection and snapshot/export work
+- Windows is the default data and storage node; Mac and Aliyun must not be required for runtime acceptance
+- Aliyun only handles optional upstream collection and snapshot/export work
+- `/investment/` is the simplified daily execution workbench; the old dashboard is retained at `/investment/legacy`
 - Shortline official event chain now includes `SEC + FDA + ClinicalTrials + Company IR`
 - Shortline T0 official events now have bilingual completion in production
 - Windows detached `uvicorn` is run through `pythonw` startup script to avoid no-stdout crashes
@@ -47,12 +49,12 @@ Prompt templates:
 
 ## Active Priorities
 
-1. Expand bilingual completion from `T0` official shortline events to selected `T1` market events
-2. Continue filling missing Radar indicators with stable official or primary sources
-3. Improve Research workbench structure, filtering, and bilingual extraction quality
-4. Tighten Windows task scheduling and service restart reliability
-5. Reduce page-level empty-state failures by preferring persisted snapshots over live fetches
-6. Expand Lead-Lag official provider coverage for HKEX short selling / Stock Connect holdings / NBS / PBOC / CDE-NMPA feeds
+1. Keep Windows service, local storage, and GitHub `main` aligned before accepting user-facing phases
+2. Restore data freshness so `/investment/api/practical-brief` can open the execution gate
+3. Keep the daily workbench constrained to risk, top actions, watchlist, and data status
+4. Move Radar, Shortline, Universe, and diagnostics behind research/admin flows until their data is fresh
+5. Populate execution journal and strategy samples before expanding strategy metrics
+6. Expand Lead-Lag only after market-facing events and review checkpoints are fresh
 
 ## Standard Acceptance Checklist
 

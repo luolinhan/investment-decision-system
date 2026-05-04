@@ -749,48 +749,48 @@
 <body>
     <aside class="sidebar">
         <div class="logo">
-            <h1><i class="bi bi-bar-chart-line-fill me-2"></i>研报中心</h1>
-            <div class="tagline">Research Intelligence</div>
+            <h1><i class="bi bi-bar-chart-line-fill me-2"></i>Investment Hub</h1>
+            <div class="tagline">Windows Local</div>
         </div>
 
         <nav class="sidebar-nav">
             <div class="nav-section">
-                <div class="nav-section-title">决策</div>
+                <div class="nav-section-title">日常执行</div>
                 <a class="nav-link {% if request.url.path == '/investment/' %}active{% endif %}" href="/investment/" style="border: 1px solid var(--border-glow);">
-                    <i class="bi bi-graph-up-arrow"></i>
-                    <span>决策中枢</span>
-                </a>
-                <a class="nav-link {% if '/investment/radar' in request.url.path %}active{% endif %}" href="/investment/radar">
-                    <i class="bi bi-broadcast-pin"></i>
-                    <span>领先雷达</span>
-                </a>
-                <a class="nav-link {% if '/investment/intelligence' in request.url.path %}active{% endif %}" href="/investment/intelligence">
-                    <i class="bi bi-radar"></i>
-                    <span>情报雷达</span>
-                </a>
-                <a class="nav-link {% if '/investment/lead-lag' in request.url.path %}active{% endif %}" href="/investment/lead-lag">
-                    <i class="bi bi-diagram-3"></i>
-                    <span>Lead-Lag</span>
-                </a>
-                <a class="nav-link {% if '/investment/shortline' in request.url.path %}active{% endif %}" href="/investment/shortline">
-                    <i class="bi bi-lightning-charge"></i>
-                    <span>短线执行层</span>
-                </a>
-                <a class="nav-link {% if request.url.path == '/investment/research' %}active{% endif %}" href="/investment/research">
-                    <i class="bi bi-layout-text-window-reverse"></i>
-                    <span>研究工作台</span>
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <span>每日执行</span>
                 </a>
                 <a class="nav-link {% if request.url.path == '/stocks' %}active{% endif %}" href="/stocks">
                     <i class="bi bi-star"></i>
                     <span>自选标的</span>
                 </a>
             </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">研究后台</div>
+                <a class="nav-link {% if '/investment/lead-lag' in request.url.path %}active{% endif %}" href="/investment/lead-lag">
+                    <i class="bi bi-diagram-3"></i>
+                    <span>主题研究</span>
+                </a>
+                <a class="nav-link {% if '/investment/intelligence' in request.url.path %}active{% endif %}" href="/investment/intelligence">
+                    <i class="bi bi-radar"></i>
+                    <span>情报源</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">诊断</div>
+                <a class="nav-link {% if request.url.path == '/investment/legacy' %}active{% endif %}" href="/investment/legacy">
+                    <i class="bi bi-grid-1x2"></i>
+                    <span>旧版大屏</span>
+                </a>
+            </div>
         </nav>
 
         <div class="sidebar-footer">
             <div class="sidebar-runtime">
-                <i class="bi bi-clock"></i>
-                <span>每日 06:00 自动更新</span>
+                <i class="bi bi-pc-display-horizontal"></i>
+                <span>Windows 本地数据与存储</span>
             </div>
             <div class="sidebar-footer-title">界面主题</div>
             <button id="themeToggle" class="btn btn-secondary theme-toggle" type="button" aria-label="切换主题">

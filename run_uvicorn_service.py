@@ -27,6 +27,12 @@ def main() -> None:
     os.environ.setdefault("APP_ENV", "production")
     os.environ.setdefault("TZ", "Asia/Shanghai")
     os.environ.setdefault("RADAR_SNAPSHOT_ONLY", "1")
+    os.environ.setdefault("INVESTMENT_NODE_ROLE", "windows_all_in_one")
+    os.environ.setdefault("INVESTMENT_DATA_SOURCE_MODE", "windows_local")
+    os.environ.setdefault("INVESTMENT_CONTROLLER_HOST", "windows-local")
+    os.environ.setdefault("INVESTMENT_COLLECTOR_HOST", "windows-local")
+    os.environ.setdefault("INVESTMENT_DB_PATH", str(REPO_ROOT / "data" / "investment.db"))
+    os.environ.setdefault("INVESTMENT_STORAGE_ROOT", str(REPO_ROOT / "data"))
 
     _log(f"starting uvicorn_service.py pid={os.getpid()} cwd={REPO_ROOT}")
 

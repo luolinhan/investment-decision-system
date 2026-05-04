@@ -41,7 +41,7 @@ from quant_workbench.sync import QuantWorkbenchSync
 router = APIRouter(prefix="/investment", tags=["investment"])
 templates = Jinja2Templates(directory="templates")
 
-DB_PATH = "data/investment.db"
+DB_PATH = settings.investment_db_path
 
 # 全局服务实例
 _investment_service = None
@@ -536,6 +536,232 @@ def _summarize_workbench(opportunities: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _action_bucket(action: Any, grade: Any = None) -> str:
+    text = str(action or "").strip().upper()
+    if text in {"BUY", "ADD", "BUILD", "STRONG_BUY", "BUY_NOW"} or text.startswith("BUY"):
+        return "actionable"
+    if text in {"WATCH", "HOLD", "OBSERVE"}:
+        return "watch"
+    if str(grade or "").strip().upper() == "A":
+        return "watch"
+    return "avoid"
+
+
+def _display_action(action: Any, bucket: str) -> str:
+    text = str(action or "").strip().upper()
+    if bucket == "actionable":
+        return "可行动" if text in {"", "BUY"} else text
+    if bucket == "watch":
+        return "观察"
+    return "回避"
+
+
+def _format_score(item: Dict[str, Any]) -> float:
+    score = item.get("total_score", item.get("score", 0))
+    try:
+        return round(float(score or 0), 1)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _position_hint(execution_mode: str, gate_status: str, rank: int) -> str:
+    if gate_status != "open":
+        return "0%"
+    if execution_mode == "offensive":
+        return ["8%-12%", "5%-8%", "3%-5%"][min(rank, 2)]
+    if execution_mode == "balanced":
+        return ["5%-8%", "3%-5%", "≤3%"][min(rank, 2)]
+    return "≤3% 试错"
+
+
+def _build_execution_gate(decision: Dict[str, Any]) -> Dict[str, Any]:
+    regime = decision.get("regime") or {}
+    data_health = decision.get("data_health") or {}
+    health_summary = data_health.get("summary") or {}
+    storage_fresh_pct = _to_float(data_health.get("storage_fresh_pct"), 0.0) or 0.0
+    error_count = int(health_summary.get("error_count") or 0)
+    execution_mode = regime.get("execution_mode") or "defensive"
+
+    if error_count > 0 or storage_fresh_pct < 60:
+        return {
+            "status": "blocked",
+            "label": "禁止新增仓位",
+            "reason": "核心数据错误或快照新鲜度不足，先修数据再恢复交易判断。",
+            "position_ceiling": "0%-20%",
+        }
+    if execution_mode == "defensive" or storage_fresh_pct < 80:
+        return {
+            "status": "restricted",
+            "label": "防守观察",
+            "reason": "市场或数据状态不足以支持进攻，只允许小仓位试错。",
+            "position_ceiling": "10%-30%",
+        }
+    if execution_mode == "offensive":
+        return {
+            "status": "open",
+            "label": "可选择性进攻",
+            "reason": "市场风险和数据状态允许执行高质量机会。",
+            "position_ceiling": "40%-70%",
+        }
+    return {
+        "status": "open",
+        "label": "平衡执行",
+        "reason": "只执行证据充分、入场条件清晰的机会。",
+        "position_ceiling": "25%-50%",
+    }
+
+
+def _build_playbook_item(item: Dict[str, Any], rank: int, execution_mode: str, gate_status: str) -> Dict[str, Any]:
+    bucket = _action_bucket(item.get("action"), item.get("grade"))
+    score = _format_score(item)
+    risk_flags = item.get("risk_flags")
+    if isinstance(risk_flags, str):
+        risk_flags_text = risk_flags.strip()
+    elif isinstance(risk_flags, list):
+        risk_flags_text = "；".join(str(flag) for flag in risk_flags if flag)
+    else:
+        risk_flags_text = ""
+
+    action_reason = item.get("action_reason") or item.get("reason") or item.get("setup_label") or "等待入场条件确认"
+    setup = item.get("setup_label") or item.get("setup_name") or "未分类"
+    return {
+        "rank": rank + 1,
+        "code": item.get("code") or item.get("symbol") or "",
+        "name": item.get("name") or item.get("symbol_name") or item.get("code") or "-",
+        "market": item.get("market") or "",
+        "category": item.get("category") or "",
+        "setup": setup,
+        "grade": item.get("grade") or "-",
+        "score": score,
+        "action": item.get("action") or "",
+        "action_label": _display_action(item.get("action"), bucket),
+        "bucket": bucket,
+        "position_hint": _position_hint(execution_mode, gate_status, rank),
+        "entry": action_reason,
+        "stop_loss": "跌破关键均线或单笔亏损 6%-8% 后退出",
+        "invalidation": risk_flags_text or "数据转为不新鲜、事件证据失效或市场状态转防守",
+        "review_time": "今日 11:40 / 15:15",
+        "source_table": item.get("source_table") or "workbench",
+    }
+
+
+async def _build_practical_brief() -> Dict[str, Any]:
+    warnings: List[str] = []
+    db = get_db_service()
+    runtime_profile = get_investment_runtime_profile()
+
+    try:
+        decision = await get_decision_center(with_workbench=False)
+    except Exception as exc:
+        warnings.append(f"decision-center 读取失败: {exc}")
+        decision = {
+            "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+            "regime": {"label": "unknown", "score": 0, "execution_mode": "defensive"},
+            "drivers": [],
+            "data_health": {"summary": {"status": "error", "error_count": 1}, "storage_fresh_pct": 0},
+            "opportunity_summary": {},
+            "watch_summary": {},
+            "strategy_stability": {"windows": [], "setups": [], "recent_signals": []},
+        }
+
+    try:
+        pool = db.get_opportunity_pool_overview(pool_code="watch", limit=30)
+    except Exception as exc:
+        warnings.append(f"watch 机会池读取失败: {exc}")
+        try:
+            pool = db.get_opportunity_pool_overview(pool_code="all", limit=30)
+        except Exception as inner_exc:
+            warnings.append(f"全量机会池读取失败: {inner_exc}")
+            pool = {"summary": {}, "leaderboard": []}
+
+    leaderboard = pool.get("leaderboard") or pool.get("opportunities") or []
+    execution_mode = (decision.get("regime") or {}).get("execution_mode") or "defensive"
+    gate = _build_execution_gate(decision)
+    gate_status = "open" if gate.get("status") == "open" else "blocked"
+
+    actionable = [
+        item for item in leaderboard
+        if _action_bucket(item.get("action"), item.get("grade")) == "actionable"
+    ]
+    watch_items = [
+        item for item in leaderboard
+        if _action_bucket(item.get("action"), item.get("grade")) == "watch"
+    ]
+    avoid_items = [
+        item for item in leaderboard
+        if _action_bucket(item.get("action"), item.get("grade")) == "avoid"
+    ]
+
+    primary_source = actionable if gate.get("status") == "open" else []
+    top_actions = [
+        _build_playbook_item(item, idx, execution_mode, gate_status)
+        for idx, item in enumerate(primary_source[:3])
+    ]
+    watchlist = [
+        _build_playbook_item(item, idx, execution_mode, "blocked")
+        for idx, item in enumerate((watch_items or actionable or avoid_items)[:8])
+    ]
+
+    data_health = decision.get("data_health") or {}
+    health_summary = data_health.get("summary") or {}
+    storage_fresh_pct = _to_float(data_health.get("storage_fresh_pct"), 0.0) or 0.0
+    strategy_stability = decision.get("strategy_stability") or {}
+
+    active_metrics = [
+        "数据健康/快照新鲜度",
+        "市场广度",
+        "涨跌停结构",
+        "VIX 外部风险",
+        "资金流动量(仅新鲜时)",
+        "候选动作/仓位/止损",
+        "策略样本胜率",
+    ]
+    hidden_metrics = [
+        "多层模型原始分",
+        "Evidence chunk/citation 统计",
+        "Universe/Entity 注册表覆盖率",
+        "空表或单样本宏观指标",
+        "sample_demo / fallback_placeholder",
+    ]
+
+    return {
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "runtime_profile": runtime_profile,
+        "execution_gate": gate,
+        "regime": decision.get("regime") or {},
+        "drivers": (decision.get("drivers") or [])[:6],
+        "top_actions": top_actions,
+        "watchlist": watchlist,
+        "counts": {
+            "candidate_count": len(leaderboard),
+            "actionable_count": len(actionable),
+            "watch_count": len(watch_items),
+            "avoid_count": len(avoid_items),
+        },
+        "opportunity_summary": {
+            **(decision.get("opportunity_summary") or {}),
+            **(pool.get("summary") or {}),
+        },
+        "watch_summary": decision.get("watch_summary") or {},
+        "data_status": {
+            "status": health_summary.get("status") or "unknown",
+            "health_score": health_summary.get("health_score"),
+            "storage_fresh_pct": storage_fresh_pct,
+            "error_count": health_summary.get("error_count", 0),
+            "warning_count": health_summary.get("warning_count", 0),
+            "db_path": DB_PATH,
+        },
+        "strategy_stability": {
+            "as_of_date": strategy_stability.get("as_of_date"),
+            "windows": (strategy_stability.get("windows") or [])[:3],
+            "setups": (strategy_stability.get("setups") or [])[:5],
+        },
+        "active_metrics": active_metrics,
+        "hidden_metrics": hidden_metrics,
+        "warnings": warnings,
+    }
+
+
 def normalize_index_keys(indices: Dict) -> Dict:
     normalized = dict(indices or {})
     for old_key, new_key in LEGACY_INDEX_ALIASES.items():
@@ -548,7 +774,13 @@ def normalize_index_keys(indices: Dict) -> Dict:
 
 @router.get("/", response_class=HTMLResponse)
 async def investment_dashboard(request: Request):
-    """投资决策仪表板页面"""
+    """每日执行工作台页面。"""
+    return templates.TemplateResponse(request, "investment_daily.html", {})
+
+
+@router.get("/legacy", response_class=HTMLResponse)
+async def investment_legacy_dashboard(request: Request):
+    """旧版多指标投资决策仪表板页面。"""
     return templates.TemplateResponse(request, "investment.html", {})
 
 
@@ -1433,6 +1665,12 @@ async def get_decision_center(with_workbench: bool = False):
             "snapshot_keys": [item.get("snapshot_key") for item in storage_items],
         },
     }
+
+
+@router.get("/api/practical-brief")
+async def get_practical_brief():
+    """面向日常投资执行的一页式聚合结果。"""
+    return await _build_practical_brief()
 
 
 @router.get("/api/watch-stocks")

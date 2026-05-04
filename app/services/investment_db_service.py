@@ -7,9 +7,10 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
+from app.config import settings
 from app.db import get_sqlite_connection
 
-DB_PATH = "data/investment.db"
+DB_PATH = settings.investment_db_path
 
 
 class InvestmentDataService:
