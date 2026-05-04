@@ -11,6 +11,15 @@
         align-items: start;
     }
 
+    .daily-shell > *,
+    .section-panel,
+    .side-panel,
+    .kpi,
+    .driver,
+    .action-row > * {
+        min-width: 0;
+    }
+
     .daily-header {
         display: flex;
         justify-content: space-between;
@@ -294,6 +303,19 @@
         margin-top: 0.08rem;
     }
 
+    .metric-item span,
+    .runtime-chip span,
+    .gate-reason,
+    .section-meta,
+    .asset-title,
+    .asset-code,
+    .small-line,
+    .driver .driver-hint {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
     .empty-state {
         padding: 1.25rem;
         color: var(--text-secondary);
@@ -326,6 +348,10 @@
         .action-row > div:nth-child(3),
         .action-row > div:nth-child(4) {
             grid-column: 2;
+        }
+        .section-head {
+            flex-direction: column;
+            align-items: flex-start;
         }
         .gate-ceiling {
             text-align: left;
