@@ -574,6 +574,16 @@ def _position_hint(execution_mode: str, gate_status: str, rank: int) -> str:
     return "≤3% 试错"
 
 
+def _age_days(date_value: Any) -> Optional[int]:
+    if not date_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(date_value)[:10])
+        return max(0, (datetime.now().date() - parsed.date()).days)
+    except Exception:
+        return None
+
+
 def _build_execution_gate(decision: Dict[str, Any]) -> Dict[str, Any]:
     regime = decision.get("regime") or {}
     data_health = decision.get("data_health") or {}
@@ -676,8 +686,32 @@ async def _build_practical_brief() -> Dict[str, Any]:
             pool = {"summary": {}, "leaderboard": []}
 
     leaderboard = pool.get("leaderboard") or pool.get("opportunities") or []
+    pool_summary = pool.get("summary") or {}
+    opportunity_as_of = pool_summary.get("as_of_date")
+    opportunity_age_days = _age_days(opportunity_as_of)
     execution_mode = (decision.get("regime") or {}).get("execution_mode") or "defensive"
     gate = _build_execution_gate(decision)
+    if not leaderboard:
+        gate = {
+            "status": "blocked",
+            "label": "无可用机会池",
+            "reason": "当前 Windows 本地库没有可执行候选，先刷新候选池。",
+            "position_ceiling": "0%-20%",
+        }
+    elif opportunity_age_days is None:
+        gate = {
+            "status": "blocked",
+            "label": "机会池日期缺失",
+            "reason": "候选池缺少 as_of_date，不能用于新增仓位。",
+            "position_ceiling": "0%-20%",
+        }
+    elif opportunity_age_days > 7:
+        gate = {
+            "status": "blocked",
+            "label": "机会池已过期",
+            "reason": f"候选池日期为 {opportunity_as_of}，已超过 7 天刷新阈值。",
+            "position_ceiling": "0%-20%",
+        }
     gate_status = "open" if gate.get("status") == "open" else "blocked"
 
     actionable = [
@@ -755,8 +789,9 @@ async def _build_practical_brief() -> Dict[str, Any]:
             "avoid_count": len(avoid_items),
         },
         "opportunity_summary": {
-            "pool_code": (pool.get("summary") or {}).get("pool_code", "watch"),
-            "as_of_date": (pool.get("summary") or {}).get("as_of_date"),
+            "pool_code": pool_summary.get("pool_code", "watch"),
+            "as_of_date": opportunity_as_of,
+            "age_days": opportunity_age_days,
             "candidate_count": len(leaderboard),
             "actionable_count": len(actionable),
             "watch_count": len(watch_items),
@@ -764,7 +799,7 @@ async def _build_practical_brief() -> Dict[str, Any]:
             "grade_counts": grade_counts,
             "average_score": avg_score,
             "buy_ratio_pct": buy_ratio_pct,
-            "source_table": (pool.get("summary") or {}).get("source_table"),
+            "source_table": pool_summary.get("source_table"),
         },
         "watch_summary": decision.get("watch_summary") or {},
         "data_status": {
@@ -774,6 +809,8 @@ async def _build_practical_brief() -> Dict[str, Any]:
             "error_count": health_summary.get("error_count", 0),
             "warning_count": health_summary.get("warning_count", 0),
             "db_path": DB_PATH,
+            "opportunity_as_of": opportunity_as_of,
+            "opportunity_age_days": opportunity_age_days,
         },
         "strategy_stability": {
             "as_of_date": strategy_stability.get("as_of_date"),
