@@ -76,12 +76,17 @@
 
     .status-key {
         color: var(--text-secondary);
+        flex: 0 0 38%;
+        overflow-wrap: normal;
+        word-break: normal;
     }
 
     .status-value {
         font-family: var(--font-mono);
         font-weight: 700;
         text-align: right;
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .tag {
@@ -111,6 +116,13 @@
         }
         .panel.wide {
             grid-column: span 1;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .status-row {
+            display: grid;
+            grid-template-columns: minmax(104px, 34%) minmax(0, 1fr);
         }
     }
 </style>

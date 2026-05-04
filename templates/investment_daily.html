@@ -632,7 +632,7 @@
         cards.push(referenceCard('US 10Y Treasury', `${compactNumber(us10y.latest, 2)}%`, `${signed(us10y.delta, '%', 2)} / ${text(us10y.as_of)}`, cardTone(us10y)));
 
         const spread = data.yield_spread || {};
-        cards.push(referenceCard('US 10Y-2Y spread', `${compactNumber(spread.latest, 2)} bps`, `${signed(spread.delta, ' bps', 2)} / ${text(spread.as_of)}`, cardTone(spread)));
+        cards.push(referenceCard('US 10Y-2Y spread', `${compactNumber(spread.latest, 2)}%`, `${signed(spread.delta, '%', 2)} / ${text(spread.as_of)}`, cardTone(spread)));
 
         const dxy = data.dxy || {};
         cards.push(referenceCard('DXY', compactNumber(dxy.latest, 2), `${signed(dxy.delta, '', 2)} / ${text(dxy.as_of)}`, cardTone(dxy)));
@@ -641,7 +641,9 @@
         cards.push(referenceCard('Gold', `${compactNumber(gold.latest, 2)} ${text(gold.unit, '')}`, `${signed(gold.delta, '', 2)} / ${text(gold.as_of)}`, cardTone(gold)));
 
         const oil = data.oil || {};
-        cards.push(referenceCard('Oil', `${compactNumber(oil.latest, 2)} ${text(oil.unit, '')}`, `${signed(oil.delta, '', 2)} / ${text(oil.as_of)}`, cardTone(oil)));
+        if (Number(oil.latest) > 0) {
+            cards.push(referenceCard('Oil', `${compactNumber(oil.latest, 2)} ${text(oil.unit, '')}`, `${signed(oil.delta, '', 2)} / ${text(oil.as_of)}`, cardTone(oil)));
+        }
 
         const html = cards.filter(Boolean).join('');
         grid.innerHTML = html || '<div class="empty-state">全球风险数据暂不可用。</div>';
