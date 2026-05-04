@@ -5,6 +5,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import FileSystemLoader, Environment
 from pathlib import Path
 
+from fastapi.responses import RedirectResponse
+
 router = APIRouter(tags=["页面"])
 
 # 模板目录 - 禁用缓存避免 Python 3.14 兼容性问题
@@ -19,5 +21,5 @@ templates = Jinja2Templates(
 
 @router.get("/stocks", response_class=HTMLResponse)
 async def stocks_page(request: Request):
-    """股票管理页面"""
-    return templates.TemplateResponse(request, "stocks.html", {"request": request})
+    """自选标的页已下线，统一回到 Investment Hub。"""
+    return RedirectResponse(url="/investment/", status_code=307)

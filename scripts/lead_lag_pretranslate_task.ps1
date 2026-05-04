@@ -28,11 +28,10 @@ if (-not (Test-Path $PythonExe)) {
 
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
-$env:INTELLIGENCE_TRANSLATION_LIMIT = [string]$TranslationLimit
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-$logFile = Join-Path $RepoRoot "logs\lead-lag-pretranslate.log"
+$logFile = Join-Path $RepoRoot "logs\lead-lag-precollect.log"
 $lockDir = Join-Path $RepoRoot "tmp\lead-lag-pretranslate.lock"
 
 function Write-TaskLog {
@@ -74,14 +73,12 @@ function Invoke-Step {
 $busy = Get-CimInstance Win32_Process | Where-Object {
     $_.Name -ieq "python.exe" -and (
         $_.CommandLine -like "*scripts\sync_intelligence.py*" -or
-        $_.CommandLine -like "*scripts\translate_intelligence.py*" -or
-        $_.CommandLine -like "*scripts\translate_shortline_events.py*" -or
         $_.CommandLine -like "*scripts\lead_lag_aliyun_collector.py*"
     )
 }
 
 if ($busy.Count -gt 0) {
-    Write-TaskLog "SKIP active collector or translator process count=$($busy.Count)"
+    Write-TaskLog "SKIP active collector process count=$($busy.Count)"
     exit 0
 }
 
@@ -93,13 +90,8 @@ try {
 }
 
 try {
-    Write-TaskLog "Lead-Lag pre-collection and pre-translation task started"
+    Write-TaskLog "Lead-Lag pre-collection task started; Bailian translation is disabled"
     Invoke-Step -Name "collect_intelligence" -ArgsList @("scripts\sync_intelligence.py")
-    Invoke-Step -Name "translate_intelligence" -ArgsList @("scripts\translate_intelligence.py")
-
-    if (-not $SkipShortline) {
-        Invoke-Step -Name "translate_shortline_t0" -ArgsList @("scripts\translate_shortline_events.py", "--limit", [string]$ShortlineLimit)
-    }
 
     if (-not $SkipSnapshot) {
         Invoke-Step -Name "export_lead_lag_snapshot" -ArgsList @(
@@ -109,7 +101,7 @@ try {
         )
     }
 
-    Write-TaskLog "Lead-Lag pre-collection and pre-translation task completed"
+    Write-TaskLog "Lead-Lag pre-collection task completed"
 } finally {
     Remove-Item -Path $lockDir -Recurse -Force -ErrorAction SilentlyContinue
 }

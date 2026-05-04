@@ -760,29 +760,21 @@
                     <i class="bi bi-clipboard2-pulse"></i>
                     <span>每日执行</span>
                 </a>
-                <a class="nav-link {% if request.url.path == '/stocks' %}active{% endif %}" href="/stocks">
-                    <i class="bi bi-star"></i>
-                    <span>自选标的</span>
-                </a>
             </div>
 
             <div class="nav-section">
-                <div class="nav-section-title">研究后台</div>
-                <a class="nav-link {% if '/investment/lead-lag' in request.url.path %}active{% endif %}" href="/investment/lead-lag">
-                    <i class="bi bi-diagram-3"></i>
-                    <span>主题研究</span>
-                </a>
-                <a class="nav-link {% if '/investment/intelligence' in request.url.path %}active{% endif %}" href="/investment/intelligence">
-                    <i class="bi bi-radar"></i>
-                    <span>情报源</span>
+                <div class="nav-section-title">研究</div>
+                <a class="nav-link {% if request.url.path == '/investment/research' %}active{% endif %}" href="/investment/research">
+                    <i class="bi bi-globe-americas"></i>
+                    <span>研究与情报</span>
                 </a>
             </div>
 
             <div class="nav-section">
                 <div class="nav-section-title">诊断</div>
-                <a class="nav-link {% if request.url.path == '/investment/legacy' %}active{% endif %}" href="/investment/legacy">
-                    <i class="bi bi-grid-1x2"></i>
-                    <span>旧版大屏</span>
+                <a class="nav-link {% if request.url.path == '/investment/data' %}active{% endif %}" href="/investment/data">
+                    <i class="bi bi-database-check"></i>
+                    <span>数据状态</span>
                 </a>
             </div>
         </nav>

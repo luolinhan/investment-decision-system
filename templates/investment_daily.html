@@ -271,6 +271,72 @@
     .signal-positive { border-color: rgba(34, 197, 94, 0.35); }
     .signal-negative { border-color: rgba(239, 68, 68, 0.35); }
 
+    .reference-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.7rem;
+        padding: 1rem;
+    }
+
+    .reference-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 0.85rem;
+        min-height: 112px;
+        min-width: 0;
+    }
+
+    .reference-card .name {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        line-height: 1.35;
+    }
+
+    .reference-card .main {
+        margin-top: 0.4rem;
+        font-family: var(--font-mono);
+        font-weight: 800;
+        font-size: 1.1rem;
+        line-height: 1.15;
+    }
+
+    .reference-card .sub {
+        margin-top: 0.35rem;
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+
+    .reference-card.positive { border-color: rgba(34, 197, 94, 0.35); }
+    .reference-card.negative { border-color: rgba(239, 68, 68, 0.35); }
+    .reference-card.warning { border-color: rgba(251, 191, 36, 0.35); }
+
+    .macro-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+    }
+
+    .macro-table th,
+    .macro-table td {
+        padding: 0.7rem 0.8rem;
+        border-top: 1px solid var(--border-color);
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .macro-table th {
+        color: var(--text-muted);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .macro-table td.value {
+        font-family: var(--font-mono);
+        font-weight: 700;
+    }
+
     .side-panel {
         border: 1px solid var(--border-color);
         border-radius: 0.5rem;
@@ -310,7 +376,10 @@
     .asset-title,
     .asset-code,
     .small-line,
-    .driver .driver-hint {
+    .driver .driver-hint,
+    .reference-card .name,
+    .reference-card .sub,
+    .macro-table td {
         min-width: 0;
         overflow-wrap: anywhere;
         word-break: break-word;
@@ -327,7 +396,8 @@
             grid-template-columns: 1fr;
         }
         .kpi-grid,
-        .driver-grid {
+        .driver-grid,
+        .reference-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
@@ -339,7 +409,8 @@
             align-items: flex-start;
         }
         .kpi-grid,
-        .driver-grid {
+        .driver-grid,
+        .reference-grid {
             grid-template-columns: 1fr;
         }
         .action-row {
@@ -414,6 +485,22 @@
                 <div id="kpiWatchNote" class="note">-</div>
             </div>
         </div>
+
+        <section class="section-panel">
+            <div class="section-head">
+                <h3>全球风险与宏观利率</h3>
+                <span id="globalRiskMeta" class="section-meta">读取真实可用数据</span>
+            </div>
+            <div id="globalRiskGrid" class="reference-grid"></div>
+        </section>
+
+        <section class="section-panel">
+            <div class="section-head">
+                <h3>宏观流动性参考</h3>
+                <span id="macroMeta" class="section-meta">来自旧版大屏的可用指标</span>
+            </div>
+            <div id="macroRatesTable"></div>
+        </section>
 
         <section class="section-panel">
             <div class="section-head">
@@ -493,6 +580,115 @@
 
     function metricItem(label, icon = 'bi-check2-circle') {
         return `<div class="metric-item"><i class="bi ${icon}"></i><span>${label}</span></div>`;
+    }
+
+    function compactNumber(value, digits = 2) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return '-';
+        return parsed.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+    }
+
+    function signed(value, suffix = '', digits = 2) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return '-';
+        const sign = parsed > 0 ? '+' : '';
+        return `${sign}${parsed.toFixed(digits)}${suffix}`;
+    }
+
+    function cardTone(item) {
+        const level = String(item?.level || item?.zone || item?.watch_status || '').toLowerCase();
+        const latest = Number(item?.latest ?? item?.level);
+        if (level.includes('high') || level.includes('fear') || level.includes('shock') || latest >= 25) return 'negative';
+        if (level.includes('low') || level.includes('normal') || level.includes('very_low')) return 'positive';
+        if (level.includes('watch') || level.includes('medium') || latest >= 18) return 'warning';
+        return '';
+    }
+
+    function referenceCard(name, main, sub, tone = '') {
+        if (main === '-' || main === undefined || main === null || main === '') return '';
+        return `
+            <div class="reference-card ${tone}">
+                <div class="name">${name}</div>
+                <div class="main">${main}</div>
+                <div class="sub">${sub || ''}</div>
+            </div>
+        `;
+    }
+
+    function renderGlobalRisk(data) {
+        const grid = document.getElementById('globalRiskGrid');
+        const meta = document.getElementById('globalRiskMeta');
+        const cards = [];
+        const composite = data.composite_risk || {};
+        cards.push(referenceCard('Composite risk', `${compactNumber(composite.score, 1)}`, `${text(composite.label)} / ${text(data.update_time)}`, cardTone(composite)));
+
+        const vix = data.vix || {};
+        cards.push(referenceCard('VIX', compactNumber(vix.latest, 2), `${signed(vix.delta, '', 2)} / ${text(vix.as_of)} / ${text(vix.source)}`, cardTone(vix)));
+
+        const pizza = data.pentagon_pizza || {};
+        cards.push(referenceCard('Pentagon Pizza Index', pizza.level ? `DOUGHCON ${pizza.level}` : '-', `${text(pizza.watch_status)} / ${text(pizza.as_of)} / ${text(pizza.source)}`, cardTone(pizza)));
+
+        const us10y = data.us10y || {};
+        cards.push(referenceCard('US 10Y Treasury', `${compactNumber(us10y.latest, 2)}%`, `${signed(us10y.delta, '%', 2)} / ${text(us10y.as_of)}`, cardTone(us10y)));
+
+        const spread = data.yield_spread || {};
+        cards.push(referenceCard('US 10Y-2Y spread', `${compactNumber(spread.latest, 2)} bps`, `${signed(spread.delta, ' bps', 2)} / ${text(spread.as_of)}`, cardTone(spread)));
+
+        const dxy = data.dxy || {};
+        cards.push(referenceCard('DXY', compactNumber(dxy.latest, 2), `${signed(dxy.delta, '', 2)} / ${text(dxy.as_of)}`, cardTone(dxy)));
+
+        const gold = data.gold || {};
+        cards.push(referenceCard('Gold', `${compactNumber(gold.latest, 2)} ${text(gold.unit, '')}`, `${signed(gold.delta, '', 2)} / ${text(gold.as_of)}`, cardTone(gold)));
+
+        const oil = data.oil || {};
+        cards.push(referenceCard('Oil', `${compactNumber(oil.latest, 2)} ${text(oil.unit, '')}`, `${signed(oil.delta, '', 2)} / ${text(oil.as_of)}`, cardTone(oil)));
+
+        const html = cards.filter(Boolean).join('');
+        grid.innerHTML = html || '<div class="empty-state">全球风险数据暂不可用。</div>';
+        meta.textContent = data.update_time ? `更新 ${data.update_time}` : '读取真实可用数据';
+    }
+
+    function renderMacroOverview(data) {
+        const rates = data.rates || {};
+        const bond = rates.bond || {};
+        const shibor = rates.shibor || {};
+        const hibor = rates.hibor || {};
+        const rows = [
+            ['US 2Y', bond['美国国债收益率2年'], '%', rates.date],
+            ['US 10Y', bond['美国国债收益率10年'], '%', rates.date],
+            ['US 30Y', bond['美国国债收益率30年'], '%', rates.date],
+            ['US 10Y-2Y', bond['美国国债收益率10年-2年'], '%', rates.date],
+            ['SHIBOR O/N', shibor.overnight, '%', rates.date],
+            ['SHIBOR 1M', shibor['1m'], '%', rates.date],
+            ['HIBOR O/N', hibor.overnight, '%', rates.date],
+            ['HIBOR 1M', hibor['1m'], '%', rates.date],
+        ].filter((row) => row[1] !== undefined && row[1] !== null && row[1] !== '');
+        document.getElementById('macroRatesTable').innerHTML = rows.length ? `
+            <table class="macro-table">
+                <thead><tr><th>指标</th><th>数值</th><th>日期</th></tr></thead>
+                <tbody>
+                    ${rows.map((row) => `<tr><td>${row[0]}</td><td class="value">${compactNumber(row[1], 4)}${row[2]}</td><td>${text(row[3])}</td></tr>`).join('')}
+                </tbody>
+            </table>
+        ` : '<div class="empty-state">宏观利率数据暂不可用。</div>';
+        document.getElementById('macroMeta').textContent = `VIX ${compactNumber(data.vix?.close, 2)} / 涨跌比 ${compactNumber(data.breadth_ratio, 2)} / 涨停跌停 ${compactNumber(data.limit_ratio, 2)}`;
+    }
+
+    async function loadMarketReferences() {
+        const [globalResp, macroResp] = await Promise.allSettled([
+            fetch('/investment/api/global-risk?days=30').then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`global ${resp.status}`))),
+            fetch('/investment/api/macro/overview').then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`macro ${resp.status}`))),
+        ]);
+        if (globalResp.status === 'fulfilled') {
+            renderGlobalRisk(globalResp.value || {});
+        } else {
+            document.getElementById('globalRiskGrid').innerHTML = `<div class="empty-state">全球风险读取失败: ${globalResp.reason.message}</div>`;
+        }
+        if (macroResp.status === 'fulfilled') {
+            renderMacroOverview(macroResp.value || {});
+        } else {
+            document.getElementById('macroRatesTable').innerHTML = `<div class="empty-state">宏观流动性读取失败: ${macroResp.reason.message}</div>`;
+        }
     }
 
     function renderAction(item) {
@@ -589,6 +785,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             renderBrief(data);
+            await loadMarketReferences();
             document.getElementById('dailyLoading').style.display = 'none';
             document.getElementById('dailyApp').style.display = 'grid';
         } catch (error) {

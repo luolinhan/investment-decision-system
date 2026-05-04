@@ -11,7 +11,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_investment_runtime_profile, settings
@@ -762,6 +762,10 @@ async def _build_practical_brief() -> Dict[str, Any]:
         "市场广度",
         "涨跌停结构",
         "VIX 外部风险",
+        "五角大楼披萨指数",
+        "美国国债收益率/利差",
+        "SHIBOR/HIBOR",
+        "DXY/黄金/原油",
         "资金流动量(仅新鲜时)",
         "候选动作/仓位/止损",
         "策略样本胜率",
@@ -841,20 +845,20 @@ async def investment_dashboard(request: Request):
 
 @router.get("/legacy", response_class=HTMLResponse)
 async def investment_legacy_dashboard(request: Request):
-    """旧版多指标投资决策仪表板页面。"""
-    return templates.TemplateResponse(request, "investment.html", {})
+    """旧版大屏已整合到每日执行和数据状态页。"""
+    return RedirectResponse(url="/investment/data", status_code=307)
 
 
 @router.get("/intelligence", response_class=HTMLResponse)
 async def intelligence_hub_page(request: Request):
-    """重大事项情报雷达页面。"""
-    return templates.TemplateResponse(request, "intelligence.html", {})
+    """情报源已整合到研究与情报页。"""
+    return RedirectResponse(url="/investment/research", status_code=307)
 
 
 @router.get("/lead-lag", response_class=HTMLResponse)
 async def lead_lag_page(request: Request):
-    """Lead-Lag Alpha Engine 页面。"""
-    return templates.TemplateResponse(request, "lead_lag.html", {})
+    """Lead-Lag 主题研究已整合到研究与情报页。"""
+    return RedirectResponse(url="/investment/research", status_code=307)
 
 
 @router.get("/api/lead-lag/overview")
@@ -1834,19 +1838,22 @@ async def strategy_preopen_latest(max_age_seconds: int = 16 * 3600):
 
 @router.get("/api/intelligence/brief/latest")
 async def intelligence_brief_latest(max_age_seconds: int = 16 * 3600):
-    """读取最近百炼增强情报, 若不存在则即时生成。"""
-    service = get_coding_plan_service()
-    payload = service.get_latest_daily_brief(max_age_seconds=max(60, int(max_age_seconds or 0)))
-    if payload:
-        return payload
-    return service.generate_daily_brief(force_refresh=False, persist=True)
+    """百炼增强情报已停用，前端直接读取原始英文情报源。"""
+    return {
+        "status": "disabled",
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "reason": "Bailian translation/enrichment is disabled; use /investment/api/intelligence/hub and /events.",
+    }
 
 
 @router.post("/api/intelligence/brief/refresh")
 async def intelligence_brief_refresh(force_refresh: bool = True):
-    """强制刷新百炼增强情报。"""
-    service = get_coding_plan_service()
-    return service.generate_daily_brief(force_refresh=force_refresh, persist=True)
+    """百炼增强情报已停用。"""
+    return {
+        "status": "disabled",
+        "generated_at": datetime.now().replace(microsecond=0).isoformat(),
+        "reason": "Bailian translation/enrichment is disabled; run collector-only intelligence jobs instead.",
+    }
 
 
 @router.get("/api/intelligence/hub")
@@ -2183,24 +2190,32 @@ async def get_public_research_hub():
 async def get_macro_overview(force_realtime: bool = False):
     """获取宏观流动性概览"""
     db = get_db_service()
-    north_money = db.get_north_money(30)
 
-    snapshot = db.get_market_snapshot("investment.market_overview.v2")
+    def _safe_db_read(label: str, fn, default):
+        try:
+            return fn()
+        except Exception as exc:
+            print(f"{label}读取失败，继续降级: {exc}")
+            return default
+
+    north_money = _safe_db_read("北向资金", lambda: db.get_north_money(30), [])
+
+    snapshot = _safe_db_read("市场快照", lambda: db.get_market_snapshot("investment.market_overview.v2"), None)
     if snapshot and snapshot.get("payload"):
         payload = snapshot.get("payload") or {}
-        rates = payload.get("rates") or db.get_interest_rates_latest()
-        sentiment = payload.get("sentiment") or db.get_market_sentiment_latest()
+        rates = payload.get("rates") or _safe_db_read("利率", db.get_interest_rates_latest, {})
+        sentiment = payload.get("sentiment") or _safe_db_read("市场情绪", db.get_market_sentiment_latest, {})
         fear_greed = payload.get("fear_greed") or {}
         vix_raw = fear_greed.get("vix") or {}
         vix = {
             "close": vix_raw.get("value"),
             "change_pct": vix_raw.get("change_pct"),
             "source": vix_raw.get("source"),
-        } if vix_raw else db.get_vix_latest()
+        } if vix_raw else _safe_db_read("VIX", db.get_vix_latest, {})
     else:
-        rates = db.get_interest_rates_latest()
-        sentiment = db.get_market_sentiment_latest()
-        vix = db.get_vix_latest()
+        rates = _safe_db_read("利率", db.get_interest_rates_latest, {})
+        sentiment = _safe_db_read("市场情绪", db.get_market_sentiment_latest, {})
+        vix = _safe_db_read("VIX", db.get_vix_latest, {})
 
     if force_realtime:
         realtime = get_investment_service()
@@ -2820,8 +2835,14 @@ async def shortline_refresh(include_official: bool = True, translate: bool = Fal
 
 @router.get("/research", response_class=HTMLResponse)
 async def research_workbench_page(request: Request):
-    """研究工作台页面。"""
-    return templates.TemplateResponse("research_workbench.html", {"request": request})
+    """研究与情报整合页。"""
+    return templates.TemplateResponse(request, "investment_research.html", {})
+
+
+@router.get("/data", response_class=HTMLResponse)
+async def data_status_page(request: Request):
+    """数据状态页。"""
+    return templates.TemplateResponse(request, "investment_data.html", {})
 
 
 @router.get("/api/research/workbench")

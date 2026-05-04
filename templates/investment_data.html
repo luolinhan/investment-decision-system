@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}数据状态{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-intro {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1.25rem;
+    }
+
+    .page-intro h2 {
+        font-size: 1.65rem;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .page-intro p {
+        margin-top: 0.45rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .status-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .panel {
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        background: var(--bg-card);
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .panel.wide {
+        grid-column: span 2;
+    }
+
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.95rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .panel-head h3 {
+        margin: 0;
+        font-size: 0.95rem;
+    }
+
+    .status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+
+    .status-row:last-child {
+        border-bottom: none;
+    }
+
+    .status-row span {
+        overflow-wrap: anywhere;
+    }
+
+    .status-key {
+        color: var(--text-secondary);
+    }
+
+    .status-value {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        text-align: right;
+    }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 0.4rem;
+        padding: 0.25rem 0.45rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: var(--accent-cyan-dim);
+        color: var(--accent-cyan);
+    }
+
+    .tag.ok { color: var(--accent-green); background: rgba(34, 197, 94, 0.14); }
+    .tag.disabled { color: var(--text-muted); background: rgba(100, 116, 139, 0.12); }
+    .tag.blocked { color: var(--accent-red); background: rgba(239, 68, 68, 0.14); }
+
+    .empty-state {
+        padding: 1rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+    }
+
+    @media (max-width: 1100px) {
+        .status-grid {
+            grid-template-columns: 1fr;
+        }
+        .panel.wide {
+            grid-column: span 1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-intro">
+    <div>
+        <h2>数据状态</h2>
+        <p>这个页面只服务运维判断：哪些数据真实可用，哪些模块被禁用，Windows 生产是否与 GitHub 对齐。</p>
+    </div>
+    <a class="btn btn-secondary" href="/investment/"><i class="bi bi-clipboard2-pulse"></i><span>每日执行</span></a>
+</div>
+
+<div id="dataLoading" class="panel">
+    <div class="empty-state">正在读取 Windows 生产状态...</div>
+</div>
+
+<div id="dataApp" class="status-grid" style="display:none;">
+    <section class="panel">
+        <div class="panel-head"><h3>Runtime</h3><span class="tag ok">Windows</span></div>
+        <div id="runtimeRows"></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><h3>Daily Gate</h3><span id="gateTag" class="tag">-</span></div>
+        <div id="gateRows"></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><h3>Storage Freshness</h3><span id="freshTag" class="tag">-</span></div>
+        <div id="storageRows"></div>
+    </section>
+
+    <section class="panel wide">
+        <div class="panel-head"><h3>Enabled Data Modules</h3><span class="tag ok">usable</span></div>
+        <div id="enabledModules"></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><h3>Disabled Modules</h3><span class="tag disabled">hidden</span></div>
+        <div id="disabledModules"></div>
+    </section>
+
+    <section class="panel wide">
+        <div class="panel-head"><h3>Source Health</h3><span id="sourceTag" class="tag">-</span></div>
+        <div id="sourceRows"></div>
+    </section>
+</div>
+
+<script>
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char]));
+    }
+
+    function row(key, value) {
+        return `<div class="status-row"><span class="status-key">${escapeHtml(key)}</span><span class="status-value">${escapeHtml(value ?? '-')}</span></div>`;
+    }
+
+    function tagClass(status) {
+        if (status === 'open' || status === 'healthy' || status === true) return 'tag ok';
+        if (status === 'blocked' || status === 'error') return 'tag blocked';
+        return 'tag';
+    }
+
+    function renderData(runtime, brief, health, sources) {
+        const dataStatus = brief.data_status || {};
+        const gate = brief.execution_gate || {};
+        document.getElementById('runtimeRows').innerHTML = [
+            row('node_role', runtime.node_role),
+            row('data_source_mode', runtime.data_source_mode),
+            row('db_path', runtime.db_path),
+            row('storage_root', runtime.investment_storage_root),
+            row('platform', runtime.platform),
+        ].join('');
+
+        document.getElementById('gateTag').className = tagClass(gate.status);
+        document.getElementById('gateTag').textContent = gate.status || '-';
+        document.getElementById('gateRows').innerHTML = [
+            row('label', gate.label),
+            row('reason', gate.reason),
+            row('position ceiling', gate.position_ceiling),
+            row('opportunity as_of', dataStatus.opportunity_as_of),
+            row('opportunity age days', dataStatus.opportunity_age_days),
+        ].join('');
+
+        const summary = health.summary || {};
+        document.getElementById('freshTag').className = tagClass(summary.fresh_pct >= 90);
+        document.getElementById('freshTag').textContent = `${summary.fresh_pct ?? '-'}%`;
+        document.getElementById('storageRows').innerHTML = (health.storage || []).map((item) => row(item.key, `${item.is_fresh ? 'fresh' : 'stale'} / ${item.updated_at}`)).join('');
+
+        document.getElementById('enabledModules').innerHTML = [
+            row('daily execution', 'market snapshot, macro overview, global risk, data gate'),
+            row('global risk', 'VIX, Pentagon Pizza Index, US Treasury, DXY, Gold, Oil'),
+            row('macro liquidity', 'SHIBOR, HIBOR, breadth, limit structure, north flow when available'),
+            row('intelligence', 'English source text, priority, freshness, frequency'),
+            row('theme research', 'live/public source-backed cards only'),
+            row('reports', 'traceable URL or local archive only'),
+        ].join('');
+
+        document.getElementById('disabledModules').innerHTML = [
+            row('stocks page', 'removed from navigation and redirected'),
+            row('legacy dashboard', 'merged into daily execution and data status'),
+            row('workbench candidates', 'hidden until daily_files and opportunity as_of are fresh'),
+            row('translation', 'Bailian translation disabled'),
+            row('sample/fallback themes', 'hidden'),
+            row('event frontline', 'hidden while count is zero'),
+        ].join('');
+
+        const enabledSources = (sources.data || sources || []).filter((item) => item.enabled);
+        document.getElementById('sourceTag').textContent = `${enabledSources.length} enabled`;
+        document.getElementById('sourceRows').innerHTML = enabledSources.slice(0, 18).map((item) => row(item.source_key || item.name, `${item.source_type || '-'} / ${item.last_success_at || '-'}`)).join('');
+    }
+
+    async function loadDataStatus() {
+        try {
+            const [runtime, brief, health, sources] = await Promise.all([
+                fetch('/investment/api/runtime/profile').then((r) => r.json()),
+                fetch('/investment/api/practical-brief').then((r) => r.json()),
+                fetch('/investment/api/data-health/overview').then((r) => r.json()),
+                fetch('/investment/api/intelligence/sources').then((r) => r.json()),
+            ]);
+            renderData(runtime, brief, health, sources);
+            document.getElementById('dataLoading').style.display = 'none';
+            document.getElementById('dataApp').style.display = 'grid';
+        } catch (error) {
+            document.getElementById('dataLoading').innerHTML = `<div class="empty-state">Load failed: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    loadDataStatus();
+</script>
+{% endblock %}

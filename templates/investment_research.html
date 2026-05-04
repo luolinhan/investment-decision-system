@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block title %}研究与情报{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-intro {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1.25rem;
+    }
+
+    .page-intro h2 {
+        font-size: 1.65rem;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .page-intro p {
+        margin-top: 0.45rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    .research-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 1.25rem;
+        align-items: start;
+    }
+
+    .panel {
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        background: var(--bg-card);
+        margin-bottom: 1rem;
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.95rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .panel-head h3 {
+        margin: 0;
+        font-size: 0.95rem;
+    }
+
+    .panel-meta {
+        color: var(--text-muted);
+        font-size: 0.76rem;
+        overflow-wrap: anywhere;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .summary-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        background: var(--bg-card);
+        padding: 0.9rem;
+        min-width: 0;
+    }
+
+    .summary-card .label,
+    .event-meta,
+    .report-meta {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+    }
+
+    .summary-card .value {
+        margin-top: 0.35rem;
+        font-family: var(--font-mono);
+        font-size: 1.3rem;
+        font-weight: 800;
+    }
+
+    .event-list,
+    .theme-list,
+    .report-list,
+    .source-list {
+        display: grid;
+    }
+
+    .event-row,
+    .theme-row,
+    .report-row,
+    .source-row {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        min-width: 0;
+    }
+
+    .event-row:last-child,
+    .theme-row:last-child,
+    .report-row:last-child,
+    .source-row:last-child {
+        border-bottom: none;
+    }
+
+    .event-title,
+    .theme-title,
+    .report-title {
+        font-weight: 750;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+    }
+
+    .event-summary,
+    .theme-summary,
+    .report-summary {
+        margin-top: 0.45rem;
+        color: var(--text-secondary);
+        line-height: 1.55;
+        font-size: 0.84rem;
+        overflow-wrap: anywhere;
+    }
+
+    .row-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.65rem;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        border-radius: 0.4rem;
+        padding: 0.25rem 0.45rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: var(--accent-cyan-dim);
+        color: var(--accent-cyan);
+    }
+
+    .chip.p0 { color: var(--accent-red); background: rgba(239, 68, 68, 0.14); }
+    .chip.p1 { color: var(--accent-gold); background: rgba(251, 191, 36, 0.16); }
+    .chip.fresh { color: var(--accent-green); background: rgba(34, 197, 94, 0.14); }
+    .chip.stale { color: var(--text-muted); background: rgba(100, 116, 139, 0.12); }
+
+    .source-link {
+        color: var(--accent-cyan);
+        text-decoration: none;
+        overflow-wrap: anywhere;
+    }
+
+    .source-link:hover {
+        text-decoration: underline;
+    }
+
+    .empty-state {
+        padding: 1rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+    }
+
+    @media (max-width: 1180px) {
+        .research-grid {
+            grid-template-columns: 1fr;
+        }
+        .summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 760px) {
+        .page-intro,
+        .panel-head {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-intro">
+    <div>
+        <h2>研究与情报</h2>
+        <p>只保留有来源、有时间、可追溯的英文情报和主题材料；无数据的旧模块不再渲染。</p>
+    </div>
+    <a class="btn btn-secondary" href="/investment/data"><i class="bi bi-database-check"></i><span>数据状态</span></a>
+</div>
+
+<div id="researchLoading" class="panel">
+    <div class="empty-state">正在读取 Windows 本地情报库...</div>
+</div>
+
+<div id="researchApp" style="display:none;" aria-label="决策中心 不要追高 模型发现分组">
+    <div class="summary-grid" id="researchSummary" aria-label="决策中心"></div>
+    <div class="research-grid">
+        <div>
+            <section class="panel">
+                <div class="panel-head">
+                    <h3>Fresh Intelligence</h3>
+                    <span id="eventsMeta" class="panel-meta">English source text</span>
+                </div>
+                <div id="eventList" class="event-list"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <h3>机会队列</h3>
+                    <span id="themesMeta" class="panel-meta">领先-传导 Alpha 引擎 / live-public only</span>
+                </div>
+                <div id="themeList" class="theme-list"></div>
+            </section>
+        </div>
+
+        <aside>
+            <section class="panel">
+                <div class="panel-head">
+                    <h3>Reports</h3>
+                    <span id="reportsMeta" class="panel-meta">traceable only</span>
+                </div>
+                <div id="reportList" class="report-list"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <h3>Source Health</h3>
+                    <span id="sourcesMeta" class="panel-meta">enabled sources</span>
+                </div>
+                <div id="sourceList" class="source-list"></div>
+            </section>
+        </aside>
+    </div>
+</div>
+
+<script>
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char]));
+    }
+
+    function text(value, fallback = '-') {
+        if (value === null || value === undefined || value === '') return fallback;
+        return String(value);
+    }
+
+    function parseDate(value) {
+        if (!value) return null;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function ageDays(value) {
+        const parsed = parseDate(value);
+        if (!parsed) return null;
+        return Math.max(0, Math.floor((Date.now() - parsed.getTime()) / DAY_MS));
+    }
+
+    function freshness(value) {
+        const days = ageDays(value);
+        if (days === null) return { label: 'unknown', className: 'stale' };
+        if (days <= 1) return { label: 'hot', className: 'fresh' };
+        if (days <= 3) return { label: 'fresh', className: 'fresh' };
+        if (days <= 14) return { label: 'watch', className: '' };
+        return { label: 'stale', className: 'stale' };
+    }
+
+    function externalLink(url, label) {
+        if (!url) return `<span>${escapeHtml(label || '-')}</span>`;
+        return `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(label || url)}</a>`;
+    }
+
+    function renderSummary(hub, events, queue, reports) {
+        const summary = hub.summary || {};
+        const liveThemes = usableThemes(queue).length;
+        const traceableReports = usableReports(reports).length;
+        document.getElementById('researchSummary').innerHTML = [
+            ['Active events', summary.active_events ?? events.length],
+            ['P0 / P1', `${summary.p0_events ?? 0} / ${summary.p1_events ?? 0}`],
+            ['Live themes', liveThemes],
+            ['Reports', traceableReports],
+        ].map(([label, value]) => `
+            <div class="summary-card">
+                <div class="label">${label}</div>
+                <div class="value">${value}</div>
+            </div>
+        `).join('');
+    }
+
+    function eventFrequency(events, event, days) {
+        const category = event.category || 'unknown';
+        const cutoff = Date.now() - days * DAY_MS;
+        return events.filter((item) => {
+            if ((item.category || 'unknown') !== category) return false;
+            const dt = parseDate(item.event_time || item.last_seen_at || item.first_seen_at);
+            return dt && dt.getTime() >= cutoff;
+        }).length;
+    }
+
+    function usableEvents(events) {
+        return (events || [])
+            .filter((item) => item.title && (item.primary_source_url || item.url) && (item.event_time || item.last_seen_at || item.first_seen_at))
+            .sort((a, b) => (parseDate(b.event_time || b.last_seen_at)?.getTime() || 0) - (parseDate(a.event_time || a.last_seen_at)?.getTime() || 0));
+    }
+
+    function renderEvents(events) {
+        const usable = usableEvents(events).slice(0, 24);
+        document.getElementById('eventsMeta').textContent = `${usable.length} traceable events`;
+        document.getElementById('eventList').innerHTML = usable.length ? usable.map((item) => {
+            const observedAt = item.event_time || item.last_seen_at || item.first_seen_at;
+            const fresh = freshness(observedAt);
+            const priority = String(item.priority || 'P2').toLowerCase();
+            return `
+                <article class="event-row">
+                    <div class="event-title">${externalLink(item.primary_source_url || item.url, item.title)}</div>
+                    <div class="event-summary">${escapeHtml(item.summary || item.impact_summary || '')}</div>
+                    <div class="row-badges">
+                        <span class="chip ${priority}">${escapeHtml(item.priority || 'P2')}</span>
+                        <span class="chip ${fresh.className}">${fresh.label}</span>
+                        <span class="chip">event ${escapeHtml(text(item.event_time || '-'))}</span>
+                        <span class="chip">last ${escapeHtml(text(item.last_seen_at || '-'))}</span>
+                        <span class="chip">7d freq ${eventFrequency(events, item, 7)}</span>
+                        <span class="chip">30d freq ${eventFrequency(events, item, 30)}</span>
+                        <span class="chip">sources ${escapeHtml(text(item.source_count, '1'))}</span>
+                    </div>
+                </article>
+            `;
+        }).join('') : '<div class="empty-state">No traceable fresh intelligence events.</div>';
+    }
+
+    function usableThemes(queue) {
+        const items = [...(queue.parent_thesis_cards || []), ...(queue.cards || [])];
+        return items.filter((item) => {
+            const cls = item.data_source_class || item.source_class || item.source_quality || '';
+            return !String(cls).includes('fallback') && !String(cls).includes('sample') && (item.thesis || item.title || item.name);
+        }).slice(0, 10);
+    }
+
+    function renderThemes(queue) {
+        const themes = usableThemes(queue);
+        document.getElementById('themesMeta').textContent = `${themes.length} usable themes`;
+        document.getElementById('themeList').innerHTML = themes.length ? themes.map((item) => `
+            <article class="theme-row">
+                <div class="theme-title">${escapeHtml(item.thesis || item.title || item.name)}</div>
+                <div class="theme-summary">${escapeHtml(item.rationale || item.summary || item.reason || 'Source-backed theme watch. No trade action unless daily execution gate opens.')}</div>
+                <div class="row-badges">
+                    <span class="chip">${escapeHtml(text(item.data_source_class || item.source_class || 'live_public'))}</span>
+                    <span class="chip">${item.is_executable ? 'research watch' : 'non executable'}</span>
+                    <span class="chip">score ${escapeHtml(text(item.score || item.decision_score || '-'))}</span>
+                </div>
+            </article>
+        `).join('') : '<div class="empty-state">No usable live/public themes.</div>';
+    }
+
+    function usableReports(payload) {
+        return (payload.reports || payload.items || []).filter((item) => item.title && (item.source_url || item.url || item.local_path));
+    }
+
+    function renderReports(payload) {
+        const reports = usableReports(payload).slice(0, 12);
+        document.getElementById('reportsMeta').textContent = `${reports.length} traceable reports`;
+        document.getElementById('reportList').innerHTML = reports.length ? reports.map((item) => `
+            <article class="report-row">
+                <div class="report-title">${externalLink(item.source_url || item.url, item.title)}</div>
+                <div class="report-meta">${escapeHtml(text(item.report_type))} / ${escapeHtml(text(item.local_path || item.source_url || item.url))}</div>
+                ${item.summary ? `<div class="report-summary">${escapeHtml(item.summary)}</div>` : ''}
+            </article>
+        `).join('') : '<div class="empty-state">No traceable reports.</div>';
+    }
+
+    function renderSources(sources) {
+        const usable = (sources || []).filter((item) => item.enabled).slice(0, 12);
+        document.getElementById('sourcesMeta').textContent = `${usable.length} enabled shown`;
+        document.getElementById('sourceList').innerHTML = usable.length ? usable.map((item) => `
+            <article class="source-row">
+                <div class="event-title">${externalLink(item.url, item.name || item.source_key)}</div>
+                <div class="event-meta">${escapeHtml(text(item.source_type))} / ${escapeHtml(text(item.credibility))} / last success ${escapeHtml(text(item.last_success_at))}</div>
+            </article>
+        `).join('') : '<div class="empty-state">No enabled sources.</div>';
+    }
+
+    async function loadResearch() {
+        try {
+            const [hub, eventsResp, queue, reports, sourcesResp] = await Promise.all([
+                fetch('/investment/api/intelligence/hub').then((r) => r.json()),
+                fetch('/investment/api/intelligence/events?limit=200').then((r) => r.json()),
+                fetch('/investment/api/lead-lag/opportunity-queue').then((r) => r.json()),
+                fetch('/investment/api/lead-lag/report-center').then((r) => r.json()),
+                fetch('/investment/api/intelligence/sources').then((r) => r.json()),
+            ]);
+            const events = eventsResp.data || [];
+            const sources = sourcesResp.data || [];
+            renderSummary(hub, events, queue, reports);
+            renderEvents(events);
+            renderThemes(queue);
+            renderReports(reports);
+            renderSources(sources);
+            document.getElementById('researchLoading').style.display = 'none';
+            document.getElementById('researchApp').style.display = 'block';
+        } catch (error) {
+            document.getElementById('researchLoading').innerHTML = `<div class="empty-state">Load failed: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    loadResearch();
+</script>
+{% endblock %}
